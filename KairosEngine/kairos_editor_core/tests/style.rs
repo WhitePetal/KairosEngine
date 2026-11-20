@@ -12,7 +12,7 @@ fn a_field_edit_becomes_the_panel_write_it_needs() {
     let action = Action::Style(StyleAction::SetField {
         panel: CONSOLE,
         path: "toolbar_height".to_owned(),
-        value: StyleValue::Float(30.0),
+        value: StyleValue::F32(30.0),
     });
 
     assert_eq!(
@@ -20,7 +20,7 @@ fn a_field_edit_becomes_the_panel_write_it_needs() {
         vec![Effect::Style(StyleEffect::SetField {
             panel: CONSOLE,
             path: "toolbar_height".to_owned(),
-            value: StyleValue::Float(30.0),
+            value: StyleValue::F32(30.0),
         })]
     );
 }
@@ -72,7 +72,7 @@ fn skin_edits_leave_the_state_tree_alone() {
         Action::Style(StyleAction::SetField {
             panel: CONSOLE,
             path: "toolbar_height".to_owned(),
-            value: StyleValue::Float(30.0),
+            value: StyleValue::F32(30.0),
         }),
     );
 

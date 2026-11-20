@@ -21,11 +21,18 @@ pub trait Number: Copy + PartialEq + Display + 'static {
     /// Whole numbers round and step by one; floats keep their fraction.
     const WHOLE: bool;
 
-    /// The value as f64, for the shared drag and edit maths.
+    /// The value as f64, for the shared drag and range maths.
     fn as_f64(self) -> f64;
 
     /// Round and clamp an f64 into this type (`u8` saturates at 255).
     fn from_f64(value: f64) -> Self;
+
+    /// Parse the type's own text. Exact for `u64`/`i64`, unlike the f64
+    /// fallback the box uses for out-of-range input. A custom number can keep
+    /// the f64 default; the primitive impls override it.
+    fn parse(text: &str) -> Option<Self> {
+        text.parse::<f64>().ok().map(Self::from_f64)
+    }
 
     /// The displayed text, with a negative zero folded to 0.
     fn text(self) -> String {
@@ -47,6 +54,10 @@ macro_rules! float_number {
                 fn from_f64(value: f64) -> Self {
                     value as $ty
                 }
+
+                fn parse(text: &str) -> Option<Self> {
+                    text.parse::<$ty>().ok()
+                }
             }
         )*
     };
@@ -65,6 +76,10 @@ macro_rules! whole_number {
                 fn from_f64(value: f64) -> Self {
                     value.round().clamp(<$ty>::MIN as f64, <$ty>::MAX as f64) as $ty
                 }
+
+                fn parse(text: &str) -> Option<Self> {
+                    text.parse::<$ty>().ok()
+                }
             }
         )*
     };
@@ -81,17 +96,18 @@ whole_number!(i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
 #[derive(Clone, Debug)]
 pub struct NumberEdit {
     text: String,
-    /// Value before the edit, as f64: exact for every primitive the box edits.
-    original: f64,
+    /// The text the box showed before the edit. Keeping the text (rather than
+    /// an f64) preserves a `u64`/`i64` that is larger than 2^53 on Escape.
+    original: String,
     /// Focus the editor and select everything on the first pass.
     focus: bool,
 }
 
 impl NumberEdit {
-    fn new(text: String, original: f64) -> Self {
+    fn new(text: String) -> Self {
         Self {
+            original: text.clone(),
             text,
-            original,
             focus: true,
         }
     }
@@ -131,8 +147,8 @@ impl<'a, N: Number> NumberField<'a, N> {
         }
     }
 
-    /// Clamp to this range on top of the type's own: a u32 token that models a
-    /// u8 stops at 255, a list length stops at its maximum.
+    /// Clamp to this UI range on top of the type's own: a list length stops at
+    /// its maximum, a padding at its design limit. Type bounds stay with `N`.
     pub fn range(mut self, min: f64, max: f64) -> Self {
         self.range = (min, max);
         self
@@ -230,7 +246,7 @@ impl<'a, N: Number> NumberField<'a, N> {
         labelled_widget_info(&response, WidgetType::DragValue, self.label, None);
 
         if response.clicked() {
-            *edit = Some(NumberEdit::new(self.value.text(), (*self.value).as_f64()));
+            *edit = Some(NumberEdit::new(self.value.text()));
             response.request_focus();
         }
 
@@ -272,7 +288,7 @@ impl<'a, N: Number> NumberField<'a, N> {
         let enter = ui.input(|input| input.key_pressed(Key::Enter));
         let mut finished = false;
         if escape {
-            changed |= self.write(editor.original);
+            changed |= self.parse(&editor.original);
             response.surrender_focus();
             finished = true;
         } else if enter || response.lost_focus() {
@@ -318,7 +334,26 @@ impl<'a, N: Number> NumberField<'a, N> {
     }
 
     fn parse(&mut self, text: &str) -> bool {
-        match text.trim().parse::<f64>() {
+        let text = text.trim();
+        // Parse the field's own type first: a u64 above 2^53 must not be
+        // round-tripped through f64. Out-of-range or fractional input falls
+        // back to the f64 path, which rounds and clamps like the type's own
+        // bounds.
+        if let Some(value) = N::parse(text) {
+            let raw = value.as_f64();
+            if !raw.is_finite() {
+                return false;
+            }
+            if raw < self.range.0 || raw > self.range.1 {
+                return self.write(raw);
+            }
+            if value != *self.value {
+                *self.value = value;
+                return true;
+            }
+            return false;
+        }
+        match text.parse::<f64>() {
             Ok(raw) if raw.is_finite() => self.write(raw),
             _ => false,
         }
@@ -451,6 +486,43 @@ mod tests {
         let _ = ctx.run_ui(typed, |ui| row(ui, &style, &mut value, &mut edit, None));
 
         assert_eq!(value, 255, "a u8 saturates instead of wrapping");
+    }
+
+    #[test]
+    fn a_u64_above_f64_precision_round_trips_exactly() {
+        let ctx = Context::default();
+        let style = style();
+        let mut value = 0_u64;
+        let mut edit: Option<NumberEdit> = None;
+
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
+        click(&ctx, rect().center(), |ui| {
+            row(ui, &style, &mut value, &mut edit, None)
+        });
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
+        let mut typed = input();
+        typed.events = vec![Event::Text(u64::MAX.to_string()), enter()];
+        let _ = ctx.run_ui(typed, |ui| row(ui, &style, &mut value, &mut edit, None));
+        assert_eq!(value, u64::MAX);
+
+        // Escape restores the exact original text, not an f64 approximation.
+        click(&ctx, rect().center(), |ui| {
+            row(ui, &style, &mut value, &mut edit, None)
+        });
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
+        let mut typed = input();
+        typed.events = vec![
+            Event::Text("1".to_owned()),
+            Event::Key {
+                key: Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::default(),
+            },
+        ];
+        let _ = ctx.run_ui(typed, |ui| row(ui, &style, &mut value, &mut edit, None));
+        assert_eq!(value, u64::MAX);
     }
 
     #[test]

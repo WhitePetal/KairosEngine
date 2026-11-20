@@ -150,7 +150,10 @@ mod tests {
         let catalog = StyleCatalog::builtin();
 
         for id in [TOOLBAR, COLOR_PICKER, EDITOR_FIELD, FONTS] {
-            assert!(catalog.get(id).is_some(), "shared style {id} not registered");
+            assert!(
+                catalog.get(id).is_some(),
+                "shared style {id} not registered"
+            );
         }
     }
 }

@@ -621,7 +621,7 @@ mod tests {
             describe(&Action::Style(StyleAction::SetField {
                 panel: panels::CONSOLE,
                 path: "toolbar_height".to_owned(),
-                value: StyleValue::Float(30.0),
+                value: StyleValue::F32(30.0),
             })),
             "set console skin: toolbar_height"
         );
@@ -635,7 +635,7 @@ mod tests {
             describe(&Action::SharedStyle(SharedStyleAction::SetField {
                 style: COLOR_PICKER,
                 path: "border_width".to_owned(),
-                value: StyleValue::Float(0.9),
+                value: StyleValue::F32(0.9),
             })),
             "set color_picker shared skin: border_width"
         );
@@ -665,7 +665,7 @@ mod tests {
             Action::SharedStyle(SharedStyleAction::SetField {
                 style: COLOR_PICKER,
                 path: "border_width".to_owned(),
-                value: StyleValue::Float(0.9),
+                value: StyleValue::F32(0.9),
             }),
             &ctx,
         );
@@ -693,7 +693,7 @@ mod tests {
             Action::SharedStyle(SharedStyleAction::SetField {
                 style: COLOR_PICKER,
                 path: "border_width".to_owned(),
-                value: StyleValue::Float(0.9),
+                value: StyleValue::F32(0.9),
             }),
             &ctx,
         );
@@ -999,7 +999,7 @@ mod tests {
             Action::Style(StyleAction::SetField {
                 panel: panels::CONSOLE,
                 path: "toolbar_height".to_owned(),
-                value: StyleValue::Float(30.0),
+                value: StyleValue::F32(30.0),
             }),
             &ctx,
         );
@@ -1015,7 +1015,7 @@ mod tests {
             .iter()
             .find(|field| field.path == "toolbar_height")
             .expect("toolbar_height");
-        assert_eq!(height.value, StyleValue::Float(30.0));
+        assert_eq!(height.value, StyleValue::F32(30.0));
     }
 
     /// The save boundary: an edit alone writes nothing; the commit writes the
@@ -1032,7 +1032,7 @@ mod tests {
             Action::Style(StyleAction::SetField {
                 panel: panels::CONSOLE,
                 path: "toolbar_height".to_owned(),
-                value: StyleValue::Float(30.0),
+                value: StyleValue::F32(30.0),
             }),
             &ctx,
         );

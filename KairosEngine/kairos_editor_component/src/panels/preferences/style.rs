@@ -50,6 +50,11 @@ pub struct PreferencesPanelStyle {
     pub row_odd: Color,
     pub row_even: Color,
 
+    /// Background of an enum field's block: the menu row and the active
+    /// variant's payload rows. A block tint instead of an indent is what makes
+    /// the menu button and its fields read as one control.
+    pub enum_block: Color,
+
     /// Selected outline, active slider fill, and the page-list stripe.
     pub accent: Color,
 
@@ -143,6 +148,9 @@ impl Style for PreferencesPanelStyle {
 
             row_odd: Color::from_srgb8([0x38, 0x38, 0x38, 255]),
             row_even: Color::from_srgb8([0x33, 0x33, 0x33, 255]),
+            // Recessed below the stripes: the enum block is one control, not
+            // another row band.
+            enum_block: Color::from_srgb8([0x30, 0x30, 0x30, 255]),
 
             accent: Color::from_srgb8([0x4A, 0x90, 0xD9, 255]),
 
@@ -205,6 +213,7 @@ impl Style for PreferencesPanelStyle {
 
             row_odd: Color::from_srgb8([0xF6, 0xF6, 0xF6, 255]),
             row_even: Color::from_srgb8([0xED, 0xED, 0xED, 255]),
+            enum_block: Color::from_srgb8([0xE2, 0xE2, 0xE2, 255]),
 
             accent: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
             list_selection: Color::from_srgb8([0xB9, 0xD7, 0xF2, 255]),

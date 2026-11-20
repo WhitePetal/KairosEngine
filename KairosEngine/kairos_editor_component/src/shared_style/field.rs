@@ -1,17 +1,24 @@
 //! The field widgets' shared skin.
 //!
 //! Value boxes, checkboxes and row names are drawn by
-//! `kairos_editor_widgets::field`, which reads runtime tokens (`Color32`,
-//! `TextStyle`). Those are not serde-friendly, so this is the serializable skin
+//! kairos_editor_widgets::field, which reads runtime tokens (Color32,
+//! TextStyle). Those are not serde-friendly, so this is the serializable skin
 //! the editor owns: plain colours and metrics, one file under
-//! `Preferences/Styles/EditorField.ron`, projected onto the widget tokens at
-//! the call site. Every panel that draws fields reads the same file — the
-//! Preferences editor today, an object inspector next — so a field looks the
+//! Preferences/Styles/EditorField.ron, projected onto the widget tokens at
+//! the call site. Every panel that draws fields reads the same file - the
+//! Preferences editor today, an object inspector next - so a field looks the
 //! same everywhere and can be restyled in one place.
+//!
+//! The enum field's dropdown is part of this skin, not a page of its own. It
+//! uses the editor's shared menu tokens (the menu bar's popup) for the popup
+//! and a distinct popup-field fill for the trigger, because the color picker's
+//! menu buttons read as buttons rather than text boxes.
 
+use egui::{Margin, Vec2};
 use kairos_color::Color;
 use kairos_editor_widgets::color::ColorExt;
 use kairos_editor_widgets::field::FieldStyle;
+use kairos_editor_widgets::menu::MenuStyle;
 use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::text::TextStyle;
 use serde::{Deserialize, Serialize};
@@ -51,12 +58,112 @@ pub struct EditorFieldStyle {
     pub height: f32,
     /// Side of a boolean checkbox.
     pub checkbox: f32,
+
+    /// The dropdown an enum field opens and the button that opens it. It
+    /// lives in this skin, not in a page of its own: it is the field's own
+    /// popup, not a second control family.
+    #[serde(default)]
+    pub menu: EditorFieldMenuStyle,
+}
+
+/// Appearance of the enum field's menu button and its dropdown.
+///
+/// The trigger is Unity's popup field: a fill one shade lighter than a text
+/// box, a 1 px outline, the value text at the left and a caret at the right.
+/// The popup is the editor's shared menu: a square, dense list with the Unity
+/// blue highlight and full-width separators.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+pub struct EditorFieldMenuStyle {
+    /// Fill of the menu button.
+    pub button_fill: Color,
+    /// Menu-button fill under the pointer and while its menu is open.
+    pub button_hover: Color,
+    /// Menu-button outline at rest.
+    pub button_edge: Color,
+    /// Popup fill.
+    pub background: Color,
+    /// Item text at rest.
+    pub text: Color,
+    /// Fill behind the hovered or active item.
+    pub highlight: Color,
+    /// Full-width separator between menu sections.
+    pub separator: Color,
+    /// Height of one item row.
+    pub item_height: f32,
+    /// Vertical margin between the popup edge and the item column.
+    pub padding: f32,
+    /// Left/right padding of one item.
+    pub item_padding: f32,
+    /// The popup is at least this wide.
+    pub min_width: f32,
+}
+
+impl Default for EditorFieldMenuStyle {
+    fn default() -> Self {
+        Self::dark()
+    }
+}
+
+impl EditorFieldMenuStyle {
+    pub fn dark() -> Self {
+        Self {
+            button_fill: Color::from_srgb8([0x4A, 0x4A, 0x4A, 255]),
+            button_hover: Color::from_srgb8([0x56, 0x56, 0x56, 255]),
+            button_edge: Color::from_srgb8([0x16, 0x16, 0x16, 255]),
+            background: Color::from_srgb8([0x2D, 0x2D, 0x2D, 255]),
+            text: Color::from_srgb8([0xDE, 0xDE, 0xDE, 255]),
+            highlight: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
+            separator: Color::from_srgb8([0x4F, 0x4F, 0x4F, 255]),
+            item_height: 22.0,
+            padding: 4.0,
+            item_padding: 11.0,
+            min_width: 160.0,
+        }
+    }
+
+    pub fn light() -> Self {
+        Self {
+            button_fill: Color::from_srgb8([0xE0, 0xE0, 0xE0, 255]),
+            button_hover: Color::WHITE,
+            button_edge: Color::from_srgb8([0xA8, 0xA8, 0xA8, 255]),
+            background: Color::from_srgb8([0xF0, 0xF0, 0xF0, 255]),
+            text: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
+            highlight: Color::from_srgb8([0x3A, 0x72, 0xB0, 255]),
+            separator: Color::from_srgb8([0xC0, 0xC0, 0xC0, 255]),
+            ..Self::dark()
+        }
+    }
+
+    /// Project the serializable tokens onto the widget's shared menu style.
+    ///
+    /// The text size is the field's, not a menu-only token: a field's popup
+    /// must not change size from the value it belongs to.
+    pub fn tokens(&self, text_size: f32) -> MenuStyle {
+        MenuStyle {
+            popup_fill: self.background.to_egui(),
+            popup_margin: Margin {
+                left: 0,
+                right: 0,
+                top: self.padding.round() as i8,
+                bottom: self.padding.round() as i8,
+            },
+            popup_min_width: self.min_width,
+            text: self.text.to_egui(),
+            text_size,
+            item_hover_fill: self.highlight.to_egui(),
+            item_active_fill: self.highlight.to_egui(),
+            item_padding: Vec2::new(self.item_padding, 3.0),
+            item_height: self.item_height,
+            separator: self.separator.to_egui(),
+            ..MenuStyle::default()
+        }
+    }
 }
 
 impl EditorFieldStyle {
     /// Project the serializable tokens onto the widget's runtime style.
     pub fn tokens(&self) -> FieldStyle {
-        FieldStyle::new(TextStyle::sized(self.text.to_egui(), self.text_size))
+        let mut tokens = FieldStyle::new(TextStyle::sized(self.text.to_egui(), self.text_size))
             .labels(self.label.to_egui(), self.label_active.to_egui())
             .fills(self.fill.to_egui(), self.hover_fill.to_egui())
             .edges(
@@ -69,6 +176,11 @@ impl EditorFieldStyle {
             .padding(self.padding)
             .height(self.height)
             .checkbox(self.checkbox)
+            .menu(self.menu.tokens(self.text_size));
+        tokens.menu_button_fill = self.menu.button_fill.to_egui();
+        tokens.menu_button_hover = self.menu.button_hover.to_egui();
+        tokens.menu_button_edge = self.menu.button_edge.to_egui();
+        tokens
     }
 }
 
@@ -92,6 +204,7 @@ impl Style for EditorFieldStyle {
             padding: 6.0,
             height: 18.0,
             checkbox: 15.0,
+            menu: EditorFieldMenuStyle::dark(),
         }
     }
 
@@ -105,6 +218,7 @@ impl Style for EditorFieldStyle {
             edge: Color::from_srgb8([0xA8, 0xA8, 0xA8, 255]),
             edge_hover: Color::from_srgb8([0x7A, 0x7A, 0x7A, 255]),
             accent: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
+            menu: EditorFieldMenuStyle::light(),
             ..Self::dark()
         }
     }
@@ -133,6 +247,42 @@ mod tests {
         assert_eq!(tokens.height, skin.height);
         assert_eq!(tokens.checkbox, skin.checkbox);
         assert_eq!(tokens.corner_radius, skin.corner_radius);
+        assert_eq!(tokens.menu_button_fill, skin.menu.button_fill.to_egui());
+        assert_eq!(tokens.menu_button_hover, skin.menu.button_hover.to_egui());
+        assert_eq!(tokens.menu_button_edge, skin.menu.button_edge.to_egui());
+
+        let menu = &skin.menu;
+        assert_eq!(tokens.menu.popup_fill, menu.background.to_egui());
+        assert_eq!(tokens.menu.text, menu.text.to_egui());
+        assert_eq!(tokens.menu.text_size, skin.text_size);
+        assert_eq!(tokens.menu.item_hover_fill, menu.highlight.to_egui());
+        assert_eq!(tokens.menu.item_active_fill, menu.highlight.to_egui());
+        assert_eq!(tokens.menu.item_height, menu.item_height);
+        assert_eq!(tokens.menu.item_padding, Vec2::new(menu.item_padding, 3.0));
+        assert_eq!(tokens.menu.popup_min_width, menu.min_width);
+        assert_eq!(tokens.menu.separator, menu.separator.to_egui());
+        assert_eq!(tokens.menu.popup_margin.top as f32, menu.padding);
+    }
+
+    /// The enum dropdown is part of the field page, not a style of its own:
+    /// the Field skin lists it as a nested group, and the menu tokens reach
+    /// the widget through the same tokens() projection as the box tokens.
+    #[test]
+    fn the_enum_menu_is_a_group_of_the_field_skin() {
+        let fields = EditorFieldStyle::dark().style_fields();
+        let paths: Vec<&str> = fields.iter().map(|field| field.path.as_str()).collect();
+
+        assert!(paths.contains(&"menu.button_fill"), "{paths:?}");
+        assert!(paths.contains(&"menu.background"), "{paths:?}");
+        assert!(paths.contains(&"menu.highlight"), "{paths:?}");
+        assert!(
+            !paths.contains(&"menu"),
+            "the menu is a group of its fields, not a leaf"
+        );
+        assert_eq!(
+            EditorFieldMenuStyle::default(),
+            EditorFieldMenuStyle::dark()
+        );
     }
 
     #[test]

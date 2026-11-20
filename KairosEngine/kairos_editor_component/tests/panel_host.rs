@@ -2,7 +2,6 @@
 //! the dock viewer adapter and the close-as-intent path. No window, no GPU.
 
 use egui::{Context, Pos2, RawInput, Rect, Vec2};
-use kairos_editor_component::skin::StyleKind;
 use kairos_editor_component::{
     ConsoleLine, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelId, PanelInstanceId,
     UiOut, panels,
@@ -321,11 +320,11 @@ fn skin_fields_are_listed_and_written_through_the_host() {
         "nested icon paths are editable too"
     );
 
-    // Unknown paths and wrong kinds are rejected by the panel, not applied.
-    assert!(!host.set_skin_field(panels::CONSOLE, "nope", &StyleValue::Float(1.0)));
-    assert!(!host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::Toggle(true)));
+    // Unknown paths and wrong exact types are rejected by the panel, not applied.
+    assert!(!host.set_skin_field(panels::CONSOLE, "nope", &StyleValue::F32(1.0)));
+    assert!(!host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::Bool(true)));
 
-    assert!(host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::Float(30.0)));
+    assert!(host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::F32(30.0)));
     let updated = host.skins(&state);
     let console = updated
         .iter()
@@ -336,10 +335,10 @@ fn skin_fields_are_listed_and_written_through_the_host() {
         .iter()
         .find(|field| field.path == "toolbar_height")
         .expect("toolbar_height");
-    assert_eq!(height.value, StyleValue::Float(30.0));
+    assert_eq!(height.value, StyleValue::F32(30.0));
 
     // A list token grows, shrinks and reorders through the same host path.
-    let palette_len = |host: &PanelHost| -> u32 {
+    let palette_len = |host: &PanelHost| -> usize {
         let skins = host.skins(&state);
         let profiler = skins
             .iter()
@@ -350,8 +349,7 @@ fn skin_fields_are_listed_and_written_through_the_host() {
             .iter()
             .find(|field| field.path == "category_palette")
             .expect("the profiler palette is a list token");
-        assert_eq!(palette.kind, StyleKind::List);
-        let StyleValue::Integer(len) = palette.value else {
+        let StyleValue::ListLen(len) = palette.value else {
             panic!("a list token's value is its length");
         };
         len
@@ -372,7 +370,7 @@ fn skin_fields_are_listed_and_written_through_the_host() {
 
     // A panel that is not open has no instance, so it has no skin to write.
     assert!(
-        host.set_skin_field(panels::ABOUT, "title_size", &StyleValue::Float(1.0))
+        host.set_skin_field(panels::ABOUT, "title_size", &StyleValue::F32(1.0))
             .eq(&false)
     );
 }

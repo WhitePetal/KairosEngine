@@ -228,7 +228,7 @@ mod tests {
     use kairos_editor_widgets::style::StyleFile;
 
     use super::*;
-    use crate::skin::StyleKind;
+    use kairos_editor_core::StyleValue;
 
     /// The checked-in reference skin and the code defaults are one skin.
     #[test]
@@ -279,9 +279,8 @@ mod tests {
         assert!(fields.iter().any(|field| field.path == "accent"));
         assert!(fields.iter().any(|field| field.path == "text_size"));
         assert!(
-            fields
-                .iter()
-                .any(|field| field.path == "eyedropper_icon" && field.kind == StyleKind::Text),
+            fields.iter().any(|field| field.path == "eyedropper_icon"
+                && matches!(field.value, StyleValue::Text(_))),
             "the icon path is a text token, like the Console tab icons"
         );
         assert!(

@@ -288,7 +288,7 @@ mod tests {
 
         assert!(shared.set_field(COLOR_PICKER, "accent", &StyleValue::Color(accent)));
         assert_eq!(shared.color_picker().expect("picker").accent, accent);
-        assert!(!shared.set_field(COLOR_PICKER, "missing", &StyleValue::Float(1.0)));
+        assert!(!shared.set_field(COLOR_PICKER, "missing", &StyleValue::F32(1.0)));
         assert!(
             !shared.set_field(TOOLBAR, "accent", &StyleValue::Color(accent)),
             "a path from another style does not match"
@@ -308,13 +308,13 @@ mod tests {
         kairos_editor_widgets::style::set_style_root(&root);
 
         let mut shared = SharedStyles::default();
-        assert!(shared.set_field(TOOLBAR, "height", &StyleValue::Float(30.0)));
+        assert!(shared.set_field(TOOLBAR, "height", &StyleValue::F32(30.0)));
         shared
             .save(TOOLBAR, egui::Theme::Dark)
             .expect("save toolbar");
         assert!(root.join("ToolBar.ron").is_file());
 
-        assert!(shared.set_field(TOOLBAR, "height", &StyleValue::Float(10.0)));
+        assert!(shared.set_field(TOOLBAR, "height", &StyleValue::F32(10.0)));
         let revision = shared.revision();
         assert!(shared.reload(TOOLBAR, egui::Theme::Dark));
         assert_eq!(shared.toolbar().expect("toolbar").height, 30.0);

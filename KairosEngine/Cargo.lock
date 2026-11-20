@@ -2692,6 +2692,7 @@ dependencies = [
  "kairos_color",
  "ron",
  "serde",
+ "strum 0.28.0",
 ]
 
 [[package]]

@@ -16,19 +16,37 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use egui::{Context, FontData, FontDefinitions, FontFamily};
+use kairos_color::Color;
 use serde::{Deserialize, Serialize};
 
-/// Where a font sits in the fallback list.
+/// The runtime payload of [FontPriority::Push].
 ///
-/// The shell's font skin stores this alongside each entry, so it keeps the
-/// serde derives even though the install structure itself is a runtime value.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// The Preferences page edits the component's mirror type and projects it
+/// onto this value at install time; this is the install structure, not the
+/// serde skin.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TestEnumStruct {
+    pub fvalue: f32,
+    pub ivalue: i32,
+    pub svalue: String,
+    pub cvalue: Color,
+}
+
+impl Eq for TestEnumStruct {}
+
+/// Where a font sits in the fallback list, as the installer consumes it.
+///
+/// The serde skin is the component crate's EditorFontPriority; this runtime
+/// value is projected from it, the same split as FontsConfig/EditorFonts.
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, strum::EnumIter, strum::Display,
+)]
 pub enum FontPriority {
     /// Goes in front of its family, so it draws the editor's text.
     #[default]
     First,
     /// Appends to its family, so it is a fallback for glyphs the front lacks.
-    Push,
+    Push(TestEnumStruct),
 }
 
 /// One font file to load and register.
@@ -70,7 +88,7 @@ impl FontsConfig {
                 let entries = definitions.families.entry(family.clone()).or_default();
                 match file.priority {
                     FontPriority::First => entries.insert(0, file.name.clone()),
-                    FontPriority::Push => entries.push(file.name.clone()),
+                    FontPriority::Push(_) => entries.push(file.name.clone()),
                 }
             }
         }
@@ -93,13 +111,25 @@ mod tests {
         }
     }
 
+    /// The runtime enum is directly usable by EnumField: strum provides the
+    /// variant order and the labels, so no field-side trait is implemented.
+    #[test]
+    fn the_runtime_priority_lists_its_variants_with_strum() {
+        use strum::IntoEnumIterator;
+
+        let labels: Vec<String> = FontPriority::iter()
+            .map(|value| value.to_string())
+            .collect();
+        assert_eq!(labels, ["First", "Push"]);
+    }
+
     #[test]
     fn install_registers_the_configured_font_families() {
         let config = FontsConfig {
             proportional: vec![
                 workspace_font("Inter", "Inter-Regular.otf"),
                 FontFile {
-                    priority: FontPriority::Push,
+                    priority: FontPriority::Push(TestEnumStruct::default()),
                     ..workspace_font("Inter Medium", "Inter-Medium.otf")
                 },
             ],

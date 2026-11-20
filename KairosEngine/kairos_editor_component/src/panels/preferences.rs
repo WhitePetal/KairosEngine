@@ -48,7 +48,7 @@ use egui::{
     Align, Context, CornerRadius, CursorIcon, Id, Key, Margin, Pos2, Rect, Sense, Shape, Stroke,
     StrokeKind, Ui, UiBuilder, WidgetText, WidgetType, pos2, vec2,
 };
-use kairos_color::ColorUsage;
+use kairos_color::{Color, ColorUsage};
 use kairos_editor_core::{
     Action, LayoutAction, ListEdit, PanelId, SharedStyleAction, SharedStyleId, StyleAction,
     StyleValue,
@@ -60,8 +60,8 @@ use kairos_editor_widgets::color_picker::{
 };
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::field::{
-    FieldLabel, FieldLabelResponse, FieldOutcome, FieldStyle, NumberEdit, NumberField, TextField,
-    ToggleField,
+    FieldLabel, FieldLabelResponse, FieldOutcome, FieldStyle, Number, NumberEdit, NumberField,
+    TextField, ToggleField, VariantMenu, enum_popup_id,
 };
 use kairos_editor_widgets::paint::labelled_widget_info;
 use kairos_editor_widgets::style::StyleFile;
@@ -70,7 +70,7 @@ use kairos_editor_widgets::text::TextStyle;
 use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
 use crate::shared_style::SharedSkin;
-use crate::skin::{LIST_MAX, StyleField, StyleKind, humanize};
+use crate::skin::{LIST_MAX, StyleField, humanize};
 
 use self::style::PreferencesPanelStyle;
 
@@ -681,61 +681,69 @@ impl PageWriter<'_> {
         // A `Vec<T>` token is a list, empty or not: the list node is the only
         // field an empty list has, and it is what gives the empty list a
         // header to add the first entry from.
-        let lists: Vec<(String, u32)> = self
+        let lists: Vec<(String, usize)> = self
             .page
             .fields
             .iter()
-            .filter(|field| field.kind == StyleKind::List)
+            .filter(|field| field.value.is_list())
             .map(|field| {
                 let len = match field.value {
-                    StyleValue::Integer(len) => len,
+                    StyleValue::ListLen(len) => len,
                     _ => 0,
                 };
                 (field.path.clone(), len)
             })
             .collect();
+        let list_paths: Vec<String> = lists.iter().map(|(path, _)| path.clone()).collect();
+
+        // Enum tokens, and the ones whose active variant has payload rows.
+        // Payload rows sit at the enum's own depth: the block tint, not an
+        // indent, is what ties them to the menu button.
+        let enums: Vec<String> = self
+            .page
+            .fields
+            .iter()
+            .filter(|field| field.value.is_variant())
+            .map(|field| field.path.clone())
+            .collect();
+        let enum_blocks: Vec<String> = enums
+            .iter()
+            .filter(|path| {
+                self.page
+                    .fields
+                    .iter()
+                    .any(|field| field.path.starts_with(&format!("{path}.")))
+            })
+            .cloned()
+            .collect();
 
         for index in 0..self.page.fields.len() {
-            let (path, kind) = {
+            let (path, is_list) = {
                 let field = &self.page.fields[index];
-                (field.path.clone(), field.kind)
+                (field.path.clone(), field.value.is_list())
             };
 
             // A list node draws its own two-row header (name, then count and
             // add/remove) instead of a row in the value column.
-            if kind == StyleKind::List {
+            if is_list {
                 let segments: Vec<&str> = path.split('.').filter(|part| !part.is_empty()).collect();
-                let depth = segments.len().saturating_sub(1);
-                let common = open
-                    .iter()
-                    .zip(segments.iter())
-                    .take_while(|(opened, segment)| opened.as_str() == **segment)
-                    .count();
-                open.truncate(common);
-
-                for level in common..depth {
-                    // Open a group only when nothing above it is folded; the
-                    // stack is this band's ancestors, so ask before pushing it.
-                    let hidden = collapsed_above(&segments[..level], &self.page.collapsed);
-                    open.push(segments[level].to_owned());
-                    if !hidden {
-                        let band = open.join(".");
-                        self.band(
-                            ui,
-                            &band,
-                            level,
-                            humanize(segments[level]),
-                            row_width,
-                            &mut row_number,
-                            &lists,
-                            &mut bands,
-                        );
-                    }
-                }
+                let parents = &segments[..segments.len().saturating_sub(1)];
+                let depth = self.open_groups(
+                    ui,
+                    parents,
+                    &mut open,
+                    &enums,
+                    row_width,
+                    &mut row_number,
+                    &lists,
+                    &mut bands,
+                );
 
                 // A folded group hides the list's entries, not its header.
-                let hidden = collapsed_above(&segments[..depth], &self.page.collapsed);
-                open.push(segments[depth].to_owned());
+                let hidden = collapsed_above(parents, &self.page.collapsed);
+                if let Some(last) = segments.last() {
+                    open.push((*last).to_owned());
+                }
                 if !hidden {
                     self.list_header(ui, index, depth, row_width);
                 }
@@ -747,47 +755,28 @@ impl PageWriter<'_> {
 
             let group = group_path(&path);
             let segments: Vec<&str> = group.split('.').filter(|part| !part.is_empty()).collect();
-
-            // Close the groups this field is no longer in, then open the ones
-            // it is. Fields are in declaration order, so the group runs stay
-            // contiguous.
-            let common = open
-                .iter()
-                .zip(segments.iter())
-                .take_while(|(opened, segment)| opened.as_str() == **segment)
-                .count();
-            open.truncate(common);
-
-            for depth in common..segments.len() {
-                // Open a group only when nothing above it is folded; the stack
-                // is this row's ancestors, so ask before pushing the group.
-                let hidden = collapsed_above(&segments[..depth], &self.page.collapsed);
-                open.push(segments[depth].to_owned());
-                if !hidden {
-                    let band = open.join(".");
-                    self.band(
-                        ui,
-                        &band,
-                        depth,
-                        humanize(segments[depth]),
-                        row_width,
-                        &mut row_number,
-                        &lists,
-                        &mut bands,
-                    );
-                }
-            }
+            let depth = self.open_groups(
+                ui,
+                &segments,
+                &mut open,
+                &enums,
+                row_width,
+                &mut row_number,
+                &lists,
+                &mut bands,
+            );
 
             // A folded group hides its rows, not its own band.
             if !collapsed_above(&segments, &self.page.collapsed) {
-                // A field whose group path is exactly a list element sits in
-                // that element's block: it keeps the handle gutter's divider
-                // and is not indented a second time.
-                let element = segments.len() >= 2
-                    && lists
-                        .iter()
-                        .any(|(list, _)| list == &segments[..segments.len() - 1].join("."));
-                self.row(ui, index, segments.len(), row_width, row_number, element);
+                // A row inside a list element keeps that element's gutter; an
+                // enum payload row keeps the enum row's label column instead
+                // of indenting, and its block background says it belongs.
+                let slot = RowSlot {
+                    depth,
+                    element: element_anchor(&group, &list_paths, &enums),
+                };
+                let block = enum_block(&path, index, &self.page.fields, &enum_blocks, &enums);
+                self.row(ui, index, slot, block, row_width, row_number);
                 row_number += 1;
                 if style.row_gap > 0.0 {
                     ui.add_space(style.row_gap);
@@ -805,6 +794,65 @@ impl PageWriter<'_> {
         }
     }
 
+    /// Close the groups this row is no longer in, open the ones it is, and
+    /// return the row's visual depth.
+    ///
+    /// Fields are in declaration order, so the group runs stay contiguous. An
+    /// enum path opens no band — its own menu row already names it — and adds
+    /// no depth: its payload rows hang under the menu button. A nested struct
+    /// inside the payload still opens its band and adds a level.
+    #[allow(clippy::too_many_arguments)]
+    fn open_groups(
+        &mut self,
+        ui: &mut Ui,
+        segments: &[&str],
+        open: &mut Vec<String>,
+        enums: &[String],
+        row_width: f32,
+        row_number: &mut usize,
+        lists: &[(String, usize)],
+        bands: &mut Vec<ElementBand>,
+    ) -> usize {
+        let common = open
+            .iter()
+            .zip(segments.iter())
+            .take_while(|(opened, segment)| opened.as_str() == **segment)
+            .count();
+        open.truncate(common);
+
+        let mut visual = 0usize;
+        let mut prefix = String::new();
+        for (level, segment) in segments.iter().enumerate() {
+            if !prefix.is_empty() {
+                prefix.push('.');
+            }
+            prefix.push_str(segment);
+            let is_enum = enums.iter().any(|path| path == &prefix);
+            if level >= common {
+                // Open a group only when nothing above it is folded; the stack
+                // is this band's ancestors, so ask before pushing it.
+                let hidden = collapsed_above(&segments[..level], &self.page.collapsed);
+                open.push((*segment).to_owned());
+                if !hidden && !is_enum {
+                    self.band(
+                        ui,
+                        &prefix,
+                        visual,
+                        humanize(segment),
+                        row_width,
+                        row_number,
+                        lists,
+                        bands,
+                    );
+                }
+            }
+            if !is_enum {
+                visual += 1;
+            }
+        }
+        visual
+    }
+
     /// One group band: a foldout, or — when its parent is a list — one of the
     /// list's element rows (drag handle, caret, `Element N`).
     #[allow(clippy::too_many_arguments)]
@@ -816,7 +864,7 @@ impl PageWriter<'_> {
         label: String,
         row_width: f32,
         row_number: &mut usize,
-        lists: &[(String, u32)],
+        lists: &[(String, usize)],
         bands: &mut Vec<ElementBand>,
     ) {
         let parent = path.rsplit_once('.').map_or("", |(parent, _)| parent);
@@ -837,13 +885,18 @@ impl PageWriter<'_> {
     /// add/remove pair in the block's bottom-right corner.
     fn list_header(&mut self, ui: &mut Ui, index: usize, depth: usize, row_width: f32) {
         let style = self.style;
-        let (path, name, len) = {
+        let (path, name, mut len, range) = {
             let field = &self.page.fields[index];
             let len = match field.value {
-                StyleValue::Integer(len) => len,
+                StyleValue::ListLen(len) => len,
                 _ => 0,
             };
-            (field.path.clone(), field.name.clone(), len)
+            (
+                field.path.clone(),
+                field.name.clone(),
+                len,
+                field.range.unwrap_or((0.0, LIST_MAX as f64)),
+            )
         };
         let collapsed = self.page.collapsed.contains(&path);
 
@@ -907,31 +960,27 @@ impl PageWriter<'_> {
             vec2(style.list_count_width, self.field.height),
         );
 
-        // The count is a normal integer field: drag to scrub, click to type.
-        // Writing it resizes the list (growing appends default entries).
-        let mut count = StyleField {
-            path: path.clone(),
-            name: name.clone(),
-            value: StyleValue::Integer(len),
-            kind: StyleKind::Integer { max: LIST_MAX },
-        };
-        let outcome = draw_value(
+        // The count is a normal number field: drag to scrub, click to type.
+        // Writing it resizes the list (growing appends default entries). The
+        // UI range caps growth; usize itself is the type bound.
+        let outcome = draw_number(
             ui,
             self.field,
             self.key,
-            self.picker,
-            &mut count,
+            &path,
+            &name,
+            &mut len,
             &mut self.page.selected,
             &mut self.page.edit,
-            self.swatches,
             &mut self.clicked,
             count_rect,
             None,
+            Some(range),
         );
         if outcome.changed {
-            self.out
-                .push(set_field_action(self.key, &path, &count.value));
-            self.page.fields[index].value = count.value.clone();
+            let value = StyleValue::ListLen(len);
+            self.out.push(set_field_action(self.key, &path, &value));
+            self.page.fields[index].value = value;
             self.page.dirty = true;
             self.page.stale = true;
         }
@@ -955,7 +1004,13 @@ impl PageWriter<'_> {
 
     /// The add/remove pair, drawn as one two-cell control. Returns the edit a
     /// click asked for; the caller applies and persists it.
-    fn list_buttons(&mut self, ui: &mut Ui, path: &str, len: u32, rect: Rect) -> Option<ListEdit> {
+    fn list_buttons(
+        &mut self,
+        ui: &mut Ui,
+        path: &str,
+        len: usize,
+        rect: Rect,
+    ) -> Option<ListEdit> {
         let style = self.style;
         let cell = rect.width() * 0.5;
         let add_rect = Rect::from_min_size(rect.min, vec2(cell, rect.height()));
@@ -1026,9 +1081,7 @@ impl PageWriter<'_> {
 
         if add.clicked() {
             self.clicked = true;
-            return Some(ListEdit::Insert {
-                index: len as usize,
-            });
+            return Some(ListEdit::Insert { index: len });
         }
         if remove.clicked() && remove_enabled {
             self.clicked = true;
@@ -1186,11 +1239,11 @@ impl PageWriter<'_> {
     }
 
     /// The selected element of `list`, or its last one.
-    fn remove_index(&self, list: &str, len: u32) -> Option<usize> {
+    fn remove_index(&self, list: &str, len: usize) -> Option<usize> {
         if len == 0 {
             return None;
         }
-        let last = len as usize - 1;
+        let last = len - 1;
         let Some(selected) = self.page.selected.as_deref() else {
             return Some(last);
         };
@@ -1318,34 +1371,52 @@ impl PageWriter<'_> {
         let _ = response.on_hover_text(path.to_owned());
     }
 
-    /// One leaf row: alternating band, left name, value box.
+    /// One leaf row: its band, left name, value box.
     ///
-    /// `in_element` marks a row that sits directly inside a list element: it
-    /// keeps the element block's handle gutter (the divider runs through it)
-    /// and starts its name where the element's own label starts, so the block
-    /// does not indent its fields twice.
+    /// `slot` says where the name starts (a list element's fields keep the
+    /// element's gutter) and `block` is the enum tint that makes a menu row and
+    /// its payload one control. A payload row starts at the menu button, which
+    /// is that block's value column; a row with neither is an ordinary
+    /// alternating band.
     #[allow(clippy::too_many_arguments)]
     fn row(
         &mut self,
         ui: &mut Ui,
         index: usize,
-        depth: usize,
+        slot: RowSlot,
+        block: EnumBlock,
         row_width: f32,
         row_number: usize,
-        in_element: bool,
     ) {
         let style = self.style;
         let key = self.key;
         let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
-        ui.painter().rect_filled(
-            rect,
-            CornerRadius::ZERO,
-            style.row_fill(row_number).to_egui(),
-        );
+        let fill = if block.fill {
+            style.enum_block
+        } else {
+            style.row_fill(row_number)
+        };
+        ui.painter()
+            .rect_filled(rect, CornerRadius::ZERO, fill.to_egui());
+        // The block's own 1 px rules: under the previous row and above the
+        // next one, so the tint reads as a closed control rather than a stripe.
+        for y in [
+            block.top.then_some(rect.top()),
+            block.bottom.then_some(rect.bottom() - 1.0),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            ui.painter().rect_filled(
+                Rect::from_min_size(pos2(rect.left(), y), vec2(rect.width(), 1.0)),
+                CornerRadius::ZERO,
+                style.divider.to_egui(),
+            );
+        }
 
         let path = self.page.fields[index].path.clone();
         let name = self.page.fields[index].name.clone();
-        let kind = self.page.fields[index].kind;
+        let is_number = self.page.fields[index].value.is_number();
 
         // Unity's layout: one label column, then a value column that fills the
         // rest of the row. The label column shrinks before the value box would
@@ -1359,23 +1430,49 @@ impl PageWriter<'_> {
             .min(max_label)
             .min((content_width - style.label_gap - 1.0).max(0.0));
         let value_left = content_left + label_width + style.label_gap;
-        let value_width = (content_right - value_left).max(1.0);
+
+        // A payload row hangs under the menu button: the button's left edge is
+        // the row's value column, so the payload gets a nested label/value
+        // split inside that column. It is *not* back at the row's left edge;
+        // the enum row keeps that column for its own name.
+        let (label_left, value_left, value_width) = if block.payload {
+            let base_width = (content_right - value_left).max(1.0);
+            let sub_label = (base_width * 0.42).clamp(48.0, style.label_width);
+            let sub_value = value_left + sub_label + style.label_gap;
+            (value_left, sub_value, (content_right - sub_value).max(1.0))
+        } else {
+            (
+                content_left,
+                value_left,
+                (content_right - value_left).max(1.0),
+            )
+        };
         let value_rect = Rect::from_min_size(
             pos2(value_left, rect.center().y - self.field.height * 0.5),
             vec2(value_width, self.field.height),
         );
         let label_rect = Rect::from_min_max(
-            pos2(content_left, rect.top()),
+            pos2(label_left, rect.top()),
             pos2(value_left - style.label_gap, rect.bottom()),
         );
-        let (label_x, divider_x) = if in_element {
-            let x0 =
-                rect.left() + style.row_inset + depth.saturating_sub(1) as f32 * style.group_indent;
+        let (label_x, divider_x) = if block.payload {
+            let relative = slot.depth.saturating_sub(block.base_depth);
+            (label_left + relative as f32 * style.group_indent, None)
+        } else if let Some(element) = slot.element {
+            let x0 = rect.left()
+                + style.row_inset
+                + element.saturating_sub(1) as f32 * style.group_indent;
             let divider = x0 + style.list_gutter_width;
-            (divider + 4.0 + 16.0, Some(divider))
+            (
+                divider
+                    + 4.0
+                    + 16.0
+                    + slot.depth.saturating_sub(element) as f32 * style.group_indent,
+                Some(divider),
+            )
         } else {
             (
-                content_left + 16.0 + depth as f32 * style.group_indent,
+                content_left + 16.0 + slot.depth as f32 * style.group_indent,
                 None,
             )
         };
@@ -1390,13 +1487,12 @@ impl PageWriter<'_> {
         // The name is an interaction, not just paint: clicking it selects the
         // field, a text field takes keyboard focus so typing starts, and a
         // number field is scrubbed by dragging it (Unity's left/right cursor).
-        let label = FieldLabel::new(label_id(key, &path), &name, self.field)
-            .draggable(matches!(kind, StyleKind::Float | StyleKind::Integer { .. }));
+        let label = FieldLabel::new(label_id(key, &path), &name, self.field).draggable(is_number);
         let label_response = label.interact(ui, label_rect);
         if label_response.clicked() {
             self.page.selected = Some(path.clone());
             self.clicked = true;
-            if matches!(kind, StyleKind::Text) {
+            if matches!(self.page.fields[index].value, StyleValue::Text(_)) {
                 ui.memory_mut(|memory| memory.request_focus(field_id(key, &path)));
             }
         }
@@ -1434,6 +1530,11 @@ impl PageWriter<'_> {
             self.out
                 .push(set_field_action(key, &field.path, &field.value));
             self.page.dirty = true;
+            if field.value.is_variant() {
+                // The new variant's payload is a different set of rows; the
+                // page re-reads the owner's table on the next pass.
+                self.page.stale = true;
+            }
         }
         if outcome.finished_edit && self.page.dirty {
             self.page.commit(self.out);
@@ -1450,7 +1551,10 @@ impl PageWriter<'_> {
         let active = self.page.selected.as_deref() == Some(path.as_str()) || focused || editing;
         label.paint(
             ui,
-            Rect::from_min_max(pos2(label_x, rect.top()), pos2(rect.right(), rect.bottom())),
+            Rect::from_min_max(
+                pos2(label_x, rect.top()),
+                pos2(label_rect.right(), rect.bottom()),
+            ),
             active,
         );
 
@@ -1489,50 +1593,48 @@ fn draw_value(
     label: Option<&FieldLabelResponse>,
 ) -> ValueOutcome {
     let path = field.path.clone();
+    let name = field.name.clone();
+    let variants = field.variants.unwrap_or(&[]);
+    let range = field.range;
     let id = field_id(key, &path);
     let editing = edit.as_ref().is_some_and(|current| current.path == path);
     let active = selected.as_deref() == Some(path.as_str())
         || editing
         || ui.memory(|memory| memory.has_focus(id));
 
-    match field.kind {
-        StyleKind::Float => {
-            let StyleValue::Float(value) = &mut field.value else {
-                return ValueOutcome::default();
-            };
-            let mut number_field = NumberField::new(id, value, field_style)
-                .selected(active)
-                .label(&field.name);
-            if let Some(label) = label {
-                number_field = number_field.dragged_by(label);
-            }
-            let mut number = take_number(edit, &path);
-            let outcome = number_field.show(ui, rect, &mut number);
-            keep_number(edit, &path, number);
-            select_row(selected_row(&outcome), &path, selected, clicked);
-            finished(outcome)
-        }
-        StyleKind::Integer { max } => {
-            let StyleValue::Integer(value) = &mut field.value else {
-                return ValueOutcome::default();
-            };
-            let mut number_field = NumberField::new(id, value, field_style)
-                .range(0.0, max as f64)
-                .selected(active)
-                .label(&field.name);
-            if let Some(label) = label {
-                number_field = number_field.dragged_by(label);
-            }
-            let mut number = take_number(edit, &path);
-            let outcome = number_field.show(ui, rect, &mut number);
-            keep_number(edit, &path, number);
-            select_row(selected_row(&outcome), &path, selected, clicked);
-            finished(outcome)
-        }
-        StyleKind::Text => {
-            let StyleValue::Text(value) = &mut field.value else {
-                return ValueOutcome::default();
-            };
+    macro_rules! number_row {
+        ($value:expr) => {
+            draw_number(
+                ui,
+                field_style,
+                key,
+                &path,
+                &name,
+                $value,
+                selected,
+                edit,
+                clicked,
+                rect,
+                label,
+                range,
+            )
+        };
+    }
+
+    match &mut field.value {
+        StyleValue::F32(value) => number_row!(value),
+        StyleValue::F64(value) => number_row!(value),
+        StyleValue::I8(value) => number_row!(value),
+        StyleValue::I16(value) => number_row!(value),
+        StyleValue::I32(value) => number_row!(value),
+        StyleValue::I64(value) => number_row!(value),
+        StyleValue::Isize(value) => number_row!(value),
+        StyleValue::U8(value) => number_row!(value),
+        StyleValue::U16(value) => number_row!(value),
+        StyleValue::U32(value) => number_row!(value),
+        StyleValue::U64(value) => number_row!(value),
+        StyleValue::Usize(value) => number_row!(value),
+        StyleValue::Text(value) => {
             let outcome = TextField::new(id, value, field_style)
                 .selected(active)
                 .show(ui, rect);
@@ -1544,24 +1646,105 @@ fn draw_value(
             }
             finished(outcome)
         }
-        StyleKind::Toggle => {
-            let StyleValue::Toggle(on) = &mut field.value else {
-                return ValueOutcome::default();
-            };
+        StyleValue::Bool(on) => {
             let outcome = ToggleField::new(toggle_id(key, &path), on, field_style)
                 .selected(active)
-                .label(&field.name)
+                .label(&name)
                 .show(ui, rect);
             select_row(outcome.clicked(), &path, selected, clicked);
             finished(outcome)
         }
-        StyleKind::Color | StyleKind::HdrColor => draw_color(
-            ui, picker, field, selected, clicked, swatches, rect, id, &path, active,
+        StyleValue::Color(color) => draw_color(
+            ui,
+            picker,
+            color,
+            ColorUsage::LDR,
+            selected,
+            clicked,
+            swatches,
+            rect,
+            id,
+            &path,
+            active,
         ),
-        // A list draws its own header: the count box is an integer field the
+        StyleValue::HdrColor(color) => draw_color(
+            ui,
+            picker,
+            color,
+            ColorUsage::HDR,
+            selected,
+            clicked,
+            swatches,
+            rect,
+            id,
+            &path,
+            active,
+        ),
+        StyleValue::Variant(current) => {
+            if variants.is_empty() {
+                return ValueOutcome::default();
+            }
+            // The page has the variant names and the active id, not the
+            // owner's typed enum: this control edits that id in place.
+            let outcome = VariantMenu::new(id, current, variants, field_style)
+                .selected(active)
+                .label(&name)
+                .show(ui, rect);
+            select_row(
+                outcome.clicked() || outcome.changed(),
+                &path,
+                selected,
+                clicked,
+            );
+            let popup_open = egui::Popup::is_id_open(ui.ctx(), enum_popup_id(id));
+            ValueOutcome {
+                changed: outcome.changed(),
+                finished_edit: false,
+                popup_open,
+            }
+        }
+        // A list draws its own header: the count box is a number field the
         // header builds, so a list node never reaches a row's value column.
-        StyleKind::List => ValueOutcome::default(),
+        StyleValue::ListLen(_) => ValueOutcome::default(),
     }
+}
+
+/// Draw one number token with its concrete type. The `N` bounds in
+/// `NumberField` are the type safety; `range` is only an optional UI clamp
+/// (the list count's growth cap), never the type's own range.
+#[allow(clippy::too_many_arguments)]
+fn draw_number<N: Number>(
+    ui: &mut Ui,
+    field_style: &FieldStyle,
+    key: PageKey,
+    path: &str,
+    name: &str,
+    value: &mut N,
+    selected: &mut Option<String>,
+    edit: &mut Option<FieldEdit>,
+    clicked: &mut bool,
+    rect: Rect,
+    label: Option<&FieldLabelResponse>,
+    range: Option<(f64, f64)>,
+) -> ValueOutcome {
+    let id = field_id(key, path);
+    let editing = edit.as_ref().is_some_and(|current| current.path == path);
+    let active =
+        selected.as_deref() == Some(path) || editing || ui.memory(|memory| memory.has_focus(id));
+    let mut number_field = NumberField::new(id, value, field_style)
+        .selected(active)
+        .label(name);
+    if let Some((min, max)) = range {
+        number_field = number_field.range(min, max);
+    }
+    if let Some(label) = label {
+        number_field = number_field.dragged_by(label);
+    }
+    let mut number = take_number(edit, path);
+    let outcome = number_field.show(ui, rect, &mut number);
+    keep_number(edit, path, number);
+    select_row(selected_row(&outcome), path, selected, clicked);
+    finished(outcome)
 }
 
 /// The number editor buffer for this field, taken out of the page so the widget
@@ -1607,13 +1790,14 @@ fn finished(outcome: FieldOutcome) -> ValueOutcome {
 /// A color token: Unity's inspector field, a full-width swatch with the HDR
 /// badge when the field's ColorProperty has HDR usage and the eyedropper slot.
 /// Clicking the swatch opens the shared color picker rather than egui's
-/// built-in one; ColorField is already a widget, so this is only the mapping
-/// between a StyleValue and a ColorProperty.
+/// built-in one; ColorField is already a widget, so this only hands it the
+/// exact `Color` inside the `StyleValue::Color`/`StyleValue::HdrColor` row.
 #[allow(clippy::too_many_arguments)]
 fn draw_color(
     ui: &mut Ui,
     picker_style: &ColorPickerStyle,
-    field: &mut StyleField,
+    color: &mut Color,
+    usage: ColorUsage,
     selected: &mut Option<String>,
     clicked: &mut bool,
     swatches: &mut ColorSwatches,
@@ -1622,17 +1806,10 @@ fn draw_color(
     path: &str,
     active: bool,
 ) -> ValueOutcome {
-    let usage = match field.kind {
-        StyleKind::HdrColor => ColorUsage::HDR,
-        _ => ColorUsage::LDR,
-    };
-    let Some(mut color) = color_property(&field.value, usage) else {
-        return ValueOutcome::default();
-    };
-
+    let mut property = ColorProperty::new(*color, usage);
     let response = ui.put(
         rect,
-        ColorField::new(id, &mut color, picker_style)
+        ColorField::new(id, &mut property, picker_style)
             .selected(active)
             .height(rect.height())
             .swatches(swatches),
@@ -1644,7 +1821,7 @@ fn draw_color(
 
     let mut changed = false;
     if response.changed() {
-        field.value = StyleValue::Color(color.color);
+        *color = property.color;
         changed = true;
     }
     if response.clicked() {
@@ -1658,13 +1835,6 @@ fn draw_color(
         changed,
         finished_edit: committed,
         popup_open,
-    }
-}
-
-fn color_property(value: &StyleValue, usage: ColorUsage) -> Option<ColorProperty> {
-    match value {
-        StyleValue::Color(color) => Some(ColorProperty::new(*color, usage)),
-        _ => None,
     }
 }
 
@@ -1688,6 +1858,133 @@ fn paint_foldout_arrow(
         ]
     };
     painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+}
+
+/// Where one row sits horizontally.
+///
+/// `depth` is the *visual* depth: an enum token itself adds no label level.
+/// A payload row is laid out under the menu button (see [EnumBlock]), not in
+/// the enum row's label column. `element` is the visual depth of the list
+/// element block the row is inside, if any; every row of that block keeps its
+/// gutter and dividing line.
+#[derive(Clone, Copy)]
+struct RowSlot {
+    depth: usize,
+    element: Option<usize>,
+}
+
+/// The block tint of an enum row and the rules that close it.
+#[derive(Clone, Copy, Default)]
+struct EnumBlock {
+    fill: bool,
+    top: bool,
+    bottom: bool,
+    /// The row is a payload row, not the enum row itself: it is laid out under
+    /// the menu button (whose column starts at the row's value column) rather
+    /// than in the row's left label column.
+    payload: bool,
+    /// Visual depth of the enum row that owns the payload, so a nested struct
+    /// inside the payload indents from the menu button rather than the page.
+    base_depth: usize,
+}
+
+/// The visual depth of a dotted group path: one level per segment that is not
+/// an enum token.
+///
+/// An enum segment contributes no depth of its own: its menu button is the
+/// reference for its payload. The payload rows are indented from that button
+/// by [EnumBlock::base_depth], not from the page's left edge. A nested struct
+/// inside the payload still adds one level.
+fn visual_depth(group: &str, enums: &[String]) -> usize {
+    let mut depth = 0;
+    let mut prefix = String::new();
+    for segment in group.split('.').filter(|segment| !segment.is_empty()) {
+        if !prefix.is_empty() {
+            prefix.push('.');
+        }
+        prefix.push_str(segment);
+        if !enums.iter().any(|path| path == &prefix) {
+            depth += 1;
+        }
+    }
+    depth
+}
+
+/// The visual depth of the deepest list element (`list.0`) containing `group`.
+///
+/// Every row below that element keeps the block's gutter, including the rows
+/// of an enum payload: the element block is the outer container, the enum block
+/// the inner one.
+fn element_anchor(group: &str, lists: &[String], enums: &[String]) -> Option<usize> {
+    let mut best: Option<String> = None;
+    for list in lists {
+        let Some(rest) = group
+            .strip_prefix(list.as_str())
+            .and_then(|rest| rest.strip_prefix('.'))
+        else {
+            continue;
+        };
+        let Some(index) = rest.split('.').next() else {
+            continue;
+        };
+        if index.parse::<usize>().is_err() {
+            continue;
+        }
+        let element = format!("{list}.{index}");
+        if best
+            .as_ref()
+            .is_none_or(|current| current.len() < element.len())
+        {
+            best = Some(element);
+        }
+    }
+    best.map(|element| visual_depth(&element, enums))
+}
+
+/// The block an enum row starts, and the rows it owns.
+///
+/// `blocks` are the enum paths whose active variant has at least one payload
+/// row. A row belongs to every block whose path is a prefix; a block's top
+/// rule is drawn on the enum row itself, its bottom rule on the last payload
+/// row before the next field leaves the block.
+fn enum_block(
+    path: &str,
+    index: usize,
+    fields: &[StyleField],
+    blocks: &[String],
+    enums: &[String],
+) -> EnumBlock {
+    let mut enclosing = 0usize;
+    let mut top = false;
+    let mut bottom = false;
+    // The payload is laid out under the menu button of the *innermost* enum
+    // that strictly contains this row: the row's own enum is not a payload,
+    // but a nested enum row is a payload of its parent.
+    let mut parent: Option<&String> = None;
+    for block in blocks {
+        let inside = path == block || path.starts_with(&format!("{block}."));
+        if !inside {
+            continue;
+        }
+        enclosing += 1;
+        top |= path == block;
+        let next_left = fields
+            .get(index + 1)
+            .is_none_or(|next| next.path != *block && !next.path.starts_with(&format!("{block}.")));
+        bottom |= next_left;
+        if path.starts_with(&format!("{block}."))
+            && parent.is_none_or(|current| block.len() > current.len())
+        {
+            parent = Some(block);
+        }
+    }
+    EnumBlock {
+        fill: enclosing > 0,
+        top,
+        bottom,
+        payload: parent.is_some(),
+        base_depth: parent.map_or(0, |block| visual_depth(block, enums)),
+    }
 }
 
 /// The dotted group path of a token (icons.console), or an empty string for a
@@ -1761,6 +2058,7 @@ mod tests {
     use kairos_color::Color;
     use kairos_editor_core::EditorState;
     use kairos_editor_widgets::color_picker::color_swatch_id;
+    use kairos_editor_widgets::field::enum_item_id;
     use kairos_editor_widgets::style::Style;
 
     use crate::shared_style::{COLOR_PICKER, FONTS};
@@ -1772,36 +2070,23 @@ mod tests {
 
     fn fields() -> Vec<StyleField> {
         vec![
-            StyleField {
-                path: "height".to_owned(),
-                name: "Height".to_owned(),
-                value: StyleValue::Float(20.0),
-                kind: StyleKind::Float,
-            },
-            StyleField {
-                path: "enabled".to_owned(),
-                name: "Enabled".to_owned(),
-                value: StyleValue::Toggle(false),
-                kind: StyleKind::Toggle,
-            },
-            StyleField {
-                path: "icons.warning".to_owned(),
-                name: "Warning".to_owned(),
-                value: StyleValue::Text("warning.png".to_owned()),
-                kind: StyleKind::Text,
-            },
-            StyleField {
-                path: "icons.error".to_owned(),
-                name: "Error".to_owned(),
-                value: StyleValue::Text("error.png".to_owned()),
-                kind: StyleKind::Text,
-            },
-            StyleField {
-                path: "icons.textures.tint".to_owned(),
-                name: "Tint".to_owned(),
-                value: StyleValue::Text("tint.png".to_owned()),
-                kind: StyleKind::Text,
-            },
+            StyleField::new("height", "Height", StyleValue::F32(20.0)),
+            StyleField::new("enabled", "Enabled", StyleValue::Bool(false)),
+            StyleField::new(
+                "icons.warning",
+                "Warning",
+                StyleValue::Text("warning.png".to_owned()),
+            ),
+            StyleField::new(
+                "icons.error",
+                "Error",
+                StyleValue::Text("error.png".to_owned()),
+            ),
+            StyleField::new(
+                "icons.textures.tint",
+                "Tint",
+                StyleValue::Text("tint.png".to_owned()),
+            ),
         ]
     }
 
@@ -1824,18 +2109,16 @@ mod tests {
 
     fn color_fields() -> Vec<StyleField> {
         vec![
-            StyleField {
-                path: "background".to_owned(),
-                name: "Background".to_owned(),
-                value: StyleValue::Color(Color::from_srgb8([20, 140, 220, 255])),
-                kind: StyleKind::Color,
-            },
-            StyleField {
-                path: "glow".to_owned(),
-                name: "Glow".to_owned(),
-                value: StyleValue::Color(Color::new(2.0, 1.0, 0.5, 1.0)),
-                kind: StyleKind::HdrColor,
-            },
+            StyleField::new(
+                "background",
+                "Background",
+                StyleValue::Color(Color::from_srgb8([20, 140, 220, 255])),
+            ),
+            StyleField::new(
+                "glow",
+                "Glow",
+                StyleValue::HdrColor(Color::new(2.0, 1.0, 0.5, 1.0)),
+            ),
         ]
     }
 
@@ -1853,18 +2136,50 @@ mod tests {
     fn long_skin() -> Vec<PanelSkin> {
         let mut fields = fields();
         for index in 0..40 {
-            fields.push(StyleField {
-                path: format!("token_{index}"),
-                name: format!("Token {index}"),
-                value: StyleValue::Float(index as f32),
-                kind: StyleKind::Float,
-            });
+            fields.push(StyleField::new(
+                format!("token_{index}"),
+                format!("Token {index}"),
+                StyleValue::F32(index as f32),
+            ));
         }
         vec![PanelSkin {
             panel: panels::CONSOLE,
             title: "Console".to_owned(),
             file: "ConsoleStyle.ron",
             fields,
+        }]
+    }
+
+    /// A style enum with a payload: the menu row plus the active variant's
+    /// fields, all at one label column.
+    const MODE_VARIANTS: &[&str] = &["Off", "Soft"];
+
+    fn enum_fields(mode: &str) -> Vec<StyleField> {
+        let mut fields = vec![
+            StyleField::new("mode", "Mode", StyleValue::Variant(mode.to_owned()))
+                .with_variants(MODE_VARIANTS),
+        ];
+        if mode == "Soft" {
+            fields.push(StyleField::new(
+                "mode.radius",
+                "Radius",
+                StyleValue::F32(4.0),
+            ));
+            fields.push(StyleField::new(
+                "mode.samples",
+                "Samples",
+                StyleValue::U32(2),
+            ));
+        }
+        fields
+    }
+
+    fn enum_skin(mode: &str) -> Vec<PanelSkin> {
+        vec![PanelSkin {
+            panel: panels::CONSOLE,
+            title: "Console".to_owned(),
+            file: "ConsoleStyle.ron",
+            fields: enum_fields(mode),
         }]
     }
 
@@ -2092,7 +2407,7 @@ mod tests {
                 Action::Style(StyleAction::SetField {
                     panel: panels::CONSOLE,
                     path: "enabled".to_owned(),
-                    value: StyleValue::Toggle(true),
+                    value: StyleValue::Bool(true),
                 }),
                 Action::Style(StyleAction::Commit {
                     panel: panels::CONSOLE,
@@ -2100,7 +2415,7 @@ mod tests {
             ]
         );
         assert!(
-            matches!(harness.panel.page.fields[1].value, StyleValue::Toggle(true)),
+            matches!(harness.panel.page.fields[1].value, StyleValue::Bool(true)),
             "the page keeps the edited value between frames"
         );
     }
@@ -2249,7 +2564,7 @@ mod tests {
             })]
         );
 
-        let value = StyleValue::Float(0.9);
+        let value = StyleValue::F32(0.9);
         assert_eq!(
             set_field_action(PageKey::Shared(COLOR_PICKER), "border_width", &value),
             Action::SharedStyle(SharedStyleAction::SetField {
@@ -2626,7 +2941,7 @@ mod tests {
             Some(&Action::SharedStyle(SharedStyleAction::SetField {
                 style: FONTS,
                 path: "proportional".to_owned(),
-                value: StyleValue::Integer(22),
+                value: StyleValue::ListLen(22),
             })),
             "a 20 px scrub adds 20 entries: {actions:?}"
         );
@@ -2657,7 +2972,10 @@ mod tests {
 
         let handle = harness.rect_of(list_handle_id(PageKey::Shared(FONTS), "proportional.0"));
         let start = handle.center();
-        let end = egui::pos2(start.x, start.y + 70.0);
+        // Drop on element 1's band, below its centre: the row count inside an
+        // element is not fixed (the priority token is one of them).
+        let target = harness.rect_of(label_id(PageKey::Shared(FONTS), "proportional.1"));
+        let end = egui::pos2(start.x, target.bottom() - 2.0);
         harness.frame(vec![egui::Event::PointerMoved(start)]);
         harness.frame(vec![pointer(start, true)]);
         harness.frame(vec![egui::Event::PointerMoved(end)]);
@@ -2739,14 +3057,14 @@ mod tests {
 
         assert_eq!(
             harness.panel.page.fields[0].value,
-            StyleValue::Float(30.0),
+            StyleValue::F32(30.0),
             "typing replaces the selected number"
         );
         assert!(
             actions.contains(&Action::Style(StyleAction::SetField {
                 panel: panels::CONSOLE,
                 path: "height".to_owned(),
-                value: StyleValue::Float(30.0),
+                value: StyleValue::F32(30.0),
             })),
             "the live value follows the text: {actions:?}"
         );
@@ -2786,7 +3104,7 @@ mod tests {
             Some(&Action::Style(StyleAction::SetField {
                 panel: panels::CONSOLE,
                 path: "height".to_owned(),
-                value: StyleValue::Float(28.0),
+                value: StyleValue::F32(28.0),
             })),
             "20 px right on a 20 px height adds 20 * 0.4: {actions:?}"
         );
@@ -2906,6 +3224,187 @@ mod tests {
     }
 
     /// Token paths are a tree: everything before the last dot is the group.
+    /// The font list's install order is the enum field's first real use: the
+    /// menu shows both priorities and choosing one writes the variant.
+    #[test]
+    fn the_font_priority_menu_writes_the_install_order() {
+        let mut harness = Harness::with_size(Vec::new(), vec2(700.0, 470.0));
+        harness.frame(Vec::new());
+        harness.click(nav_id(FONTS));
+        let (output, _) = harness.frame(Vec::new());
+        assert!(
+            painted_text(&output).contains("Priority"),
+            "the install order is a token now"
+        );
+
+        let field = field_id(PageKey::Shared(FONTS), "proportional.0.priority");
+        harness.click(field);
+        // The popup learns its size on the pass it opens; let it land.
+        harness.frame(Vec::new());
+        harness.frame(Vec::new());
+        let item = harness.rect_of(enum_item_id(field, 1));
+        let (_, actions) = harness.click_at(item.center());
+
+        assert_eq!(
+            actions,
+            vec![
+                Action::SharedStyle(SharedStyleAction::SetField {
+                    style: FONTS,
+                    path: "proportional.0.priority".to_owned(),
+                    value: StyleValue::Variant("Push".to_owned()),
+                }),
+                Action::SharedStyle(SharedStyleAction::Commit { style: FONTS }),
+            ],
+            "choosing a variant is one edit and one write: {actions:?}"
+        );
+        let field = harness
+            .panel
+            .page
+            .fields
+            .iter()
+            .find(|field| field.path == "proportional.0.priority")
+            .expect("the priority row");
+        assert_eq!(field.value, StyleValue::Variant("Push".to_owned()));
+        assert!(
+            harness.panel.page.stale,
+            "the payload table is re-read: Push has rows and First has none"
+        );
+    }
+
+    /// A tuple payload is transparent: the default second font entry is Push,
+    /// so the page draws all four struct fields directly under the variant
+    /// row, with no Test header for the unnamed field. This is the case a
+    /// hand-written StyleNode used to drop.
+    #[test]
+    fn an_enum_payload_struct_shows_its_fields_without_a_header() {
+        let mut harness = Harness::with_size(Vec::new(), vec2(700.0, 700.0));
+        harness.frame(Vec::new());
+        harness.click(nav_id(FONTS));
+        let (output, _) = harness.frame(Vec::new());
+        let text = painted_text(&output);
+
+        assert!(
+            !text.contains("Test"),
+            "an unnamed payload has no header: {text}"
+        );
+        assert!(text.contains("Fvalue"), "the struct's f32 field: {text}");
+        assert!(
+            text.contains("Ivalue"),
+            "the struct's integer field: {text}"
+        );
+        assert!(text.contains("Svalue"), "the struct's string field: {text}");
+        assert!(text.contains("Cvalue"), "the struct's color field: {text}");
+
+        // The tuple payload has no header and hangs under the Priority menu
+        // button, exactly like the synthetic enum block below.
+        let runs = painted_texts(&output);
+        let fvalue = run(&runs, "Fvalue");
+        let button_left = harness
+            .rect_of(field_id(PageKey::Shared(FONTS), "proportional.1.priority"))
+            .left();
+        assert!(
+            approx(fvalue.rect.left(), button_left),
+            "the payload starts at the Priority button: Fvalue {:?} vs {button_left}",
+            fvalue.rect
+        );
+        assert!(
+            harness
+                .rect_of(field_id(
+                    PageKey::Shared(FONTS),
+                    "proportional.1.priority.fvalue"
+                ))
+                .left()
+                > button_left,
+            "the payload value column is inside the button column"
+        );
+    }
+
+    /// A payload hangs under the menu button, not at the row's left edge: the
+    /// button is the reference, so the payload labels start at its left and
+    /// the enum row keeps its own label column. The block tint ties the rows
+    /// together.
+    #[test]
+    fn an_enum_block_hangs_its_payload_under_the_menu_button() {
+        let mut harness = Harness::with_size(enum_skin("Soft"), vec2(700.0, 470.0));
+        let (output, _) = harness.frame(Vec::new());
+        let runs = painted_texts(&output);
+        let mode = run(&runs, "Mode");
+        let radius = run(&runs, "Radius");
+        let samples = run(&runs, "Samples");
+        let button_left = harness.rect_of(field_id(panels::CONSOLE, "mode")).left();
+
+        assert!(
+            approx(radius.rect.left(), button_left),
+            "the payload starts at the menu button: Radius {:?} vs button {button_left}",
+            radius.rect
+        );
+        assert!(
+            approx(samples.rect.left(), button_left),
+            "every payload label starts at the button: Samples {:?}",
+            samples.rect
+        );
+        assert!(
+            radius.rect.left() > mode.rect.left() + 1.0,
+            "the payload is not back at the row's left edge: Radius {:?} vs Mode {:?}",
+            radius.rect,
+            mode.rect
+        );
+
+        let radius_value = harness
+            .rect_of(field_id(panels::CONSOLE, "mode.radius"))
+            .left();
+        let samples_value = harness
+            .rect_of(field_id(panels::CONSOLE, "mode.samples"))
+            .left();
+        assert!(
+            radius_value > button_left,
+            "the payload has its own value column under the button: {radius_value}"
+        );
+        assert!(approx(radius_value, samples_value));
+
+        let block = PreferencesPanelStyle::dark().enum_block.to_egui();
+        let rows = painted_rects(&output)
+            .into_iter()
+            .filter(|painted| painted.fill == block)
+            .count();
+        assert_eq!(
+            rows, 3,
+            "the menu row and its two payload rows share one tint"
+        );
+    }
+
+    #[test]
+    fn switching_an_enum_variant_re_reads_the_payload_rows() {
+        let mut harness = Harness::with_size(enum_skin("Soft"), vec2(700.0, 470.0));
+        harness.frame(Vec::new());
+
+        let field = field_id(panels::CONSOLE, "mode");
+        harness.click(field);
+        harness.frame(Vec::new());
+        harness.frame(Vec::new());
+        let item = harness.rect_of(enum_item_id(field, 0));
+        let (_, actions) = harness.click_at(item.center());
+        assert_eq!(
+            actions.first(),
+            Some(&Action::Style(StyleAction::SetField {
+                panel: panels::CONSOLE,
+                path: "mode".to_owned(),
+                value: StyleValue::Variant("Off".to_owned()),
+            })),
+            "choosing the unit variant writes it: {actions:?}"
+        );
+        assert!(harness.panel.page.stale);
+
+        // The owner's next table has the unit variant's rows (none), and the
+        // page takes it because the switch marked the snapshot stale.
+        harness.skins = enum_skin("Off");
+        let (output, _) = harness.frame(Vec::new());
+        let text = painted_text(&output);
+        assert!(text.contains("Mode"), "{text}");
+        assert!(!text.contains("Radius"), "{text}");
+        assert!(!text.contains("Samples"), "{text}");
+    }
+
     #[test]
     fn token_paths_split_into_groups() {
         assert_eq!(group_path("icons.console.info"), "icons.console");

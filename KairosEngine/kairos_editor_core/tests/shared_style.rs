@@ -93,7 +93,7 @@ fn shared_style_edits_leave_the_state_tree_alone() {
         Action::SharedStyle(SharedStyleAction::SetField {
             style: COLOR_PICKER,
             path: "accent".to_owned(),
-            value: StyleValue::Float(1.0),
+            value: StyleValue::F32(1.0),
         }),
     );
 

@@ -308,9 +308,21 @@ fn expand_panel(args: TokenStream2, mut item: ItemImpl) -> syn::Result<TokenStre
 ///   parent knowing it is a group.
 /// * `skin::StyleFields` — the entry point `Panel::skin` forwards to.
 ///
-/// Field kinds come from the field's type (`f32`, `u8`/`u16`/`u32`/`usize`,
-/// `bool`, `String`, `Color`, `ColorProperty`); the macro itself only knows names
-/// and accessors. `#[style(skip)]` leaves a field out.
+/// Field values come from the field's type (`f32`/`f64`, `i8`..`i64`/`isize`,
+/// `u8`/`u16`/`u32`/`u64`/`usize`, `bool`, `String`, `Color`, `ColorProperty`);
+/// the macro itself only knows names and accessors. `#[style(skip)]` leaves a
+/// field out.
+///
+/// On an enum it generates the enum *token* protocol instead: the active id,
+/// how to rebuild a variant, and a `StyleNode` that emits the enum's own row
+/// followed by the active variant's named fields as dotted children. The
+/// variant table is strum's `VariantNames::VARIANTS`, so the enum must also
+/// derive `strum::VariantNames`; the macros do not invent a second name list.
+/// Unit variants add nothing; a single-field tuple variant is transparent: its
+/// payload's fields are the enum's own payload, with no header row for the
+/// unnamed field. The tuple payload is meant to be a struct/group; a leaf
+/// payload would collect at the enum's own path. A tuple with more than one
+/// field is rejected because its values have no names to address.
 ///
 /// # Shared styles
 ///
@@ -349,27 +361,33 @@ pub fn style_fields(input: TokenStream) -> TokenStream {
 }
 
 fn expand_style_fields(input: DeriveInput) -> syn::Result<TokenStream2> {
+    match &input.data {
+        Data::Struct(data) => expand_struct_style_fields(&input, data),
+        Data::Enum(data) => expand_enum_style_fields(&input, data),
+        Data::Union(_) => Err(syn::Error::new_spanned(
+            &input,
+            "StyleFields can only be derived for a struct or an enum",
+        )),
+    }
+}
+
+/// A style struct: one row per token, nested structs are dotted groups.
+fn expand_struct_style_fields(
+    input: &DeriveInput,
+    data: &syn::DataStruct,
+) -> syn::Result<TokenStream2> {
     let name = &input.ident;
-    let data = match &input.data {
-        Data::Struct(data) => data,
-        _ => {
-            return Err(syn::Error::new_spanned(
-                &input,
-                "StyleFields can only be derived for a struct",
-            ));
-        }
-    };
     let fields = match &data.fields {
         Fields::Named(fields) => &fields.named,
         _ => {
             return Err(syn::Error::new_spanned(
-                &input,
+                input,
                 "every style field must be named",
             ));
         }
     };
 
-    let shared = shared_decl(&input)?;
+    let shared = shared_decl(input)?;
     let shared_items = match shared {
         Some(SharedDecl {
             constant,
@@ -490,6 +508,331 @@ fn expand_style_fields(input: DeriveInput) -> syn::Result<TokenStream2> {
         }
 
         #shared_items
+    })
+}
+
+/// A style enum: a menu row plus the active variant's payload rows.
+///
+/// The enum's own row carries the variant names as field metadata; the active
+/// variant's named fields are collected as ordinary tokens below its path, so a
+/// payload of any type (f32, Color, a nested struct, a list) is drawn by the
+/// widget its value variant names. Unit variants and struct-like variants share
+/// this one expansion: a unit variant simply has no payload rows.
+fn expand_enum_style_fields(
+    input: &DeriveInput,
+    data: &syn::DataEnum,
+) -> syn::Result<TokenStream2> {
+    let name = &input.ident;
+    if shared_decl(input)?.is_some() {
+        return Err(syn::Error::new_spanned(
+            input,
+            "a shared style must be a struct: an enum token is a field of a style, not a style itself",
+        ));
+    }
+
+    let mut variant_ids = Vec::new();
+    let mut with_variant_arms = Vec::new();
+    let mut collect_arms = Vec::new();
+    let mut write_arms = Vec::new();
+    let mut edit_arms = Vec::new();
+
+    for variant in &data.variants {
+        if let Some(attr) = variant
+            .attrs
+            .iter()
+            .find(|attr| attr.path().is_ident("style"))
+        {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "an enum variant no longer takes #[style(...)]: the menu uses the names from strum::VariantNames",
+            ));
+        }
+        let ident = &variant.ident;
+        let id = ident.to_string();
+
+        match &variant.fields {
+            Fields::Unit => {
+                variant_ids.push(quote! { Self::#ident => #id, });
+                with_variant_arms.push(quote! {
+                    #id => ::std::option::Option::Some(Self::#ident),
+                });
+                collect_arms.push(quote! { Self::#ident => {}, });
+                write_arms.push(quote! { Self::#ident => false, });
+                edit_arms.push(quote! { Self::#ident => false, });
+            }
+            Fields::Named(fields) => {
+                // Only the token fields are collected and written; a
+                // #[style(skip)] payload field is still bound in the pattern
+                // and still built by with_variant, but it is not a row.
+                let token_fields: Vec<&syn::Field> = fields
+                    .named
+                    .iter()
+                    .filter(|field| !is_skipped(field))
+                    .collect();
+                let all_fields: Vec<&syn::Ident> = fields
+                    .named
+                    .iter()
+                    .filter_map(|field| field.ident.as_ref())
+                    .collect();
+                let bindings: Vec<TokenStream2> = all_fields
+                    .iter()
+                    .map(|field| {
+                        if token_fields
+                            .iter()
+                            .any(|token| token.ident.as_ref() == Some(*field))
+                        {
+                            quote! { #field }
+                        } else {
+                            quote! { #field: _ }
+                        }
+                    })
+                    .collect();
+
+                variant_ids.push(quote! { Self::#ident { .. } => #id, });
+
+                let defaults = all_fields.iter().map(|field| {
+                    quote! { #field: ::core::default::Default::default() }
+                });
+                with_variant_arms.push(quote! {
+                    #id => ::std::option::Option::Some(Self::#ident { #(#defaults),* }),
+                });
+
+                let collects = token_fields.iter().map(|field| {
+                    let field = field.ident.as_ref().expect("a named payload field");
+                    let key = field.to_string();
+                    quote! {
+                        {
+                            let child = if path.is_empty() {
+                                ::std::string::String::from(#key)
+                            } else {
+                                ::std::format!("{path}.{}", #key)
+                            };
+                            ::kairos_editor_component::skin::StyleNode::collect(
+                                #field,
+                                &child,
+                                out,
+                            );
+                        }
+                    }
+                });
+                collect_arms.push(quote! {
+                    Self::#ident { #(#bindings),* } => {
+                        #(#collects)*
+                    }
+                });
+
+                let writes = token_fields.iter().map(|field| {
+                    let field = field.ident.as_ref().expect("a named payload field");
+                    let key = field.to_string();
+                    quote! {
+                        #key => ::kairos_editor_component::skin::StyleNode::write(
+                            #field,
+                            tail,
+                            value,
+                        ),
+                    }
+                });
+                write_arms.push(quote! {
+                    Self::#ident { #(#bindings),* } => {
+                        match head {
+                            #(#writes)*
+                            _ => false,
+                        }
+                    }
+                });
+
+                let edits = token_fields.iter().map(|field| {
+                    let field = field.ident.as_ref().expect("a named payload field");
+                    let key = field.to_string();
+                    quote! {
+                        #key => ::kairos_editor_component::skin::StyleNode::edit_list(
+                            #field,
+                            tail,
+                            edit,
+                        ),
+                    }
+                });
+                edit_arms.push(quote! {
+                    Self::#ident { #(#bindings),* } => {
+                        match head {
+                            #(#edits)*
+                            _ => false,
+                        }
+                    }
+                });
+            }
+            Fields::Unnamed(fields) => {
+                if fields.unnamed.len() != 1 {
+                    return Err(syn::Error::new_spanned(
+                        fields,
+                        "a tuple payload must have exactly one field: a single struct payload is transparent, while several values need names to be addressed",
+                    ));
+                }
+                let field = fields.unnamed.first().expect("one tuple field");
+                let payload = syn::Ident::new("payload", Span::call_site());
+                variant_ids.push(quote! { Self::#ident(_) => #id, });
+                with_variant_arms.push(quote! {
+                    #id => ::std::option::Option::Some(
+                        Self::#ident(::core::default::Default::default()),
+                    ),
+                });
+                if is_skipped(field) {
+                    collect_arms.push(quote! { Self::#ident(_) => {}, });
+                    write_arms.push(quote! { Self::#ident(_) => false, });
+                    edit_arms.push(quote! { Self::#ident(_) => false, });
+                } else {
+                    // A tuple payload has no field name to put on a header
+                    // row: its tokens are the enum's own payload, at the same
+                    // path. A struct payload therefore contributes its fields
+                    // directly under the enum row.
+                    collect_arms.push(quote! {
+                        Self::#ident(#payload) => {
+                            ::kairos_editor_component::skin::StyleNode::collect(
+                                #payload,
+                                path,
+                                out,
+                            );
+                        }
+                    });
+                    write_arms.push(quote! {
+                        Self::#ident(#payload) => {
+                            let _ = (head, tail);
+                            ::kairos_editor_component::skin::StyleNode::write(
+                                #payload,
+                                path,
+                                value,
+                            )
+                        }
+                    });
+                    edit_arms.push(quote! {
+                        Self::#ident(#payload) => {
+                            let _ = (head, tail);
+                            ::kairos_editor_component::skin::StyleNode::edit_list(
+                                #payload,
+                                path,
+                                edit,
+                            )
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(quote! {
+        impl ::kairos_editor_component::skin::StyleEnum for #name {
+            fn variant_id(&self) -> &'static str {
+                match self {
+                    #(#variant_ids)*
+                }
+            }
+
+            fn with_variant(id: &str) -> ::std::option::Option<Self> {
+                match id {
+                    #(#with_variant_arms)*
+                    _ => ::std::option::Option::None,
+                }
+            }
+        }
+
+        impl ::kairos_editor_component::skin::StyleNode for #name {
+            fn collect(
+                &self,
+                path: &str,
+                out: &mut ::std::vec::Vec<::kairos_editor_component::skin::StyleField>,
+            ) {
+                out.push(
+                    ::kairos_editor_component::skin::StyleField::new(
+                        path,
+                        ::kairos_editor_component::skin::humanize(path),
+                        ::kairos_editor_core::StyleValue::Variant(
+                            ::std::string::String::from(
+                                <Self as ::kairos_editor_component::skin::StyleEnum>::variant_id(
+                                    self,
+                                ),
+                            ),
+                        ),
+                    )
+                    .with_variants(
+                        <Self as ::kairos_editor_component::skin::StyleEnum>::variants(),
+                    ),
+                );
+                match self {
+                    #(#collect_arms)*
+                }
+            }
+
+            fn write(
+                &mut self,
+                path: &str,
+                value: &::kairos_editor_core::StyleValue,
+            ) -> bool {
+                if path.is_empty() {
+                    let ::kairos_editor_core::StyleValue::Variant(id) = value else {
+                        return false;
+                    };
+                    if <Self as ::kairos_editor_component::skin::StyleEnum>::variant_id(self)
+                        == id.as_str()
+                    {
+                        return true;
+                    }
+                    return match <Self as ::kairos_editor_component::skin::StyleEnum>::with_variant(
+                        id.as_str(),
+                    ) {
+                        ::std::option::Option::Some(next) => {
+                            *self = next;
+                            true
+                        }
+                        ::std::option::Option::None => false,
+                    };
+                }
+                let (head, tail) = match path.split_once('.') {
+                    ::std::option::Option::Some((head, tail)) => (head, tail),
+                    ::std::option::Option::None => (path, ""),
+                };
+                match self {
+                    #(#write_arms)*
+                }
+            }
+
+            fn edit_list(
+                &mut self,
+                path: &str,
+                edit: ::kairos_editor_core::ListEdit,
+            ) -> bool {
+                let (head, tail) = match path.split_once('.') {
+                    ::std::option::Option::Some((head, tail)) => (head, tail),
+                    ::std::option::Option::None => (path, ""),
+                };
+                match self {
+                    #(#edit_arms)*
+                }
+            }
+        }
+
+        impl ::kairos_editor_component::skin::StyleFields for #name {
+            fn style_fields(&self) -> ::std::vec::Vec<::kairos_editor_component::skin::StyleField> {
+                let mut out = ::std::vec::Vec::new();
+                ::kairos_editor_component::skin::StyleNode::collect(self, "", &mut out);
+                out
+            }
+
+            fn set_style_field(
+                &mut self,
+                path: &str,
+                value: &::kairos_editor_core::StyleValue,
+            ) -> bool {
+                ::kairos_editor_component::skin::StyleNode::write(self, path, value)
+            }
+
+            fn edit_style_list(
+                &mut self,
+                path: &str,
+                edit: ::kairos_editor_core::ListEdit,
+            ) -> bool {
+                ::kairos_editor_component::skin::StyleNode::edit_list(self, path, edit)
+            }
+        }
     })
 }
 
@@ -622,6 +965,99 @@ mod tests {
         assert!(!tokens.contains("SharedStyleSealed"));
         assert!(!tokens.contains("SharedStyleDef"));
         assert!(!tokens.contains("inventory"));
+    }
+
+    #[test]
+    fn an_enum_lists_its_variants_and_routes_the_active_payload() {
+        let tokens = expand(parse_quote! {
+            enum ShadowMode {
+                Off,
+                Soft { radius: f32, samples: u32 },
+            }
+        });
+
+        assert!(
+            !tokens.contains("StyleVariant"),
+            "the names come from strum::VariantNames, not a bespoke table"
+        );
+        assert!(tokens.contains("\"Off\""));
+        assert!(tokens.contains("\"Soft\""));
+        assert!(
+            tokens.contains("with_variants"),
+            "the enum row carries the variant names as field metadata"
+        );
+        assert!(
+            tokens.contains("StyleValue :: Variant"),
+            "the row's value is the active variant id"
+        );
+        assert!(
+            tokens.contains("Default :: default"),
+            "switching to a payload variant rebuilds it from Default"
+        );
+        assert!(
+            tokens.contains("\"radius\"") && tokens.contains("\"samples\""),
+            "payload fields become dotted tokens"
+        );
+    }
+
+    /// A payload field can be a non-token: it stays part of the value (and is
+    /// rebuilt from Default) but is not collected or written.
+    #[test]
+    fn a_skipped_payload_field_is_still_part_of_the_value() {
+        let tokens = expand(parse_quote! {
+            enum Mode {
+                Soft { radius: f32, #[style(skip)] cache: u32 },
+            }
+        });
+
+        assert!(tokens.contains("\"radius\""));
+        assert!(
+            !tokens.contains("\"cache\""),
+            "a skipped field is not a row"
+        );
+        assert!(
+            tokens.matches("cache").count() >= 2,
+            "the pattern and the constructor still mention the skipped field"
+        );
+        assert!(
+            tokens.contains("Default :: default"),
+            "the constructor still builds the skipped field"
+        );
+    }
+
+    /// A single-field tuple payload is transparent: the payload's own StyleNode
+    /// emits its fields at the enum row's path, with no field-name header.
+    #[test]
+    fn a_single_tuple_payload_is_transparent() {
+        let tokens = expand(parse_quote! {
+            enum Mode {
+                Soft(Payload),
+            }
+        });
+
+        assert!(tokens.contains("StyleNode :: collect"));
+        assert!(
+            tokens.contains("StyleNode :: write"),
+            "payload writes are routed transparently"
+        );
+        assert!(
+            !tokens.contains("\"0\""),
+            "the macro does not invent an index for the unnamed field"
+        );
+    }
+
+    /// Several tuple fields have no names, so there is no stable token path for
+    /// each one.
+    #[test]
+    fn a_multi_field_tuple_payload_is_rejected() {
+        let error = expand_style_fields(parse_quote! {
+            enum Mode {
+                Soft(f32, u32),
+            }
+        })
+        .expect_err("two tuple fields have no names");
+
+        assert!(error.to_string().contains("exactly one field"), "{error}");
     }
 
     #[test]

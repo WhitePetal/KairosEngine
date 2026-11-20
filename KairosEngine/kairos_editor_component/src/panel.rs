@@ -135,7 +135,7 @@ pub trait Panel: PanelRegister {
     ///
     /// The style is view state owned by the panel, so this is how the editor
     /// changes what the next pass draws. Returns whether the path named a token
-    /// of the matching kind; the default is "this panel has no editable skin".
+    /// of the matching exact type; the default is "this panel has no editable skin".
     fn set_skin_field(&mut self, _path: &str, _value: &StyleValue) -> bool {
         false
     }

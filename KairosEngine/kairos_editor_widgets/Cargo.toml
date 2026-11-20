@@ -18,3 +18,5 @@ kairos_color = { path = "../kairos_color" }
 # Component styles and the font list are RON files under `Preferences/Styles`.
 ron = "0.12"
 serde = { version = "1.0.228", features = ["derive"] }
+# The enum field reads a value's variants and labels from strum in generic code.
+strum = { version = "0.28.0", features = ["derive"] }

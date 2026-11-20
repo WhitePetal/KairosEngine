@@ -16,6 +16,8 @@
 //! * `number`: [NumberField], over any [Number] primitive;
 //! * `text`: [TextField];
 //! * `toggle`: [ToggleField];
+//! * `enum_field`: [EnumField], a popup field over an enum, and [VariantMenu]
+//!   for a style token's static variant table;
 //! * `label`: [FieldLabel], the row name that scrubs a number.
 //!
 //! Every control has the same shape:
@@ -24,6 +26,11 @@
 //!         .label("Width")
 //!         .show(ui, rect, &mut edit);
 //!     if outcome.changed() { .. }
+//!
+//! [EnumField] borrows the enum mutably, like the other controls borrow their
+//! values: choosing a row writes the new variant into the source enum.
+//! [VariantMenu] is the style-token view used when the caller has a variant id
+//! and a static table rather than the typed value.
 //!
 //! `show` takes the rect the caller laid out (an inspector's two columns
 //! belong to the panel, not to egui's layout) and returns a [FieldOutcome]: the
@@ -41,6 +48,7 @@
 //! state.
 
 mod edit;
+mod enum_field;
 mod label;
 mod number;
 mod paint;
@@ -51,6 +59,7 @@ mod toggle;
 #[cfg(test)]
 mod testing;
 
+pub use enum_field::{EnumField, VariantMenu, enum_item_id, enum_popup_id};
 pub use label::{FieldLabel, FieldLabelResponse};
 pub use number::{Number, NumberEdit, NumberField};
 pub use style::FieldStyle;

@@ -142,7 +142,7 @@ pub use panel::{
 };
 // The Preferences editor consumes these; a panel implementation needs
 // `StyleFields` (derive) and builds a `PanelSkin` in `Panel::skin`.
-pub use skin::{PanelSkin, StyleField, StyleFields as StyleFieldsTrait, StyleKind};
+pub use skin::{PanelSkin, StyleField, StyleFields as StyleFieldsTrait};
 
 // The panel declaration attribute: id, registration and factory from one item.
 // Panels are defined in this crate only (`PanelRegister` is sealed), so the

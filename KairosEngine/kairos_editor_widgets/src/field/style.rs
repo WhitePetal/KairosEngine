@@ -1,7 +1,9 @@
 //! The value field's appearance tokens.
 
-use egui::Color32;
+use egui::{Color32, CornerRadius, Stroke, vec2};
 
+use crate::button::ButtonStyle;
+use crate::menu::MenuStyle;
 use crate::text::TextStyle;
 
 /// Visual tokens for one value field: its box, its name, and the wash that
@@ -36,6 +38,20 @@ pub struct FieldStyle {
     pub height: f32,
     /// Side of a boolean checkbox.
     pub checkbox: f32,
+
+    /// Fill of an enum field's menu button (Unity's popup field). It is a
+    /// shade lighter than a text box, which is what makes it read as a button
+    /// rather than an editable value; the color picker's menu triggers use the
+    /// same tokens.
+    pub menu_button_fill: Color32,
+    /// Menu-button fill under the pointer and while its menu is open.
+    pub menu_button_hover: Color32,
+    /// Menu-button outline at rest.
+    pub menu_button_edge: Color32,
+    /// The dropdown the menu button opens. This is the editor's shared menu
+    /// style, not a field-specific popup: the popup has the same rows, shadow,
+    /// highlight and separators as the menu bar's dropdown.
+    pub menu: MenuStyle,
 }
 
 impl Default for FieldStyle {
@@ -62,6 +78,11 @@ impl FieldStyle {
             padding: 6.0,
             height: 18.0,
             checkbox: 15.0,
+            // The color picker's Unity popup-field tokens.
+            menu_button_fill: Color32::from_rgb(0x4A, 0x4A, 0x4A),
+            menu_button_hover: Color32::from_rgb(0x56, 0x56, 0x56),
+            menu_button_edge: Color32::from_rgb(0x16, 0x16, 0x16),
+            menu: MenuStyle::default(),
         }
     }
 
@@ -112,6 +133,12 @@ impl FieldStyle {
         self
     }
 
+    /// The dropdown tokens of an enum field.
+    pub fn menu(mut self, menu: MenuStyle) -> Self {
+        self.menu = menu;
+        self
+    }
+
     /// Outline colour of a field in this state.
     ///
     /// Active wins over hover: a selected field keeps its accent edge while the
@@ -133,5 +160,25 @@ impl FieldStyle {
         } else {
             self.label
         }
+    }
+
+    /// The menu button is a [crate::button::Button] with Unity's popup-field
+    /// look: a lighter fill than a text box, a square 1 px outline, the value
+    /// text at the left and a caret at the right.
+    ///
+    /// The outline is passed in because it is the field's state colour, not a
+    /// menu colour: selected rows keep the accent edge like every other field.
+    pub fn menu_button_style(&self, outline: Color32) -> ButtonStyle {
+        ButtonStyle::new(self.text.clone())
+            .fills(
+                self.menu_button_fill,
+                self.menu_button_hover,
+                self.menu_button_hover,
+            )
+            .stroke(Stroke::new(self.border_width, outline))
+            .corner_radius(CornerRadius::same(self.corner_radius))
+            .padding(vec2(self.padding, 0.0))
+            .height(self.height)
+            .caret_inset(8.0)
     }
 }

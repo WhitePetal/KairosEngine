@@ -1,6 +1,6 @@
 # Preferences 窗口迁移评审：`kairos_editor::PreferencesWindow` → 0.2.0 `panels/preferences`
 
-> **状态**：评审 + 实现（2026-11-19）；UI 重做为 Unity Inspector 样式，并加入自有 LDR/HDR 取色器（2026-11-19 续）；颜色值改为 8 字节 linear `Color` + `ColorProperty` 字段策略（2026-11-19 再续）；取色器改为 260 px 浮动窗、HDR 0-Inf/191 曝光基准、Library swatch groups，menu button/浮层菜单对齐 Unity popup field（2026-11-19 完善）；标题栏改为 dock 同款三 traffic-light widget + 居中标题，收起/最大化灰色禁用（2026-11-19）；Float/Int/String/Toggle 值框抽成 `kairos_editor_widgets::field` 的可复用 widget，页面只剩 StyleValue 映射（2026-11-20）；每个控件一个文件，数字改为拖 label scrub，值框皮肤独立成共享样式 `EditorFieldStyle`（2026-11-20 续）
+> **状态**：评审 + 实现（2026-11-19）；UI 重做为 Unity Inspector 样式，并加入自有 LDR/HDR 取色器（2026-11-19 续）；颜色值改为 8 字节 linear `Color` + `ColorProperty` 字段策略（2026-11-19 再续）；取色器改为 260 px 浮动窗、HDR 0-Inf/191 曝光基准、Library swatch groups，menu button/浮层菜单对齐 Unity popup field（2026-11-19 完善）；标题栏改为 dock 同款三 traffic-light widget + 居中标题，收起/最大化灰色禁用（2026-11-19）；Float/Int/String/Toggle 值框抽成 `kairos_editor_widgets::field` 的可复用 widget，页面只剩 StyleValue 映射（2026-11-20）；每个控件一个文件，数字改为拖 label scrub，值框皮肤独立成共享样式 `EditorFieldStyle`（2026-11-20 续）；枚举值控 `EnumField` + `StyleValue::Variant` + `StyleField::variants` + derive 支持 enum（变体菜单 + 载荷行同一块背景、载荷行从菜单按钮列开始），`FontEntry::priority` 去掉 `#[style(skip)]`；EnumField 改为 `&mut` 枚举 + strum、载荷行从 menu button 列开始，`FontPriority` 改为 component 侧的平行枚举 `EditorFontPriority`（tuple payload 透明），触发按钮用项目 `Button` + 共享 `MenuStyle`（2026-11-20 再续）
 > **范围**：把 0.1.0 的 `kairos_editor/src/ui/preferences_window.rs`（414 行）与它依赖的样式反射通道（`ui_style_fields.rs`、`ui.rs:468-514`）迁到 0.2.0 的面板架构。目标与旧窗口一致：**把各个组件的 `Preferences/Styles/*.ron` 以 UI 控件的形式列出来，直接在 Preferences 里改**。
 > **配套**：[about-panel.md](./about-panel.md)（同一套评审口径）· [ADR 0008](../adr/0008-editor-ui-architecture.md) · [ADR 0009](../adr/0009-editor-panel-host-and-viewport.md) · [widget-layer.md](./widget-layer.md) · [editor-ui-widget-catalog.md](../../research/editor-ui-widget-catalog.md) §C17
 > **证据口径**：`path:line` 为本次（2026-11-19）工作区 HEAD 实读；「每帧写盘」「多 pass 重复发消息」沿用 `docs/research/editor-ui-messager-mvc-audit.md` 的静态推断口径（该文已给调用链）。
@@ -99,7 +99,7 @@ StyleFields::set_style_field(path, value)
 ```
 
 - 每个字段生成 `"父路径.字段名"` 和一个 `match` 分支；嵌套结构体（`icons`）自己也要 derive，于是 `icons.warning` 自然出现，父结构体不需要知道 `icons` 是分组。
-- **控件种类由字段类型决定**：`f32` → Float（DragValue，速度按数量级）、`u8/u16/u32/usize` → Integer（带类型上限）、`bool` → Toggle、`String` → Text、`Color` → Color、`ColorProperty` → Color 或 HDR Color（看 usage）、`Vec<T>` → 按下标展开（Profiler 的 `category_palette`），`#[style(skip)]` 排除非 token 字段。
+- **控件种类由值的精确类型决定**：`f32` → `StyleValue::F32`、`f64` → `F64`、`i8..i64/isize/u8..u64/usize` → 对应的整数 variant（每个都用 `NumberField<N>` 的具体 `N`，类型安全由 `N` 保证；`StyleField::range` 只表示 UI 拖动范围，不是类型边界）、`bool` → Bool、`String` → Text、`Color`/`ColorProperty` → Color 或 HdrColor、`Vec<T>` → ListLen（按下标展开元素）、enum → Variant（变体 menu button，`StyleField::variants` 带变体名；当前变体的载荷字段排在它下面）、`#[style(skip)]` 排除非 token 字段。
 - 旧实现的「字段名 + 手工范围」不见了：名字来自字段名（`toolbar_bg` → “Toolbar bg”），范围来自类型。
 - `#[SharedStyle(CONST = "id", title = "Page")]` 是可选声明：额外生成 id 常量、crate-private seal 和 `SharedStyleDef` 提交；类型只写 `preload`。见 §2.5。
 
@@ -149,19 +149,55 @@ StyleFields::set_style_field(path, value)
 > `#[SharedStyle(FONTS = "fonts", title = "Fonts")]`，id 常量、seal 和 inventory 提交都由宏生成；
 > `EditorFonts.ron` 从单值改成 dark/light 成对（`StyleFile<EditorFonts>`），所以既有页机制原样复用。
 > 字段是 `proportional.0.name` / `.path` 这类索引 token：`path` 用 `String`（字段编辑器写文本），
-> `FontEntry::priority` 暂 `#[style(skip)]`；安装结构 `fonts::FontsConfig` 由 `EditorFonts::config()`
+> `FontEntry::priority` 是枚举 token（见下条）；安装结构 `fonts::FontsConfig` 由 `EditorFonts::config()`
 > 在调用点投影（和取色器 `tokens()` 同一套路）。`preload` 调 `install`，所以 app 启动不再单独调
 > `fonts::install`，编辑 Commit 后 app 的 `preload` 也会重装字体。
 >
-> **2026-11-20 补充（列表编辑器）**：`Vec<T>` 字段现在在字段表里生成一个 `StyleKind::List` 节点
-> （value = 元素个数），空列表也因此在页面上有表头；写这个整数就是 resize（`Vec<T>::write`，上限
+> **2026-11-20 补充（列表编辑器）**：`Vec<T>` 字段现在在字段表里生成一个 `StyleValue::ListLen` 节点
+> （value = 元素个数），空列表也因此在页面上有表头；写这个长度就是 resize（`Vec<T>::write`，上限
 > `skin::LIST_MAX = 64`）。`+`/`−`/拖拽走新的 `ListEdit { Insert/Remove/Move }` 与
 > `StyleAction::EditList` / `SharedStyleAction::EditList` → `StyleFields::edit_style_list`；derive
 > 转发到 `StyleNode::edit_list`，`Vec<T>` 自己实现。页面按列表画两行表头（名字；计数 + 两格 +/−，
 > 右下角），每个元素是 `Element N` 带（手柄 + caret + 蓝色选中 + 斑马线），字段在同一个块里、不额外
 > 缩进，gutter 的分割线贯穿。结构变化后页面用一次性 `stale` 标记重读字段表（否则新元素要等换页）。
 > 叶子列表（Profiler `category_palette`）已经有表头和增删，但元素行还是普通行，`Element N` +
-> 颜色框留在下一轮；`priority` 仍 skip。
+> 颜色框留在下一轮。
+>
+> **2026-11-20 补充（枚举控件）**：值协议新增 `StyleValue::Variant(String)`（稳定变体名，不是下标）；
+> 变体名由 `StyleField::variants: Option<&'static [&'static str]>` 携带，页面画菜单时读取，值本身
+> 只存当前 id。不再有 `StyleVariant` / `EnumVariant`：类型化控件 `EnumField` 用 strum 的 `EnumIter` +
+> `Display`，类型擦除的页面用同一枚举 derive 的 `strum::VariantNames::VARIANTS`；菜单文案就是变体名，
+> 不再有单独的 label 表。`#[derive(StyleFields)]` 支持 enum：生成 `StyleEnum`（当前 id / 按 id 用
+> `Default` 重建）与 `StyleNode`（enum 自身一行，当前变体的载荷字段以 `path.field` 展开，
+> `write`/`edit_list` 路由进当前载荷）。具名载荷字段各自成 token；**单字段 tuple 载荷是透明的**：
+> 不生成 field 名、不生成 header，payload struct 的字段直接是 enum 的字段（`priority.fvalue`）。
+> 多字段 tuple 仍报错（没有稳定的字段名）。
+>
+> **FontPriority 不再手写协议**：运行时 `FontPriority` 定义在 widget crate，宏不能给它 derive；按
+> `EditorFonts` 镜像 `FontsConfig` 的同一做法，在 `shared_style/fonts.rs` 定义平行枚举
+> `EditorFontPriority { First, Push(EditorTestEnumStruct) }`，`FontEntry.priority` 用它，
+> `FontEntry::file` 投影成运行时的 `FontPriority`。载荷 struct 的每个字段都是普通 token，所以
+> `Push` 的 `fvalue`/`ivalue`/`svalue`/`cvalue` 四行直接显示在枚举行下面，没有 `Test` 这层 header
+> （这正是手写 `StyleNode` 会漏掉、具名 tuple 会多出 header 的情况）。id 与 RON 的 `First`/`Push`
+> 对齐。
+>
+> **`EnumField` 直接可变借用源枚举，靠 strum 读变体**：`EnumField::new(id, &mut enum, &FieldStyle)`，
+> 约束是 `strum::IntoEnumIterator + Display`：变体顺序来自 `EnumIter`，菜单文案来自 `Display`
+> （默认就是变体名），当前变体用 `std::mem::discriminant` 比较——不是拿整个值和 `EnumIter` 的
+> 默认 payload 比较，否则已经改过 payload 的 `Push` 会被误认成 `First`。选择后把 `EnumIter` 造出的
+> 新变体写回源枚举（tuple/具名载荷按 `Default` 重建）。不再有 `EnumValue` trait，也不再有 `&dyn` 视图；调用方
+> （将来的 Inspector）直接拿到改好的枚举，再发它自己的具体 Action，例如
+> `DocumentAction::SetMaterial`。Preferences 页没有源枚举（只有 `StyleValue::Variant(String)` 快照），
+> 所以它用 `VariantMenu`：同一个触发按钮/菜单，直接 `&mut String` 改这个 style token 的 id。
+> 两者共享 `show_menu`，但只有 `EnumField` 是类型化枚举控件。
+>
+> 触发按钮是项目自己的 `Button`（Unity popup field：`menu.button_fill` + caret + 1px 描边），
+> 下拉是项目自己的 `Popup::menu` + `MenuStyle`（和菜单栏/Profiler 同一套行高、高亮、阴影），
+> 不再有单独的 `FieldMenuStyle` 或自画菜单。页面把 enum 行和载荷行画成同一块：载荷行**从 menu
+> button 的左边缘开始**（在按钮这一列里再分标签/值，而不是回到整行的左标签列），用
+> `PreferencesPanelStyle::enum_block` 底色和上下 1px `divider` 线表示整体；嵌套 struct 从按钮再缩进
+> 一级。切变体后 `stale = true`，下一 pass 重读 owner 的字段表并换掉载荷行。菜单 token 与值框 token
+> 同属 `Preferences/Styles/EditorField.ron` 的 `menu` 组，不单开 shared 页。
 
 ### 2.6 页面列表：活着的面板 + 固定 shared 页
 
@@ -197,7 +233,8 @@ StyleFields::set_style_field(path, value)
 - **两栏、左对齐**：标签列从行内边距开始左对齐（不再用 `add_sized` 的居中布局）；值列从同一列起点铺满剩余宽度。`label_width` 是理想值，页面窄了先缩标签列，`field_width` 是值列的下限——不再把控件堆到标签下面（Unity 的 inspector 也保持两列，有测试）。
 - **Zebra 行**：每条叶子行铺满整行背景，`row_odd` / `row_even` 交替；组头用 `group_background`，悬停 `group_hover`。`row_gap = 0`，条带连续。
 - **Unity 值框**：`control_rail` 暗底、`control_edge` 1 px 框、0 圆角、文字左对齐并留 `field_padding`；悬停时框线变 `control_edge_hover`。Float/Integer 点击进入行内文本编辑（全选、Esc 还原、Enter/失焦提交），拖动仍然是 scrub；Text 直接是单行 `TextEdit`；Toggle 是 Unity 的方形 checkbox（`checkbox_size`）。
-- **值框是共享 widget，一个控件一个文件**：`field/style.rs`（FieldStyle）、`field/paint.rs`（底色/描边/勾）、`field/edit.rs`（行内编辑器与 Unity 的选中蒙版）、`field/number.rs`（NumberField + Number trait）、`field/text.rs`、`field/toggle.rs`、`field/label.rs`。NumberField 对任意 Rust 基本类型生效（f32/f64/i8..i64/u8..u64/usize/isize）：显示走类型自己的 Display（f32 不会变成 f64 噪声），写回按类型自身的范围取整截断，样式 token 的额外上限用 `.range(0.0, max)` 收窄。`FieldOutcome::finished` 是「这次键入结束」的信号，页面据此写盘；行内编辑缓冲 `NumberEdit` 由页面持有，整数的拖动余量放在 egui 临时存储里。
+- **值框是共享 widget，一个控件一个文件**：`field/style.rs`（FieldStyle）、`field/paint.rs`（底色/描边/勾）、`field/edit.rs`（行内编辑器与 Unity 的选中蒙版）、`field/number.rs`（NumberField + Number trait）、`field/text.rs`、`field/toggle.rs`、`field/label.rs`。NumberField 对任意 Rust 基本类型生效（f32/f64/i8..i64/u8..u64/usize/isize）：显示走类型自己的 Display（f32 不会变成 f64 噪声），写回按类型自身的范围取整截断。`StyleValue` 为每个具体类型保留一个 variant，页面 match 后调用 `NumberField<N>`（`N` 就是字段类型），所以类型安全由 widget 的 `N` 负责；`StyleField::range` / `.range(min, max)` 只表示 UI 拖动范围，不再承载类型边界。`FieldOutcome::finished` 是「这次键入结束」的信号，页面据此写盘；行内编辑缓冲 `NumberEdit` 由页面持有，整数的拖动余量放在 egui 临时存储里。
+- **枚举字段**：触发按钮是项目自己的 `Button`，用 Unity popup field 的 token：`menu.button_fill` 灰底（比文本框亮一档，和取色器的菜单按钮一致）、`menu.button_edge` 1 px 描边、左对齐当前变体名、右端 caret。点开的是项目自己的 `Popup::menu` + `MenuStyle`：`menu.background` 方角浮层、`menu.item_height` 22 px 行、`menu.highlight` 蓝色悬停/选中行、`menu.separator` 分隔线、`menu.min_width` 最小宽度；菜单用 egui 的标准锚定与 alternative align（屏幕底部放不下时翻到上方），不再由 widget 手算 `at_position`。当前项用蓝底表示，不再画额外的 ✓。菜单宽度取 `max(值框宽, menu.min_width)`。变体有载荷时，载荷字段排在枚举行下面，**从 menu button 的左边缘开始**：按钮这一列里再分一个较窄的标签列和值列，而不是回到整行的左标签列；用 `enum_block` 底色 + 上下 1 px `divider` 线围出整块。单字段 tuple 载荷没有 header，payload struct 的字段直接出现；具名载荷 struct 的 foldout header 仍按普通组画，嵌套字段从按钮再缩进一级。嵌套枚举继续并排。载荷里的 list 照常是表头 + element 块。
 - **数字靠名称拖拽**：名称是 `FieldLabel`（Unity 的 scrub handle），悬停变左右箭头光标，按住左右拖改值。拖拽属于 `NumberField`：页面把本帧的名称手势交进去（`dragged_by(&FieldLabelResponse)`），速度、整数余量、范围截断都在 widget 里，页面只是把两个 widget 接起来。值框本身只处理点击进入行内编辑，悬停是文本光标；没有名称的框（列表的 size 框）默认自己就是手柄。光标用 egui 的 `Response::on_hover_cursor` 发布（名称是左右箭头，值框是文本光标）；在 macOS 上「发布」之后还要宿主每帧把光标写到 AppKit，因为 egui-winit 只在图标变化时通知窗口系统，指针停住时会被系统丢回箭头——见 `kairos_editor_app/src/cursor.rs`。
 - **选中文字用取色器同款蒙版**：数字编辑框与文本字段全选时不再铺实心 accent，而是 accent 的 62%（`from_rgba_unmultiplied(.., 160)`）+ 不透明 selection stroke，数字仍然可读——和取色器通道值一致。文本字段第一次获得焦点即全选，所以直接打字就是替换。
 - 名称列、Zebra 条带与两栏几何仍属于页面的行版面——那是 inspector 的排版，不是控件。
@@ -218,7 +255,7 @@ StyleFields::set_style_field(path, value)
 | 文件 | 变更 | 职责 |
 |---|---|---|
 | `kairos_editor_component/macros/`（新 crate） | 新增 | `#[derive(StyleFields)]`：从结构体字段生成字段表与按路径写入；`#[SharedStyle(...)]` 生成 id 常量、sealed erasure 和 `SharedStyleDef` 提交 |
-| `kairos_editor_component/src/skin.rs` | 新增 | `StyleValue` 桥接、`StyleField`/`StyleKind`、`StyleNode`/`StyleFields` 与叶子类型实现、`PanelSkin`、`save_skin`、`humanize` |
+| `kairos_editor_component/src/skin.rs` | 新增 | `StyleValue` 桥接、`StyleField`（`variants`/`range` 元数据）、`StyleNode`/`StyleFields` 与叶子类型实现、`PanelSkin`、`save_skin`、`humanize` |
 | `kairos_editor_core/src/style.rs` | 新增 | `StyleValue` + `SharedStyleId`（core 只认识值，不认识 egui） |
 | `kairos_editor_core/src/action.rs` / `effect.rs` / `reduce/{style,shared_style}.rs` | 改/新增 | `Action::Style`、`StyleAction::{SetField,Commit}`、`Effect::Style`、`StyleEffect::{SetField,Persist}`；shared 样式另有 `SharedStyleAction::{SetField,Commit,Reload}` / `SharedStyleEffect::{SetField,Persist,Reload}` |
 | `kairos_editor_component/src/panel.rs` | 改 | `Panel::{skin,set_skin_field,save_skin}`（默认无皮肤） |
@@ -228,9 +265,9 @@ StyleFields::set_style_field(path, value)
 | `kairos_editor_component/src/panels/preferences.rs` | 新增/改 | 页面列表（面板页 + 固定 shared 页）、页、分组行、字段表到 field widget 的映射、保存边界、shared 页的 Reload、单测 |
 | `kairos_editor_component/src/panels/preferences/style.rs` | 新增/改 | `PreferencesPanelStyle`（自身也 derive，可编辑自己）+ 参考皮肤往返测试；不再投影 `ColorPickerStyle` |
 | `kairos_editor_widgets/src/color_picker.rs` | 新增 | 自有的 Unity 风格 LDR/HDR 颜色字段与取色器：色相环、SV 方块、通道滑杆、hex、Intensity、Swatches |
-| `kairos_editor_widgets/src/field/` | 新增 | 可复用值框 widget，一控件一文件：`style`（FieldStyle）/ `paint` / `edit`（行内编辑器与 62% 选中蒙版）/ `number`（Number trait + NumberField）/ `text` / `toggle` / `label`（FieldLabel，数字的 scrub handle） |
-| `kairos_editor_component/src/shared_style/field.rs` | 新增 | `EditorFieldStyle`（`#[SharedStyle(EDITOR_FIELD = "editor_field")]`）+ `tokens()` 投影 |
-| `Preferences/Styles/EditorField.ron` | 新增 | 字段皮肤参考文件（dark + light），与代码默认值逐字段相等的往返测试钉住 |
+| `kairos_editor_widgets/src/field/` | 新增 | 可复用值框 widget，一控件一文件：`style`（FieldStyle + menu-button token，菜单本身用共享 `MenuStyle`）/ `paint` / `edit`（行内编辑器与 62% 选中蒙版）/ `number`（Number trait + NumberField）/ `text` / `toggle` / `enum_field`（EnumField 可变借用枚举，strum 读变体；VariantMenu 给 style token；`Button` 触发 + `Popup::menu`）/ `label`（FieldLabel，数字的 scrub handle） |
+| `kairos_editor_component/src/shared_style/field.rs` | 新增/改 | `EditorFieldStyle`（`#[SharedStyle(EDITOR_FIELD = "editor_field")]`）+ `EditorFieldMenuStyle`（enum 的菜单按钮/浮层 token，作为 Field 页的 `menu` 组，投影到 `MenuStyle`）+ `tokens()` 投影 |
+| `Preferences/Styles/EditorField.ron` | 新增 | 字段皮肤参考文件（dark + light，含 `menu` 组），与代码默认值逐字段相等的往返测试钉住 |
 | `kairos_color/src/linear.rs` | 新增 | `Color`（8 字节 linear f16×4，可超过 1）、`ColorUsage`/`ColorProperty`/`ColorSpace`、sRGB 传输函数与 round-trip 测试 |
 | `kairos_editor_component/src/panels/{about,console,profiler}.rs` + `*/style.rs` | 改 | 样式 derive；三个 `Panel` 方法（皮肤快照 / 写字段 / 存文件） |
 | `kairos_editor_component/src/panels.rs` | 改 | `PREFERENCES` 条目；面板数量 7 → 8 |
@@ -271,7 +308,8 @@ StyleFields::set_style_field(path, value)
 
 **component**
 
-2. derive：字段顺序、点分路径、`#[style(skip)]`、类型种类、整数 clamp、颜色 round-trip、`humanize`。
+2. derive：字段顺序、点分路径、`#[style(skip)]`、`StyleValue` 的精确类型（含 `i32`/`u64`/`f64`）、错误精确类型是 no-op、颜色 round-trip、`humanize`。
+2b. enum derive：`strum::VariantNames` 的变体名表放在 `StyleField::variants`、当前变体一行 + 具名载荷的 `path.field`（单字段 tuple 载荷透明，字段直接挂 `path.field`）、无字段变体只有一行；切变体按 `Default` 重建、重选同一变体保留载荷、未知 id / 错误精确类型是 no-op；载荷里的 list 走 `edit_style_list`；多字段 tuple 在宏里报错。
 3. 三个真实样式（About/Console/Profiler/Preferences）都能列出字段，且字段路径可达（`toolbar_height`、`icons.info`、…）。
 4. 面板：页面列表显示所有活着的皮肤、首屏画第一页的文件路径与字段；点另一个面板换页且**不产生 action**。
 5. 点 toggle → 恰好 `[SetField, Commit]`（同一个 release pass），页面本地值同步更新。
@@ -282,8 +320,8 @@ StyleFields::set_style_field(path, value)
 9b. `StyleCatalog::builtin()` 注册 Toolbar / Color Picker；`SharedStyles::skins()` 给出两页字段表；`ColorPicker.ron` 与 `ColorPickerSkin` 默认值逐字段相等；`tokens()` 保持 0.7 边框、13 px 标题和共享 traffic lights。
 9c. 所有面板关闭时 shared 页仍然存在且可编辑；shared 编辑发 `Action::SharedStyle(SetField)`/`Commit`；Reload 按钮发 `Reload`，reload 后 `revision` 让页面重新取字段表。
 10. foldout：每个嵌套 struct 是整行可点的组头；点 `icons` 只隐藏该组，点 `icons.textures` 只隐藏 Tint，动作列表为空。
-11. Zebra：叶子行按 `row_odd` / `row_even` 交替；组头用 `group_background`，不参与交替。
-12. 对齐：不同宽度的 root 标签左边缘一致；组内标签按 `group_indent` 逐级缩进；值列左边缘不随深度改变；窄面板仍是两列且在窗口内。
+11. Zebra：叶子行按 `row_odd` / `row_even` 交替；组头用 `group_background`，不参与交替；enum 行与载荷行（有载荷时）整块用 `enum_block`，块第一行/最后一行画 1 px `divider` 线。
+12. 对齐：不同宽度的 root 标签左边缘一致；组内标签按 `group_indent` 逐级缩进；值列左边缘不随深度改变；enum 的载荷行从 menu button 的左边缘开始（在按钮列内再分标签/值），不是回到整行左标签列；窄面板仍是两列且在窗口内。
 13. 选中：点字段名 → `label_active` 蓝色 + 值框 `accent` 外框；点页面空白 → 清空。
 14. 数字编辑：点数值框进入行内编辑，输入替换选中值，Enter 结束并额外发 `Commit`；Esc 还原。
 15. 滚动条：长页面里图标路径值框的右边界停在 `scrollbar_gap` 左侧。
@@ -292,6 +330,9 @@ StyleFields::set_style_field(path, value)
 18. 浮动窗：picker 固定宽 260（232 wheel / 26 ring / 20 row / 14 swatch / 14 track），标题栏拖动会移动；点外部关闭；Esc 还原并关闭；同时只开一个。
 19. HSV/ HDR：HSV 标签为 H/S/V 且 S/V/Alpha 为 0–100；HDR 菜单含 `RGB 0-Inf`，`RGB 0-Inf` 可键入超过 1 的绝对 linear 值；HDR 不显示 Hexadecimal。
 20. Swatches：New tile 追加当前颜色；组菜单可新建/选择/重命名/删除，菜单与 Rename 对话框均浮在网格上方且不改变 swatch rect；`ColorSwatches` 经 `Library/ColorSwatches.ron` 往返。
+20b. Enum 控件：值框显示当前变体；触发按钮用项目 `Button` + `menu.button_*` token（和取色器的 popup field 一致），浮层用 `Popup::menu` + `MenuStyle`；当前项蓝色高亮、长列表（>10）滚动、屏幕底部翻到上方；选项 → `[SetField(Variant), Commit]` 一次手势；重选当前项不改值、不 dirty；点外部关闭。
+20c. 枚举页：Fonts 页出现 `Priority`，点开是 `First` / `Push`，选 `Push` 发 `SharedStyle(SetField{Variant("Push")})` + `Commit` 且页面本地值同步；带载荷的枚举用测试皮肤验证切变体后 `stale` 重读、载荷行消失/出现；`Push` 的 tuple payload 没有 header，四个字段直接出现并在 menu button 列内对齐、整块同底色。
+20d. Enum 借用：`EnumField::new(id, &mut enum, &FieldStyle)` 可变借用源枚举，约束是 strum 的 `IntoEnumIterator + Display`；当前变体用 `std::mem::discriminant` 匹配，改过 payload 的变体仍显示正确；选择后把新变体写回源枚举（载荷按 `Default` 重建），没有 `EnumValue`/`&dyn` 视图。Preferences 的 `VariantMenu` 是另一个控件：可变借用 style token 的 id 字符串。
 
 **app**
 
@@ -312,7 +353,11 @@ StyleFields::set_style_field(path, value)
 6. **拖拽速度是启发式的**：`speed = clamp(|value| / 50, 0.01, 1.0)`，对大多数尺寸合适；某些 token（颜色分量之外的极小值）可能偏慢，后续可以按字段加 hint。
 7. **页面列表的花费**：Preferences 打开时每帧重新快照所有字段（现在约 3 个面板 + 2 个 shared 页、~240 个字段；shared 字段表由 `SharedStyles::skins()` 即时生成）。这些分配只在编辑器自己的设置窗口开着时发生；若将来面板/字段数量上来了，改成「页面切换时刷新」即可。
 8. **吸管按平台走各自的原生通路**：widget 侧只有会话与 `eyedropper::Update` 契约（sRGB 字节 + Picking/Committed/Cancelled + 会话 id），不认平台；宿主 `kairos_editor_app/src/eyedropper/{win32,macos,linux}.rs` 负责取像素与放大镜。Windows 走 `GetCursorPos` + `BitBlt`（屏幕 DC）+ GDI 浮层，**不依赖 framebuffer readback**，因此不需要接 egui 的 screenshot 请求；拾取期间用 `WH_MOUSE_LL` 钩子遮罩桌面鼠标按键与滚轮（移动放行，否则系统光标会被冻住；捕获窗口自己的标题栏按钮也盖不住，见 ADR 0014）；确认/取消的按键由钩子记录（丢弃的事件 `GetAsyncKeyState` 读不到）。macOS 用 ScreenCaptureKit 的 `SCScreenshotManager` 按 `pointPixelScale` 取 15×15 像素，每块屏幕一个透明 AppKit 浮层；浮层消费确认点击，所以同样要吞随后的 release，字段在 Picking 帧逐帧跟随。首次使用触发系统屏幕录制授权；无权限、旧系统（<14）或采集失败时回退 `NSColorSampler`（无需权限，但只在确认时给色、无右键取消）。Linux 在 X11 下用私有 X 连接 `QueryPointer` + `GetImage`（15×15 块）+ override-redirect 浮层 + `GrabPointer`（只选按键事件，移动放行）实现同样的行为；Wayland 没有全局指针与跨窗口像素（只能走 ScreenCast portal），XWayland 的 root window 也不含 Wayland 客户端的像素，因此两者都报告不可用。确认后的写盘靠 widget 的 `take_committed` 结束信号；Windows/X11 的确认点击被遮罩，宿主还要把随后的 release 吞掉（两帧无按键后解除，见 ADR 0014）。
-9. **HDR 数据面**：`Color` / `ColorProperty` 已经端到端打通并有组件测试；`StyleValue::HdrColor` / `StyleKind::HdrColor` 仍是皮肤协议里的线性颜色 kind。现有面板皮肤都是 LDR，所以正常 Preferences 页面暂时看不到 HDR 行；它会在材质/发射色 token 接入后出现。
+9. **HDR 数据面**：`Color` / `ColorProperty` 已经端到端打通并有组件测试；`StyleValue::HdrColor` 是皮肤协议里的线性颜色 variant。现有面板皮肤都是 LDR，所以正常 Preferences 页面暂时看不到 HDR 行；它会在材质/发射色 token 接入后出现。
+10. **枚举载荷的边界**：具名载荷任意；单字段 tuple 载荷透明（没有 header，字段直接挂到 enum 路径）；多字段 tuple 没有稳定字段名，宏直接报错。载荷字段必须实现 `Default`，切过去时按 `Default` 重建。布局上，tuple/具名 enum 的**直接**载荷行从 menu button 列开始；具名 struct 的 foldout header 仍按普通组整行画，嵌套枚举的下一层载荷和载荷里的 list 仍用整行列表布局，没有继续嵌进按钮列。
+11. **枚举下拉没有键盘导航**：只能点；Up/Down/Enter 选择、type-ahead 都还没做。菜单开着时滚轮滚的是菜单自己的长列表（>10 项），不是页面。
+12. **嵌套枚举块共用一种底色**：外层枚举的载荷里再有带载荷的枚举时，内层块只靠上下 1 px 线分隔，没有第二种 `enum_block` 色；要更明显的层级再加一层底色 token。
+13. **未知变体 id 是 no-op**：`StyleValue::Variant` 与类型的 `StyleEnum::with_variant` 对不上时不写、不报错，和错误 kind 的处理一致。手改 RON 里的变体名不会被自动纠正（serde 会在加载时报错）。
 
 ---
 
@@ -325,6 +370,7 @@ StyleFields::set_style_field(path, value)
 - 旧写盘：`about_window.rs:141-163`、`tool_bar.rs:305-327`、`scene_window.rs:333-356`；审计 `docs/research/editor-ui-messager-mvc-audit.md:26,258,381`
 - 多 pass：`egui-0.35.0/src/grid.rs:454`、`context.rs:822-860`；审计 `editor-ui-messager-mvc-audit.md:21,188`
 - 新字段协议：`kairos_editor_component/macros/src/lib.rs`、`kairos_editor_component/src/skin.rs`、`kairos_editor_core/src/style.rs`
+- 枚举控件：`kairos_editor_widgets/src/field/enum_field.rs`、`kairos_editor_widgets/src/field/style.rs`、`kairos_editor_component/src/shared_style/field.rs`、`kairos_editor_component/src/shared_style/fonts.rs`
 - 新面板：`kairos_editor_component/src/panels/preferences.rs`、`preferences/style.rs`、`panels.rs`
 - 新 host/app：`panel.rs`（三个方法）、`panel/host.rs`、`frame.rs`、`kairos_editor_app/src/effects.rs`、`app.rs`
 - 样式协议：`kairos_editor_widgets/src/style.rs:64-148`

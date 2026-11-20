@@ -17,7 +17,7 @@
 //! * fields are addressed by a dotted **path** (`"icons.warning"`), not by an
 //!   index into a `Vec`, so reordering a struct is not a runtime panic;
 //! * a write is typed (`StyleValue`) and returns whether it matched, so a
-//!   wrong kind is a no-op, not a silent mismatch.
+//!   wrong exact type is a no-op, not a silent mismatch.
 //!
 //! Live apply and persistence are the panel's job: `Panel::set_skin_field`
 //! writes its live style (the next pass redraws from it) and
@@ -37,30 +37,6 @@ use kairos_editor_widgets::style::{Style, StyleFile};
 /// implements only `preload`.
 pub use kairos_editor_component_macros::StyleFields;
 
-/// The editor a field needs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StyleKind {
-    /// A fractional token: drag value with a magnitude-based speed.
-    Float,
-    /// A whole-number token. `max` is the field type's own limit (`255` for a
-    /// `u8` corner radius), not a UI preference.
-    Integer { max: u32 },
-    /// An on/off token.
-    Toggle,
-    /// A text token (icon path, font family).
-    Text,
-    /// A straight sRGBA color.
-    Color,
-    /// A linear-light HDR color (channels may exceed 1).
-    HdrColor,
-    /// A list of tokens (`Vec<T>`) rather than one token.
-    ///
-    /// The field's value is the list's length as an [`StyleValue::Integer`],
-    /// so writing the field resizes the list. The editor draws it as a list
-    /// header (name, count, add/remove) instead of a row with a value box.
-    List,
-}
-
 /// Largest list the editor will grow a `Vec<T>` token to.
 ///
 /// A list token is a hand-authored style value (a font fallback chain, the
@@ -71,19 +47,50 @@ pub enum StyleKind {
 pub const LIST_MAX: u32 = 64;
 
 /// One editable token of a panel's skin.
+///
+/// `value` names the field's exact type. `variants` and `range` are editor
+/// metadata, not part of the value: `variants` is set only for a
+/// [`StyleValue::Variant`], `range` is an optional UI scrub range for a number
+/// box. The field's type bounds stay with the concrete `N` of
+/// `kairos_editor_widgets::field::NumberField<N>`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StyleField {
     /// Dotted path from the style root (`"icons.warning"`, `"toolbar_height"`).
     pub path: String,
     /// Humanized leaf name (`"Toolbar height"`).
     pub name: String,
-    /// The value as it is now.
+    /// The value as it is now, tagged with its exact type.
     pub value: StyleValue,
-    /// How to edit it.
-    pub kind: StyleKind,
+    /// The enum's names, in declaration order, for a [`StyleValue::Variant`].
+    pub variants: Option<&'static [&'static str]>,
+    /// Optional UI range for a number box; never the field type's bounds.
+    pub range: Option<(f64, f64)>,
 }
 
 impl StyleField {
+    /// A token with no editor-specific metadata.
+    pub fn new(path: impl Into<String>, name: impl Into<String>, value: StyleValue) -> Self {
+        Self {
+            path: path.into(),
+            name: name.into(),
+            value,
+            variants: None,
+            range: None,
+        }
+    }
+
+    /// Attach the enum's names to a [`StyleValue::Variant`] row.
+    pub fn with_variants(mut self, variants: &'static [&'static str]) -> Self {
+        self.variants = Some(variants);
+        self
+    }
+
+    /// Attach a UI scrub range for this row's number box.
+    pub fn with_range(mut self, min: f64, max: f64) -> Self {
+        self.range = Some((min, max));
+        self
+    }
+
     /// First path segment (`"icons"`), or `""` for a root-level token.
     pub fn group(&self) -> &str {
         self.path.split_once('.').map_or("", |(group, _)| group)
@@ -104,7 +111,7 @@ pub trait StyleFields {
     fn style_fields(&self) -> Vec<StyleField>;
 
     /// Write one token by dotted path. Returns whether the path named a field
-    /// of the matching kind; a mismatched value leaves the style untouched.
+    /// of the matching exact type; a mismatched value leaves the style untouched.
     fn set_style_field(&mut self, path: &str, value: &StyleValue) -> bool;
 
     /// Insert, remove or move one entry of the list token at `path`.
@@ -115,6 +122,48 @@ pub trait StyleFields {
     fn edit_style_list(&mut self, _path: &str, _edit: ListEdit) -> bool {
         false
     }
+}
+
+/// An enum token: its variants, the active one, and how to rebuild a variant.
+///
+/// `#[derive(StyleFields)]` generates this for an enum, so the field table,
+/// the menu labels and the write path cannot drift from the declaration. The
+/// enum also derives `strum::VariantNames`: that is the one table of names
+/// both a typed `EnumField` and the type-erased Preferences page use. The id
+/// written to RON is the Rust variant ident; do not override the strum name
+/// (`#[strum(serialize = ...)]`) on a style enum, or the menu and the stored id
+/// would diverge.
+///
+/// A type from another crate cannot take the derive; if a style needs one,
+/// declare a parallel enum in this crate and project it onto the runtime type
+/// (the font list's `EditorFontPriority` -> `FontPriority` is the example).
+///
+/// A variant with named fields is a *payload*: [`StyleNode::collect`] appends
+/// its fields after the enum's own row, and [`StyleNode::write`] routes a
+/// dotted path into the active variant's payload. A single-field tuple variant
+/// is transparent: its payload's fields are the enum's fields directly, with no
+/// header for the unnamed field. Switching variants rebuilds the new one from
+/// `Default`, which is the value semantics of a Rust enum.
+///
+/// A typed `EnumField` reads the same names and variant order through strum's
+/// `Display` and `EnumIter`; a style enum that a typed editor should own also
+/// derives those two. The Preferences page does not need them: it uses
+/// `VariantMenu`, which edits the style token id against the names carried by
+/// [`StyleField::variants`].
+pub trait StyleEnum: Sized + strum::VariantNames {
+    /// Every variant name, in declaration order.
+    fn variants() -> &'static [&'static str] {
+        Self::VARIANTS
+    }
+
+    /// The active variant's stable id.
+    fn variant_id(&self) -> &'static str;
+
+    /// Rebuild the enum as the named variant, with a default payload.
+    ///
+    /// `None` for an id this enum does not have: an unknown write is a no-op,
+    /// exactly like a mismatched [`StyleValue`](kairos_editor_core::StyleValue).
+    fn with_variant(id: &str) -> Option<Self>;
 }
 
 /// One node of a style's field tree: a leaf token or a group of them.
@@ -202,21 +251,20 @@ pub fn humanize(path: &str) -> String {
 }
 
 macro_rules! float_leaf {
-    ($ty:ty) => {
+    ($ty:ty, $variant:ident) => {
         impl StyleNode for $ty {
             fn collect(&self, path: &str, out: &mut Vec<StyleField>) {
-                out.push(StyleField {
-                    path: path.to_owned(),
-                    name: humanize(path),
-                    value: StyleValue::Float(*self as f32),
-                    kind: StyleKind::Float,
-                });
+                out.push(StyleField::new(
+                    path,
+                    humanize(path),
+                    StyleValue::$variant(*self),
+                ));
             }
 
             fn write(&mut self, path: &str, value: &StyleValue) -> bool {
                 match value {
-                    StyleValue::Float(value) if path.is_empty() => {
-                        *self = *value as $ty;
+                    StyleValue::$variant(value) if path.is_empty() => {
+                        *self = *value;
                         true
                     }
                     _ => false,
@@ -227,21 +275,20 @@ macro_rules! float_leaf {
 }
 
 macro_rules! integer_leaf {
-    ($ty:ty, $max:expr) => {
+    ($ty:ty, $variant:ident) => {
         impl StyleNode for $ty {
             fn collect(&self, path: &str, out: &mut Vec<StyleField>) {
-                out.push(StyleField {
-                    path: path.to_owned(),
-                    name: humanize(path),
-                    value: StyleValue::Integer(*self as u32),
-                    kind: StyleKind::Integer { max: $max },
-                });
+                out.push(StyleField::new(
+                    path,
+                    humanize(path),
+                    StyleValue::$variant(*self),
+                ));
             }
 
             fn write(&mut self, path: &str, value: &StyleValue) -> bool {
                 match value {
-                    StyleValue::Integer(value) if path.is_empty() => {
-                        *self = (*value).min($max) as $ty;
+                    StyleValue::$variant(value) if path.is_empty() => {
+                        *self = *value;
                         true
                     }
                     _ => false,
@@ -251,25 +298,33 @@ macro_rules! integer_leaf {
     };
 }
 
-float_leaf!(f32);
-integer_leaf!(u8, u8::MAX as u32);
-integer_leaf!(u16, u16::MAX as u32);
-integer_leaf!(u32, u32::MAX);
-integer_leaf!(usize, u32::MAX);
+float_leaf!(f32, F32);
+float_leaf!(f64, F64);
+// Each integer keeps its own variant, so the page can use the concrete
+// NumberField<N>: no widened integer and no type-bound clamp here.
+integer_leaf!(i8, I8);
+integer_leaf!(i16, I16);
+integer_leaf!(i32, I32);
+integer_leaf!(i64, I64);
+integer_leaf!(isize, Isize);
+integer_leaf!(u8, U8);
+integer_leaf!(u16, U16);
+integer_leaf!(u32, U32);
+integer_leaf!(u64, U64);
+integer_leaf!(usize, Usize);
 
 impl StyleNode for bool {
     fn collect(&self, path: &str, out: &mut Vec<StyleField>) {
-        out.push(StyleField {
-            path: path.to_owned(),
-            name: humanize(path),
-            value: StyleValue::Toggle(*self),
-            kind: StyleKind::Toggle,
-        });
+        out.push(StyleField::new(
+            path,
+            humanize(path),
+            StyleValue::Bool(*self),
+        ));
     }
 
     fn write(&mut self, path: &str, value: &StyleValue) -> bool {
         match value {
-            StyleValue::Toggle(value) if path.is_empty() => {
+            StyleValue::Bool(value) if path.is_empty() => {
                 *self = *value;
                 true
             }
@@ -280,12 +335,11 @@ impl StyleNode for bool {
 
 impl StyleNode for String {
     fn collect(&self, path: &str, out: &mut Vec<StyleField>) {
-        out.push(StyleField {
-            path: path.to_owned(),
-            name: humanize(path),
-            value: StyleValue::Text(self.clone()),
-            kind: StyleKind::Text,
-        });
+        out.push(StyleField::new(
+            path,
+            humanize(path),
+            StyleValue::Text(self.clone()),
+        ));
     }
 
     fn write(&mut self, path: &str, value: &StyleValue) -> bool {
@@ -304,16 +358,15 @@ impl StyleNode for String {
 /// The list itself is a field: `collect` emits it before its entries, so an
 /// *empty* list still exists in the field table (it has a header and a count,
 /// which is what lets the editor add the first entry). Its value is the length;
-/// writing an integer resizes the list, growing with `T::default()` entries.
-/// `edit_list` covers the changes a resize cannot express.
+/// writing a [`StyleValue::ListLen`] resizes the list, growing with
+/// `T::default()` entries. `edit_list` covers the changes a resize cannot
+/// express.
 impl<T: StyleNode + Default> StyleNode for Vec<T> {
     fn collect(&self, path: &str, out: &mut Vec<StyleField>) {
-        out.push(StyleField {
-            path: path.to_owned(),
-            name: humanize(path),
-            value: StyleValue::Integer(self.len() as u32),
-            kind: StyleKind::List,
-        });
+        out.push(
+            StyleField::new(path, humanize(path), StyleValue::ListLen(self.len()))
+                .with_range(0.0, LIST_MAX as f64),
+        );
         for (index, item) in self.iter().enumerate() {
             let child = if path.is_empty() {
                 format!("{index}")
@@ -327,13 +380,13 @@ impl<T: StyleNode + Default> StyleNode for Vec<T> {
     fn write(&mut self, path: &str, value: &StyleValue) -> bool {
         if path.is_empty() {
             // The list node itself: the value is its length.
-            let StyleValue::Integer(len) = value else {
+            let StyleValue::ListLen(len) = value else {
                 return false;
             };
-            if *len > LIST_MAX {
+            if *len > LIST_MAX as usize {
                 return false;
             }
-            self.resize_with(*len as usize, T::default);
+            self.resize_with(*len, T::default);
             return true;
         }
         let (head, tail) = match path.split_once('.') {
@@ -388,12 +441,11 @@ impl<T: StyleNode + Default> StyleNode for Vec<T> {
 
 impl StyleNode for Color {
     fn collect(&self, path: &str, out: &mut Vec<StyleField>) {
-        out.push(StyleField {
-            path: path.to_owned(),
-            name: humanize(path),
-            value: StyleValue::Color(*self),
-            kind: StyleKind::Color,
-        });
+        out.push(StyleField::new(
+            path,
+            humanize(path),
+            StyleValue::Color(*self),
+        ));
     }
 
     fn write(&mut self, path: &str, value: &StyleValue) -> bool {
@@ -409,21 +461,17 @@ impl StyleNode for Color {
 
 impl StyleNode for ColorProperty {
     fn collect(&self, path: &str, out: &mut Vec<StyleField>) {
-        out.push(StyleField {
-            path: path.to_owned(),
-            name: humanize(path),
-            value: StyleValue::Color(self.color),
-            kind: if self.usage.hdr {
-                StyleKind::HdrColor
-            } else {
-                StyleKind::Color
-            },
-        });
+        let value = if self.usage.hdr {
+            StyleValue::HdrColor(self.color)
+        } else {
+            StyleValue::Color(self.color)
+        };
+        out.push(StyleField::new(path, humanize(path), value));
     }
 
     fn write(&mut self, path: &str, value: &StyleValue) -> bool {
         match value {
-            StyleValue::Color(color) if path.is_empty() => {
+            StyleValue::Color(color) | StyleValue::HdrColor(color) if path.is_empty() => {
                 self.color = *color;
                 true
             }
@@ -477,35 +525,84 @@ mod tests {
             "nested groups are dotted; #[style(skip)] stays out"
         );
         assert_eq!(fields[0].name, "Height");
-        assert_eq!(fields[0].kind, StyleKind::Float);
-        assert_eq!(fields[1].kind, StyleKind::Integer { max: 255 });
-        assert_eq!(fields[3].kind, StyleKind::Color);
+        assert_eq!(fields[0].value, StyleValue::F32(20.0));
+        assert_eq!(fields[1].value, StyleValue::U8(3));
+        assert_eq!(
+            fields[3].value,
+            StyleValue::Color(Color::from_srgb8([1, 2, 3, 255]))
+        );
         assert_eq!(fields[4].group(), "icons");
         assert_eq!(fields[4].short_path(), "warning");
     }
 
     #[test]
-    fn setting_by_path_requires_the_kind_to_match() {
+    fn setting_by_path_requires_the_exact_type_to_match() {
         let mut style = style();
 
-        assert!(style.set_style_field("height", &StyleValue::Float(32.0)));
+        assert!(style.set_style_field("height", &StyleValue::F32(32.0)));
         assert_eq!(style.height, 32.0);
 
         assert!(style.set_style_field("icons.warning", &StyleValue::Text("x.png".into())));
         assert_eq!(style.icons.warning, "x.png");
 
-        assert!(!style.set_style_field("height", &StyleValue::Toggle(true)));
-        assert!(!style.set_style_field("missing", &StyleValue::Float(1.0)));
-        assert!(!style.set_style_field("height.nested", &StyleValue::Float(1.0)));
+        assert!(!style.set_style_field("height", &StyleValue::Bool(true)));
+        assert!(!style.set_style_field("missing", &StyleValue::F32(1.0)));
+        assert!(!style.set_style_field("height.nested", &StyleValue::F32(1.0)));
         assert_eq!(style.height, 32.0, "a mismatched write changes nothing");
     }
 
     #[test]
-    fn integer_tokens_clamp_to_their_type() {
+    fn integer_tokens_keep_their_exact_width() {
         let mut style = style();
 
-        assert!(style.set_style_field("radius", &StyleValue::Integer(400)));
+        assert!(style.set_style_field("radius", &StyleValue::U8(255)));
         assert_eq!(style.radius, u8::MAX);
+        assert!(
+            !style.set_style_field("radius", &StyleValue::U16(255)),
+            "a different integer width is not this token's type"
+        );
+        assert_eq!(style.radius, u8::MAX);
+    }
+
+    #[derive(Clone, Debug, PartialEq, StyleFields)]
+    struct SignedStyle {
+        offset: i32,
+    }
+
+    #[derive(Clone, Debug, PartialEq, StyleFields)]
+    struct WideStyle {
+        big: u64,
+        precise: f64,
+    }
+
+    #[test]
+    fn wide_numbers_keep_their_exact_type() {
+        let precise = 0.123_456_789_012_345_67_f64;
+        let mut style = WideStyle {
+            big: u64::MAX,
+            precise,
+        };
+        let fields = style.style_fields();
+
+        assert_eq!(fields[0].value, StyleValue::U64(u64::MAX));
+        assert_eq!(fields[1].value, StyleValue::F64(precise));
+        assert!(style.set_style_field("big", &StyleValue::U64(u64::MAX - 1)));
+        assert_eq!(style.big, u64::MAX - 1);
+    }
+
+    #[test]
+    fn signed_integer_tokens_keep_their_exact_type() {
+        let mut style = SignedStyle { offset: -5 };
+        assert_eq!(style.style_fields()[0].value, StyleValue::I32(-5));
+
+        assert!(style.set_style_field("offset", &StyleValue::I32(-12)));
+        assert_eq!(style.offset, -12);
+
+        assert!(
+            !style.set_style_field("offset", &StyleValue::I64(i32::MAX as i64 + 1)),
+            "a wider integer is not this token's type"
+        );
+        assert_eq!(style.offset, -12);
     }
 
     #[test]
@@ -524,23 +621,170 @@ mod tests {
     }
 
     #[test]
-    fn hdr_colors_are_their_own_kind() {
+    fn hdr_colors_are_their_own_variant() {
         let mut style = HdrStyle {
             glow: ColorProperty::hdr(Color::new(4.0, 1.5, 0.25, 1.0)),
         };
         let fields = style.style_fields();
         assert_eq!(fields.len(), 1);
-        assert_eq!(fields[0].kind, StyleKind::HdrColor);
         assert_eq!(
             fields[0].value,
-            StyleValue::Color(Color::new(4.0, 1.5, 0.25, 1.0))
+            StyleValue::HdrColor(Color::new(4.0, 1.5, 0.25, 1.0))
         );
 
-        assert!(style.set_style_field("glow", &StyleValue::Color(Color::new(2.0, 0.5, 0.0, 0.5))));
+        assert!(style.set_style_field(
+            "glow",
+            &StyleValue::HdrColor(Color::new(2.0, 0.5, 0.0, 0.5))
+        ));
         assert_eq!(
             style.glow,
             ColorProperty::hdr(Color::new(2.0, 0.5, 0.0, 0.5))
         );
+    }
+
+    /// An enum token is one row plus the active variant's payload. Unit and
+    /// struct-like variants share the same expansion: the unit one simply has
+    /// no payload rows.
+    #[derive(Clone, Debug, PartialEq, StyleFields, strum::VariantNames)]
+    enum TestMode {
+        Off,
+        Soft { radius: f32, samples: u32 },
+    }
+
+    #[derive(Clone, Debug, PartialEq, StyleFields)]
+    struct EnumStyle {
+        mode: TestMode,
+    }
+
+    #[test]
+    fn an_enum_token_collects_the_active_variants_fields() {
+        let style = EnumStyle {
+            mode: TestMode::Soft {
+                radius: 4.0,
+                samples: 2,
+            },
+        };
+        let fields = style.style_fields();
+        let paths: Vec<&str> = fields.iter().map(|field| field.path.as_str()).collect();
+
+        assert_eq!(paths, ["mode", "mode.radius", "mode.samples"]);
+        assert_eq!(fields[0].name, "Mode");
+        assert_eq!(fields[0].value, StyleValue::Variant("Soft".to_owned()));
+        assert_eq!(
+            fields[0].variants,
+            Some(<TestMode as StyleEnum>::variants()),
+            "the row carries the variant names as editor metadata"
+        );
+        assert_eq!(
+            <TestMode as StyleEnum>::variants(),
+            ["Off", "Soft"].as_slice(),
+            "the menu reads the enum's own variant names"
+        );
+        assert_eq!(fields[1].name, "Radius");
+        assert_eq!(fields[1].value, StyleValue::F32(4.0));
+
+        let unit = EnumStyle {
+            mode: TestMode::Off,
+        };
+        let paths: Vec<String> = unit
+            .style_fields()
+            .into_iter()
+            .map(|field| field.path)
+            .collect();
+        assert_eq!(paths, ["mode"], "a unit variant has no payload rows");
+    }
+
+    #[test]
+    fn switching_an_enum_rebuilds_the_variant_and_routes_the_payload() {
+        let mut style = EnumStyle {
+            mode: TestMode::Soft {
+                radius: 4.0,
+                samples: 2,
+            },
+        };
+
+        // Re-choosing the active variant keeps its payload untouched.
+        assert!(style.set_style_field("mode", &StyleValue::Variant("Soft".to_owned())));
+        assert_eq!(
+            style.mode,
+            TestMode::Soft {
+                radius: 4.0,
+                samples: 2
+            }
+        );
+
+        // A different variant is rebuilt from Default, Rust's value semantics.
+        assert!(style.set_style_field("mode", &StyleValue::Variant("Off".to_owned())));
+        assert_eq!(style.mode, TestMode::Off);
+        assert!(style.set_style_field("mode", &StyleValue::Variant("Soft".to_owned())));
+        assert_eq!(
+            style.mode,
+            TestMode::Soft {
+                radius: 0.0,
+                samples: 0
+            }
+        );
+
+        // Payload fields are ordinary dotted tokens.
+        assert!(style.set_style_field("mode.radius", &StyleValue::F32(2.5)));
+        assert_eq!(
+            style.mode,
+            TestMode::Soft {
+                radius: 2.5,
+                samples: 0
+            }
+        );
+        assert!(
+            !style.set_style_field("mode.samples", &StyleValue::F32(1.0)),
+            "the payload field's exact type has to match"
+        );
+        assert!(
+            !style.set_style_field("mode", &StyleValue::Variant("Sideways".to_owned())),
+            "an unknown variant is a no-op"
+        );
+        assert_eq!(
+            style.mode,
+            TestMode::Soft {
+                radius: 2.5,
+                samples: 0
+            }
+        );
+    }
+
+    /// A list inside a payload is still a list: its resize and structural
+    /// edits route through the active variant.
+    #[derive(Clone, Debug, PartialEq, StyleFields, strum::VariantNames)]
+    enum TestLayers {
+        None,
+        Stack { items: Vec<f32> },
+    }
+
+    #[derive(Clone, Debug, PartialEq, StyleFields)]
+    struct ListEnumStyle {
+        layers: TestLayers,
+    }
+
+    #[test]
+    fn a_list_inside_an_enum_payload_takes_structural_edits() {
+        let mut style = ListEnumStyle {
+            layers: TestLayers::None,
+        };
+
+        assert!(style.set_style_field("layers", &StyleValue::Variant("Stack".to_owned())));
+        assert!(style.edit_style_list("layers.items", ListEdit::Insert { index: 0 }));
+        assert_eq!(
+            style.layers,
+            TestLayers::Stack { items: vec![0.0] },
+            "the edit reaches the active payload's list"
+        );
+        assert!(style.set_style_field("layers.items", &StyleValue::ListLen(2)));
+        assert_eq!(
+            style.layers,
+            TestLayers::Stack {
+                items: vec![0.0, 0.0]
+            }
+        );
+        assert!(!style.edit_style_list("layers.items", ListEdit::Remove { index: 5 }));
     }
 
     #[test]
