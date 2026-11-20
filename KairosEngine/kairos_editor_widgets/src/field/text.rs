@@ -119,6 +119,26 @@ mod tests {
         assert_eq!(max.index, egui::text::CharIndex(value.chars().count()));
     }
 
+    /// The value is an editable line, so the pointer reads as a caret before the
+    /// click lands.
+    #[test]
+    fn hovering_the_value_shows_the_text_cursor() {
+        let ctx = Context::default();
+        let style = style();
+        let id = Id::new("kairos-field-text-cursor");
+        let mut value = "icons/".to_owned();
+
+        let mut draw = |ui: &mut Ui| {
+            TextField::new(id, &mut value, &style).show(ui, rect());
+        };
+        let _ = ctx.run_ui(input(), &mut draw);
+        let mut hover = input();
+        hover.events = vec![Event::PointerMoved(rect().center())];
+        let output = ctx.run_ui(hover, &mut draw);
+
+        assert_eq!(output.platform_output.cursor_icon, egui::CursorIcon::Text);
+    }
+
     /// The wash is the picker's channel-value blue at ~62%: a solid block would
     /// hide the string being edited.
     #[test]

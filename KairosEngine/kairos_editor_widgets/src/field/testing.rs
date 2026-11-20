@@ -25,8 +25,14 @@ pub(super) fn style() -> FieldStyle {
         )
 }
 
+/// The value box: the right-hand column of a row.
 pub(super) fn rect() -> Rect {
-    Rect::from_min_size(Pos2::ZERO, vec2(120.0, 18.0))
+    Rect::from_min_size(egui::pos2(60.0, 0.0), vec2(120.0, 18.0))
+}
+
+/// The name column of the same row, left of the value box.
+pub(super) fn label_rect() -> Rect {
+    Rect::from_min_size(Pos2::ZERO, vec2(60.0, 18.0))
 }
 
 pub(super) fn button(pos: Pos2, pressed: bool) -> Event {

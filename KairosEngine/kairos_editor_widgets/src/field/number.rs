@@ -5,6 +5,7 @@ use std::fmt::Display;
 use egui::{CursorIcon, Id, Key, Rect, Sense, Ui, WidgetType, pos2, vec2};
 
 use super::edit::{select_all, text_edit_box};
+use super::label::FieldLabelResponse;
 use super::paint::{paint_box, paint_outline};
 use super::style::FieldStyle;
 use super::{FieldOutcome, Scrub};
@@ -96,7 +97,13 @@ impl NumberEdit {
     }
 }
 
-/// A Unity-style number box: the field's name scrubs it, a click types into it.
+/// A Unity-style number box: dragging the field's name scrubs it, a click types
+/// into it.
+///
+/// The name is a separate widget ([FieldLabel]) because the row owns the label
+/// column; [NumberField::dragged_by] hands this pass's name gesture to the box,
+/// so the scrub itself (speed, remainder, clamping) stays here and the row only
+/// wires two widgets together.
 pub struct NumberField<'a, N: Number> {
     id: Id,
     value: &'a mut N,
@@ -104,6 +111,9 @@ pub struct NumberField<'a, N: Number> {
     range: (f64, f64),
     selected: bool,
     label: &'a str,
+    /// The name's gesture this pass.
+    drag: Option<Scrub>,
+    /// The value box itself drags. True until a name supplies the handle.
     box_drag: bool,
 }
 
@@ -116,7 +126,8 @@ impl<'a, N: Number> NumberField<'a, N> {
             range: (f64::NEG_INFINITY, f64::INFINITY),
             selected: false,
             label: "",
-            box_drag: false,
+            drag: None,
+            box_drag: true,
         }
     }
 
@@ -140,30 +151,41 @@ impl<'a, N: Number> NumberField<'a, N> {
         self
     }
 
-    /// Let the box itself drag, for a field with no name to grab (a list's size
-    /// box). Rows scrub through their label instead.
-    pub fn box_drag(mut self, box_drag: bool) -> Self {
-        self.box_drag = box_drag;
+    /// Take this pass's name gesture: Unity scrubs a number by dragging the
+    /// row's name, so the box itself stops being a handle.
+    pub fn dragged_by(mut self, label: &FieldLabelResponse) -> Self {
+        self.drag = label.scrub();
+        self.box_drag = false;
         self
     }
 
     /// Draw the box, or its text editor while the edit buffer belongs here.
-    pub fn show(self, ui: &mut Ui, rect: Rect, edit: &mut Option<NumberEdit>) -> FieldOutcome {
-        if let Some(mut editor) = edit.take() {
+    pub fn show(mut self, ui: &mut Ui, rect: Rect, edit: &mut Option<NumberEdit>) -> FieldOutcome {
+        // The name's scrub lands before the box is drawn, so the value and the
+        // file follow the pointer on the same pass.
+        let mut scrubbed = false;
+        if let Some(scrub) = self.drag.take() {
+            scrubbed = self.apply_scrub(ui, scrub);
+        }
+        let mut outcome = if let Some(mut editor) = edit.take() {
             let outcome = self.draw_editor(ui, rect, &mut editor);
             if !outcome.finished {
                 *edit = Some(editor);
             }
-            return outcome;
+            outcome
+        } else {
+            self.draw_at_rest(ui, rect, edit)
+        };
+        if scrubbed {
+            outcome.response.mark_changed();
         }
-        self.draw_at_rest(ui, rect, edit)
+        outcome
     }
 
-    /// One frame of the label scrub. Returns whether the value changed.
-    pub fn scrub(&mut self, ui: &Ui, scrub: Scrub) -> bool {
+    fn apply_scrub(&mut self, ui: &Ui, scrub: Scrub) -> bool {
         let mut changed = false;
         if scrub.delta != 0.0 {
-            changed = self.drag(ui, scrub.delta);
+            changed = self.drag_value(ui, scrub.delta);
         }
         if scrub.stopped {
             ui.ctx()
@@ -202,10 +224,9 @@ impl<'a, N: Number> NumberField<'a, N> {
         } else {
             Sense::click()
         };
-        let mut response = ui.interact(rect, self.id, sense);
-        if self.box_drag {
-            response = response.on_hover_cursor(CursorIcon::ResizeHorizontal);
-        }
+        let mut response = ui
+            .interact(rect, self.id, sense)
+            .on_hover_cursor(CursorIcon::Text);
         labelled_widget_info(&response, WidgetType::DragValue, self.label, None);
 
         if response.clicked() {
@@ -215,7 +236,7 @@ impl<'a, N: Number> NumberField<'a, N> {
 
         if self.box_drag {
             let delta = response.drag_delta().x - response.drag_delta().y;
-            if response.dragged() && delta != 0.0 && self.drag(ui, delta) {
+            if response.dragged() && delta != 0.0 && self.drag_value(ui, delta) {
                 response.mark_changed();
             }
             if response.drag_stopped() {
@@ -266,7 +287,7 @@ impl<'a, N: Number> NumberField<'a, N> {
         FieldOutcome { response, finished }
     }
 
-    fn drag(&mut self, ui: &Ui, delta: f32) -> bool {
+    fn drag_value(&mut self, ui: &Ui, delta: f32) -> bool {
         let current = (*self.value).as_f64();
         let raw = if N::WHOLE {
             let key = drag_key(self.id);
@@ -322,11 +343,39 @@ fn round_decimal(value: f32, places: i32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::field::testing::{button, click, enter, input, rect, style};
+    use crate::field::FieldLabel;
+    use crate::field::testing::{button, click, enter, input, label_rect, rect, style};
     use egui::{Context, Event};
 
-    fn field<'a>(value: &'a mut f32, style: &'a FieldStyle) -> NumberField<'a, f32> {
-        NumberField::new(Id::new("kairos-field-number"), value, style).label("Width")
+    /// One row, wired the way a page wires it: the name owns the gesture, the
+    /// box owns the value.
+    fn row<N: Number>(
+        ui: &mut Ui,
+        style: &FieldStyle,
+        value: &mut N,
+        edit: &mut Option<NumberEdit>,
+        range: Option<(f64, f64)>,
+    ) {
+        let label = FieldLabel::new(Id::new("kairos-number-name"), "Width", style).draggable(true);
+        let gesture = label.interact(ui, label_rect());
+        let mut field =
+            NumberField::new(Id::new("kairos-number-box"), value, style).dragged_by(&gesture);
+        if let Some((min, max)) = range {
+            field = field.range(min, max);
+        }
+        field.show(ui, rect(), edit);
+    }
+
+    fn drag(from: egui::Pos2, by: f32, ctx: &Context, mut draw: impl FnMut(&mut Ui)) {
+        let mut hover = input();
+        hover.events = vec![Event::PointerMoved(from)];
+        let _ = ctx.run_ui(hover, &mut draw);
+        let mut press = input();
+        press.events = vec![button(from, true)];
+        let _ = ctx.run_ui(press, &mut draw);
+        let mut moved = input();
+        moved.events = vec![Event::PointerMoved(from + egui::vec2(by, 0.0))];
+        let _ = ctx.run_ui(moved, &mut draw);
     }
 
     #[test]
@@ -336,23 +385,17 @@ mod tests {
         let mut value = 1.0_f32;
         let mut edit: Option<NumberEdit> = None;
 
-        let _ = ctx.run_ui(input(), |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
-        });
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
         click(&ctx, rect().center(), |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
+            row(ui, &style, &mut value, &mut edit, None)
         });
         assert!(edit.is_some(), "a click opens the text editor");
 
         // One pass with no events so the editor can focus and select its text.
-        let _ = ctx.run_ui(input(), |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
-        });
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
         let mut typed = input();
         typed.events = vec![Event::Text("7".to_owned()), enter()];
-        let _ = ctx.run_ui(typed, |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
-        });
+        let _ = ctx.run_ui(typed, |ui| row(ui, &style, &mut value, &mut edit, None));
 
         assert_eq!(value, 7.0);
         assert!(edit.is_none(), "Enter ends the edit");
@@ -365,20 +408,14 @@ mod tests {
         let mut value = 2.5_f32;
         let mut edit: Option<NumberEdit> = None;
 
-        let _ = ctx.run_ui(input(), |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
-        });
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
         click(&ctx, rect().center(), |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
+            row(ui, &style, &mut value, &mut edit, None)
         });
-        let _ = ctx.run_ui(input(), |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
-        });
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
         let mut typed = input();
         typed.events = vec![Event::Text("9".to_owned())];
-        let _ = ctx.run_ui(typed, |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
-        });
+        let _ = ctx.run_ui(typed, |ui| row(ui, &style, &mut value, &mut edit, None));
         assert_eq!(value, 9.0, "typing writes the value as it goes");
 
         let mut escape = input();
@@ -389,9 +426,7 @@ mod tests {
             repeat: false,
             modifiers: egui::Modifiers::default(),
         }];
-        let _ = ctx.run_ui(escape, |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
-        });
+        let _ = ctx.run_ui(escape, |ui| row(ui, &style, &mut value, &mut edit, None));
         assert_eq!(
             value, 2.5,
             "Escape restores the value the edit started from"
@@ -403,19 +438,17 @@ mod tests {
     fn a_whole_number_type_rounds_and_clamps_its_typed_value() {
         let ctx = Context::default();
         let style = style();
-        let id = Id::new("kairos-field-u8");
         let mut value = 3_u8;
         let mut edit: Option<NumberEdit> = None;
-        let mut draw = |ui: &mut Ui| {
-            NumberField::new(id, &mut value, &style).show(ui, rect(), &mut edit);
-        };
 
-        let _ = ctx.run_ui(input(), &mut draw);
-        click(&ctx, rect().center(), &mut draw);
-        let _ = ctx.run_ui(input(), &mut draw);
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
+        click(&ctx, rect().center(), |ui| {
+            row(ui, &style, &mut value, &mut edit, None)
+        });
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
         let mut typed = input();
         typed.events = vec![Event::Text("999".to_owned()), enter()];
-        let _ = ctx.run_ui(typed, &mut draw);
+        let _ = ctx.run_ui(typed, |ui| row(ui, &style, &mut value, &mut edit, None));
 
         assert_eq!(value, 255, "a u8 saturates instead of wrapping");
     }
@@ -424,99 +457,103 @@ mod tests {
     fn a_range_narrows_the_value_a_u32_token_may_hold() {
         let ctx = Context::default();
         let style = style();
-        let id = Id::new("kairos-field-range");
         let mut value = 3_u32;
         let mut edit: Option<NumberEdit> = None;
-        let mut draw = |ui: &mut Ui| {
-            NumberField::new(id, &mut value, &style)
-                .range(0.0, 64.0)
-                .show(ui, rect(), &mut edit);
-        };
 
-        let _ = ctx.run_ui(input(), &mut draw);
-        click(&ctx, rect().center(), &mut draw);
-        let _ = ctx.run_ui(input(), &mut draw);
+        let _ = ctx.run_ui(input(), |ui| {
+            row(ui, &style, &mut value, &mut edit, Some((0.0, 64.0)))
+        });
+        click(&ctx, rect().center(), |ui| {
+            row(ui, &style, &mut value, &mut edit, Some((0.0, 64.0)))
+        });
+        let _ = ctx.run_ui(input(), |ui| {
+            row(ui, &style, &mut value, &mut edit, Some((0.0, 64.0)))
+        });
         let mut typed = input();
         typed.events = vec![Event::Text("900".to_owned()), enter()];
-        let _ = ctx.run_ui(typed, &mut draw);
+        let _ = ctx.run_ui(typed, |ui| {
+            row(ui, &style, &mut value, &mut edit, Some((0.0, 64.0)))
+        });
 
         assert_eq!(value, 64);
     }
 
+    /// Unity's inspector scours a number by dragging its name: the box itself
+    /// is a text field, not a handle.
     #[test]
-    fn scrubbing_the_label_moves_a_float_and_steps_a_whole_number() {
-        let ctx = Context::default();
-        let style = style();
-        let id = Id::new("kairos-field-scrub");
-        let mut float = 10.0_f32;
-        let mut whole = 10_u32;
-        let mut edit: Option<NumberEdit> = None;
-
-        let _ = ctx.run_ui(input(), |ui| {
-            let mut number = NumberField::new(id, &mut float, &style);
-            number.scrub(
-                ui,
-                Scrub {
-                    delta: 10.0,
-                    stopped: false,
-                },
-            );
-            number.show(ui, rect(), &mut edit);
-
-            let mut number = NumberField::new(id.with("whole"), &mut whole, &style);
-            number.scrub(
-                ui,
-                Scrub {
-                    delta: 0.4,
-                    stopped: false,
-                },
-            );
-            number.show(ui, rect(), &mut edit);
-        });
-        assert!(
-            float > 10.0,
-            "a rightward scrub raises a float, got {float}"
-        );
-        assert_eq!(whole, 10, "a fourth of a step does not move a whole number");
-
-        let _ = ctx.run_ui(input(), |ui| {
-            let mut number = NumberField::new(id.with("whole"), &mut whole, &style);
-            number.scrub(
-                ui,
-                Scrub {
-                    delta: 0.7,
-                    stopped: true,
-                },
-            );
-            number.show(ui, rect(), &mut edit);
-        });
-        assert_eq!(whole, 11, "the carried fraction crosses a unit");
-    }
-
-    #[test]
-    fn the_box_only_drags_when_it_is_asked_to() {
+    fn dragging_the_name_scrubs_the_value() {
         let ctx = Context::default();
         let style = style();
         let mut value = 10.0_f32;
         let mut edit: Option<NumberEdit> = None;
 
-        let _ = ctx.run_ui(input(), |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
-        });
-        let start = rect().center();
-        let mut press = input();
-        press.events = vec![button(start, true)];
-        let _ = ctx.run_ui(press, |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
-        });
-        let mut moved = input();
-        moved.events = vec![Event::PointerMoved(start + egui::vec2(20.0, 0.0))];
-        let _ = ctx.run_ui(moved, |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
+        drag(label_rect().center(), 20.0, &ctx, |ui| {
+            row(ui, &style, &mut value, &mut edit, None)
         });
 
-        assert_eq!(value, 10.0, "a row scrubs through its name, not its box");
-        assert!(edit.is_none(), "a drag does not open the text editor");
+        assert_eq!(value, 14.0, "20 px on a 10 px value adds 10 * 0.2");
+        assert!(edit.is_none(), "a scrub does not open the text editor");
+    }
+
+    #[test]
+    fn the_box_does_not_scrub_when_the_name_supplies_the_gesture() {
+        let ctx = Context::default();
+        let style = style();
+        let mut value = 10.0_f32;
+        let mut edit: Option<NumberEdit> = None;
+
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
+        drag(rect().center(), 20.0, &ctx, |ui| {
+            row(ui, &style, &mut value, &mut edit, None)
+        });
+
+        assert_eq!(value, 10.0, "the box only clicks into its editor");
+    }
+
+    #[test]
+    fn a_name_less_box_drags_itself() {
+        let ctx = Context::default();
+        let style = style();
+        let mut value = 10.0_f32;
+        let mut edit: Option<NumberEdit> = None;
+
+        let mut draw = |ui: &mut Ui| {
+            NumberField::new(Id::new("kairos-number-box"), &mut value, &style).show(
+                ui,
+                rect(),
+                &mut edit,
+            );
+        };
+        let _ = ctx.run_ui(input(), &mut draw);
+        drag(rect().center(), 20.0, &ctx, |ui| {
+            NumberField::new(Id::new("kairos-number-box"), &mut value, &style).show(
+                ui,
+                rect(),
+                &mut edit,
+            );
+        });
+
+        assert_eq!(value, 14.0, "a size box with no name is its own handle");
+    }
+
+    #[test]
+    fn hovering_the_box_shows_the_text_cursor() {
+        let ctx = Context::default();
+        let style = style();
+        let mut value = 1.0_f32;
+        let mut edit: Option<NumberEdit> = None;
+
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
+        let mut hover = input();
+        hover.events = vec![Event::PointerMoved(rect().center())];
+        let output = ctx.run_ui(hover, |ui| row(ui, &style, &mut value, &mut edit, None));
+
+        assert_eq!(
+            output.platform_output.cursor_icon,
+            egui::CursorIcon::Text,
+            "a click types into the box, so the pointer reads as a caret"
+        );
     }
 
     #[test]
@@ -525,9 +562,7 @@ mod tests {
         let style = style();
         let mut value = 1.0_f32;
         let mut edit: Option<NumberEdit> = None;
-        let output = ctx.run_ui(input(), |ui| {
-            field(&mut value, &style).show(ui, rect(), &mut edit);
-        });
+        let output = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
 
         let fills: Vec<Rect> = output
             .shapes

@@ -60,7 +60,8 @@ use kairos_editor_widgets::color_picker::{
 };
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::field::{
-    FieldLabel, FieldOutcome, FieldStyle, NumberEdit, NumberField, Scrub, TextField, ToggleField,
+    FieldLabel, FieldLabelResponse, FieldOutcome, FieldStyle, NumberEdit, NumberField, TextField,
+    ToggleField,
 };
 use kairos_editor_widgets::paint::labelled_widget_info;
 use kairos_editor_widgets::style::StyleFile;
@@ -925,7 +926,7 @@ impl PageWriter<'_> {
             self.swatches,
             &mut self.clicked,
             count_rect,
-            NumberDrag::Box,
+            None,
         );
         if outcome.changed {
             self.out
@@ -1418,7 +1419,7 @@ impl PageWriter<'_> {
             self.swatches,
             &mut self.clicked,
             value_rect,
-            NumberDrag::Label(label_response.scrub()),
+            Some(&label_response),
         );
 
         if outcome.popup_open {
@@ -1469,15 +1470,6 @@ struct ValueOutcome {
     popup_open: bool,
 }
 
-/// Where a number row takes its scrub gesture from.
-#[derive(Clone, Copy, Debug)]
-enum NumberDrag {
-    /// Unity's inspector: the row's name is the handle, the box only clicks.
-    Label(Option<Scrub>),
-    /// No name to grab (a list's size box): the box itself drags.
-    Box,
-}
-
 /// One token's control: the page's field table mapped onto the reusable field
 /// widgets (kairos_editor_widgets::field). The widgets know boxes, drags and
 /// checkmarks; the mapping between a StyleValue and the plain value a widget
@@ -1494,7 +1486,7 @@ fn draw_value(
     swatches: &mut ColorSwatches,
     clicked: &mut bool,
     rect: Rect,
-    drag: NumberDrag,
+    label: Option<&FieldLabelResponse>,
 ) -> ValueOutcome {
     let path = field.path.clone();
     let id = field_id(key, &path);
@@ -1511,25 +1503,14 @@ fn draw_value(
             let mut number_field = NumberField::new(id, value, field_style)
                 .selected(active)
                 .label(&field.name);
-            if let NumberDrag::Box = drag {
-                number_field = number_field.box_drag(true);
-            }
-            let mut scrubbed = false;
-            if let NumberDrag::Label(Some(scrub)) = drag {
-                scrubbed = number_field.scrub(ui, scrub);
+            if let Some(label) = label {
+                number_field = number_field.dragged_by(label);
             }
             let mut number = take_number(edit, &path);
             let outcome = number_field.show(ui, rect, &mut number);
             keep_number(edit, &path, number);
-            select_row(
-                outcome.clicked() || outcome.response.dragged() || scrubbed,
-                &path,
-                selected,
-                clicked,
-            );
-            let mut out = finished(outcome);
-            out.changed |= scrubbed;
-            out
+            select_row(selected_row(&outcome), &path, selected, clicked);
+            finished(outcome)
         }
         StyleKind::Integer { max } => {
             let StyleValue::Integer(value) = &mut field.value else {
@@ -1539,25 +1520,14 @@ fn draw_value(
                 .range(0.0, max as f64)
                 .selected(active)
                 .label(&field.name);
-            if let NumberDrag::Box = drag {
-                number_field = number_field.box_drag(true);
-            }
-            let mut scrubbed = false;
-            if let NumberDrag::Label(Some(scrub)) = drag {
-                scrubbed = number_field.scrub(ui, scrub);
+            if let Some(label) = label {
+                number_field = number_field.dragged_by(label);
             }
             let mut number = take_number(edit, &path);
             let outcome = number_field.show(ui, rect, &mut number);
             keep_number(edit, &path, number);
-            select_row(
-                outcome.clicked() || outcome.response.dragged() || scrubbed,
-                &path,
-                selected,
-                clicked,
-            );
-            let mut out = finished(outcome);
-            out.changed |= scrubbed;
-            out
+            select_row(selected_row(&outcome), &path, selected, clicked);
+            finished(outcome)
         }
         StyleKind::Text => {
             let StyleValue::Text(value) = &mut field.value else {
@@ -1613,8 +1583,12 @@ fn keep_number(edit: &mut Option<FieldEdit>, path: &str, number: Option<NumberEd
     }
 }
 
-/// A click (or a scrub) on a value selects its row, so the name turns blue and
-/// the box keeps the accent edge.
+/// A click, a scrub or a typed value on a box selects its row, so the name turns
+/// blue and the box keeps the accent edge.
+fn selected_row(outcome: &FieldOutcome) -> bool {
+    outcome.clicked() || outcome.changed() || outcome.response.dragged()
+}
+
 fn select_row(clicked: bool, path: &str, selected: &mut Option<String>, out: &mut bool) {
     if clicked {
         *selected = Some(path.to_owned());
@@ -2828,6 +2802,25 @@ mod tests {
                 panel: panels::CONSOLE,
             })),
             "the release persists the scrub: {actions:?}"
+        );
+    }
+
+    /// The pointer says what each half of a row does before the click lands:
+    /// the name is the scrub handle, the box is an editable value.
+    #[test]
+    fn the_name_and_the_value_box_show_their_own_cursors() {
+        let mut harness = Harness::new(skins());
+        harness.frame(Vec::new());
+
+        let value = harness.rect_of(field_id(panels::CONSOLE, "height"));
+        let (output, _) = harness.frame(vec![egui::Event::PointerMoved(value.center())]);
+        assert_eq!(output.platform_output.cursor_icon, egui::CursorIcon::Text);
+
+        let name = harness.rect_of(label_id(panels::CONSOLE, "height"));
+        let (output, _) = harness.frame(vec![egui::Event::PointerMoved(name.center())]);
+        assert_eq!(
+            output.platform_output.cursor_icon,
+            egui::CursorIcon::ResizeHorizontal
         );
     }
 

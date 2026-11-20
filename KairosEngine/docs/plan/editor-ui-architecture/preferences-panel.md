@@ -198,7 +198,7 @@ StyleFields::set_style_field(path, value)
 - **Zebra 行**：每条叶子行铺满整行背景，`row_odd` / `row_even` 交替；组头用 `group_background`，悬停 `group_hover`。`row_gap = 0`，条带连续。
 - **Unity 值框**：`control_rail` 暗底、`control_edge` 1 px 框、0 圆角、文字左对齐并留 `field_padding`；悬停时框线变 `control_edge_hover`。Float/Integer 点击进入行内文本编辑（全选、Esc 还原、Enter/失焦提交），拖动仍然是 scrub；Text 直接是单行 `TextEdit`；Toggle 是 Unity 的方形 checkbox（`checkbox_size`）。
 - **值框是共享 widget，一个控件一个文件**：`field/style.rs`（FieldStyle）、`field/paint.rs`（底色/描边/勾）、`field/edit.rs`（行内编辑器与 Unity 的选中蒙版）、`field/number.rs`（NumberField + Number trait）、`field/text.rs`、`field/toggle.rs`、`field/label.rs`。NumberField 对任意 Rust 基本类型生效（f32/f64/i8..i64/u8..u64/usize/isize）：显示走类型自己的 Display（f32 不会变成 f64 噪声），写回按类型自身的范围取整截断，样式 token 的额外上限用 `.range(0.0, max)` 收窄。`FieldOutcome::finished` 是「这次键入结束」的信号，页面据此写盘；行内编辑缓冲 `NumberEdit` 由页面持有，整数的拖动余量放在 egui 临时存储里。
-- **数字靠名称拖拽**：名称是 `FieldLabel`（Unity 的 scrub handle），悬停变左右箭头光标，按住左右拖改值；值框本身只处理点击进入行内编辑（列表的 size 框没有名称，才用 `box_drag(true)` 让框自己拖）。整数的分数位移攒在 egui 临时存储里，慢拖也能跨过 1。
+- **数字靠名称拖拽**：名称是 `FieldLabel`（Unity 的 scrub handle），悬停变左右箭头光标，按住左右拖改值。拖拽属于 `NumberField`：页面把本帧的名称手势交进去（`dragged_by(&FieldLabelResponse)`），速度、整数余量、范围截断都在 widget 里，页面只是把两个 widget 接起来。值框本身只处理点击进入行内编辑，悬停是文本光标；没有名称的框（列表的 size 框）默认自己就是手柄。
 - **选中文字用取色器同款蒙版**：数字编辑框与文本字段全选时不再铺实心 accent，而是 accent 的 62%（`from_rgba_unmultiplied(.., 160)`）+ 不透明 selection stroke，数字仍然可读——和取色器通道值一致。文本字段第一次获得焦点即全选，所以直接打字就是替换。
 - 名称列、Zebra 条带与两栏几何仍属于页面的行版面——那是 inspector 的排版，不是控件。
 - **颜色字段**：`Color` 是 Unity Inspector 的整条 swatch + 右侧吸管槽（不再在行内重复 hex）；`ColorProperty` 额外带字段策略，HDR 行的 swatch 右上角叠一个对比色 `HDR` 角标。透明色先画棋盘格再叠色。点 swatch 选中该行并打开 picker；点字段名只选中。`Color` 是 8 字节 linear f16×4；HDR/LDR 不是值类型，而是 `ColorUsage`。

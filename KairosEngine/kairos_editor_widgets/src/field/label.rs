@@ -95,20 +95,20 @@ impl FieldLabelResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::field::testing::{button, input, rect, style};
+    use crate::field::testing::{button, input, label_rect, style};
     use egui::{Context, Event};
 
     fn draw(style: &FieldStyle, ui: &mut Ui) -> FieldLabelResponse {
         FieldLabel::new(Id::new("kairos-field-label"), "Width", style)
             .draggable(true)
-            .interact(ui, rect())
+            .interact(ui, label_rect())
     }
 
     #[test]
     fn a_draggable_name_reports_the_scrub_delta() {
         let ctx = Context::default();
         let style = style();
-        let start = rect().center();
+        let start = label_rect().center();
 
         let _ = ctx.run_ui(input(), |ui| {
             draw(&style, ui);
@@ -126,15 +126,36 @@ mod tests {
         });
     }
 
+    /// Unity's scrub cursor: the name is a handle, so the pointer says so before
+    /// the user has to guess.
+    #[test]
+    fn hovering_a_draggable_name_shows_the_scrub_cursor() {
+        let ctx = Context::default();
+        let style = style();
+        let _ = ctx.run_ui(input(), |ui| {
+            draw(&style, ui);
+        });
+        let mut hover = input();
+        hover.events = vec![egui::Event::PointerMoved(label_rect().center())];
+        let output = ctx.run_ui(hover, |ui| {
+            draw(&style, ui);
+        });
+
+        assert_eq!(
+            output.platform_output.cursor_icon,
+            egui::CursorIcon::ResizeHorizontal
+        );
+    }
+
     #[test]
     fn a_plain_name_has_no_scrub() {
         let ctx = Context::default();
         let style = style();
         let _ = ctx.run_ui(input(), |ui| {
             let widget = FieldLabel::new(Id::new("kairos-field-label-plain"), "Visible", &style);
-            let label = widget.interact(ui, rect());
+            let label = widget.interact(ui, label_rect());
             assert!(label.scrub().is_none());
-            widget.paint(ui, rect(), true);
+            widget.paint(ui, label_rect(), true);
         });
     }
 }
