@@ -54,9 +54,6 @@ impl<'a> TextField<'a> {
 
         let chars = value.chars().count();
         let response = text_edit_box(ui, rect, id, value, style);
-        if !ui.input(|input| input.pointer.any_down()) && ui.rect_contains_pointer(rect) {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
-        }
         if response.gained_focus() {
             // Unity enters a field with its whole value selected, so typing
             // replaces the old text instead of landing in the middle of it.

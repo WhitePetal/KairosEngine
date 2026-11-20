@@ -15,6 +15,7 @@
 mod app;
 mod branding;
 mod consts;
+mod cursor;
 mod effects;
 mod eyedropper;
 mod host;
