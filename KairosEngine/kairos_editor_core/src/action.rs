@@ -10,7 +10,7 @@
 //! becomes a second global message bus.
 
 use crate::panel::PanelId;
-use crate::style::{SharedStyleId, StyleValue};
+use crate::style::{ListEdit, SharedStyleId, StyleValue};
 
 /// Aggregate UI intent, routed by domain slice.
 #[derive(Clone, Debug, PartialEq)]
@@ -72,6 +72,17 @@ pub enum StyleAction {
         path: String,
         value: StyleValue,
     },
+    /// Insert, remove or move one entry of a list token.
+    ///
+    /// The list's length is itself a token: `SetField` with an `Integer`
+    /// resizes the list (growing appends defaults, shrinking drops from the
+    /// end). This edit carries the changes a resize cannot express — inserting
+    /// in the middle, removing an entry that is not the last, reordering.
+    EditList {
+        panel: PanelId,
+        path: String,
+        edit: ListEdit,
+    },
     /// The interaction that started the edit ended: write the panel's skin file.
     Commit { panel: PanelId },
 }
@@ -90,6 +101,13 @@ pub enum SharedStyleAction {
         style: SharedStyleId,
         path: String,
         value: StyleValue,
+    },
+    /// Insert, remove or move one entry of a list token; see
+    /// [`StyleAction::EditList`].
+    EditList {
+        style: SharedStyleId,
+        path: String,
+        edit: ListEdit,
     },
     /// The interaction ended: write the shared style's RON file.
     Commit { style: SharedStyleId },

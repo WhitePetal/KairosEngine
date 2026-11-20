@@ -1,8 +1,8 @@
 //! Shared-style slice: routing only, exactly like the panel-skin slice.
 
 use kairos_editor_core::{
-    Action, EditorState, Effect, SharedStyleAction, SharedStyleEffect, SharedStyleId, StyleValue,
-    reduce,
+    Action, EditorState, Effect, ListEdit, SharedStyleAction, SharedStyleEffect, SharedStyleId,
+    StyleValue, reduce,
 };
 
 const COLOR_PICKER: SharedStyleId = SharedStyleId("color_picker");
@@ -22,6 +22,30 @@ fn a_shared_field_edit_becomes_a_registry_write() {
             style: COLOR_PICKER,
             path: "accent".to_owned(),
             value: StyleValue::Color(kairos_color::Color::from_srgb8([1, 2, 3, 255])),
+        })]
+    );
+}
+
+/// A shared list edit routes to the registry's list write, like a shared field
+/// edit routes to its field write.
+#[test]
+fn a_shared_list_edit_becomes_a_registry_list_write() {
+    let mut state = EditorState::new();
+    let edit = ListEdit::Insert { index: 0 };
+
+    assert_eq!(
+        reduce(
+            &mut state,
+            Action::SharedStyle(SharedStyleAction::EditList {
+                style: COLOR_PICKER,
+                path: "proportional".to_owned(),
+                edit,
+            })
+        ),
+        vec![Effect::SharedStyle(SharedStyleEffect::EditList {
+            style: COLOR_PICKER,
+            path: "proportional".to_owned(),
+            edit,
         })]
     );
 }

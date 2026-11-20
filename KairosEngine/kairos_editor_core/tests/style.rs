@@ -1,7 +1,7 @@
 //! Style slice: routing only — the value lands in the panel, not in state.
 
 use kairos_editor_core::{
-    Action, EditorState, Effect, PanelId, StyleAction, StyleEffect, StyleValue, reduce,
+    Action, EditorState, Effect, ListEdit, PanelId, StyleAction, StyleEffect, StyleValue, reduce,
 };
 
 const CONSOLE: PanelId = PanelId("console");
@@ -21,6 +21,30 @@ fn a_field_edit_becomes_the_panel_write_it_needs() {
             panel: CONSOLE,
             path: "toolbar_height".to_owned(),
             value: StyleValue::Float(30.0),
+        })]
+    );
+}
+
+/// A list edit is not a value write: it becomes the structural write the
+/// panel's own style applies (the path names the list, not an entry).
+#[test]
+fn a_list_edit_becomes_a_list_write() {
+    let mut state = EditorState::new();
+    let edit = ListEdit::Move { from: 0, to: 2 };
+
+    assert_eq!(
+        reduce(
+            &mut state,
+            Action::Style(StyleAction::EditList {
+                panel: CONSOLE,
+                path: "category_palette".to_owned(),
+                edit,
+            })
+        ),
+        vec![Effect::Style(StyleEffect::EditList {
+            panel: CONSOLE,
+            path: "category_palette".to_owned(),
+            edit,
         })]
     );
 }

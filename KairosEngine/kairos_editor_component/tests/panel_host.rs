@@ -2,11 +2,12 @@
 //! the dock viewer adapter and the close-as-intent path. No window, no GPU.
 
 use egui::{Context, Pos2, RawInput, Rect, Vec2};
+use kairos_editor_component::skin::StyleKind;
 use kairos_editor_component::{
     ConsoleLine, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelId, PanelInstanceId,
     UiOut, panels,
 };
-use kairos_editor_core::{EditorState, LayoutState, StyleValue};
+use kairos_editor_core::{EditorState, LayoutState, ListEdit, StyleValue};
 use kairos_editor_docking::viewer::TabViewer;
 use kairos_log::Level;
 use kairos_profile::profiling;
@@ -336,6 +337,38 @@ fn skin_fields_are_listed_and_written_through_the_host() {
         .find(|field| field.path == "toolbar_height")
         .expect("toolbar_height");
     assert_eq!(height.value, StyleValue::Float(30.0));
+
+    // A list token grows, shrinks and reorders through the same host path.
+    let palette_len = |host: &PanelHost| -> u32 {
+        let skins = host.skins(&state);
+        let profiler = skins
+            .iter()
+            .find(|skin| skin.panel == panels::PROFILER)
+            .expect("profiler skin");
+        let palette = profiler
+            .fields
+            .iter()
+            .find(|field| field.path == "category_palette")
+            .expect("the profiler palette is a list token");
+        assert_eq!(palette.kind, StyleKind::List);
+        let StyleValue::Integer(len) = palette.value else {
+            panic!("a list token's value is its length");
+        };
+        len
+    };
+    let len = palette_len(&host);
+    assert!(host.edit_skin_list(
+        panels::PROFILER,
+        "category_palette",
+        ListEdit::Remove { index: 0 }
+    ));
+    assert_eq!(palette_len(&host), len - 1);
+    assert!(!host.edit_skin_list(
+        panels::PROFILER,
+        "category_palette",
+        ListEdit::Remove { index: 999 }
+    ));
+    assert!(!host.edit_skin_list(panels::PROFILER, "nope", ListEdit::Insert { index: 0 }));
 
     // A panel that is not open has no instance, so it has no skin to write.
     assert!(

@@ -140,6 +140,14 @@ pub trait Panel: PanelRegister {
         false
     }
 
+    /// Apply one structural list edit to this panel's live skin.
+    ///
+    /// Same owner and same validation as [`Panel::set_skin_field`]; the
+    /// default is "this panel has no list tokens".
+    fn edit_skin_list(&mut self, _path: &str, _edit: kairos_editor_core::ListEdit) -> bool {
+        false
+    }
+
     /// Persist this panel's live style to its skin file.
     ///
     /// Called when the user finishes an edit (pointer release, page change,

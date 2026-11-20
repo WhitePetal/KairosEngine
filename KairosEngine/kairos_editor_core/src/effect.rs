@@ -12,7 +12,7 @@
 //! styles are separate slices because they have different owners.
 
 use crate::PanelId;
-use crate::style::{SharedStyleId, StyleValue};
+use crate::style::{ListEdit, SharedStyleId, StyleValue};
 
 /// One unit of host work returned by `reduce`.
 #[derive(Clone, Debug, PartialEq)]
@@ -68,6 +68,12 @@ pub enum StyleEffect {
         path: String,
         value: StyleValue,
     },
+    /// Apply one structural list edit to the panel's live style.
+    EditList {
+        panel: PanelId,
+        path: String,
+        edit: ListEdit,
+    },
     /// Persist the panel's live style to its RON file.
     Persist { panel: PanelId },
 }
@@ -83,6 +89,12 @@ pub enum SharedStyleEffect {
         style: SharedStyleId,
         path: String,
         value: StyleValue,
+    },
+    /// Apply one structural list edit to the live shared style.
+    EditList {
+        style: SharedStyleId,
+        path: String,
+        edit: ListEdit,
     },
     /// Persist the live shared style to its RON file.
     Persist { style: SharedStyleId },

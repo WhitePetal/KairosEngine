@@ -25,7 +25,7 @@
 //! persists; it does not know about the Preferences panel.
 
 use kairos_color::Color;
-use kairos_editor_core::{PanelId, StyleValue};
+use kairos_editor_core::{ListEdit, PanelId, StyleValue};
 use kairos_editor_widgets::color_picker::ColorProperty;
 use kairos_editor_widgets::style::{Style, StyleFile};
 
@@ -53,7 +53,22 @@ pub enum StyleKind {
     Color,
     /// A linear-light HDR color (channels may exceed 1).
     HdrColor,
+    /// A list of tokens (`Vec<T>`) rather than one token.
+    ///
+    /// The field's value is the list's length as an [`StyleValue::Integer`],
+    /// so writing the field resizes the list. The editor draws it as a list
+    /// header (name, count, add/remove) instead of a row with a value box.
+    List,
 }
+
+/// Largest list the editor will grow a `Vec<T>` token to.
+///
+/// A list token is a hand-authored style value (a font fallback chain, the
+/// profiler's category palette), not a user document, so a few dozen entries
+/// is the whole range that exists. The cap keeps a dragged or typed count from
+/// allocating an unbounded number of default entries; a file may still author
+/// more, it just cannot be grown past this from the editor.
+pub const LIST_MAX: u32 = 64;
 
 /// One editable token of a panel's skin.
 #[derive(Clone, Debug, PartialEq)]
@@ -91,6 +106,15 @@ pub trait StyleFields {
     /// Write one token by dotted path. Returns whether the path named a field
     /// of the matching kind; a mismatched value leaves the style untouched.
     fn set_style_field(&mut self, path: &str, value: &StyleValue) -> bool;
+
+    /// Insert, remove or move one entry of the list token at `path`.
+    ///
+    /// Returns whether `path` named a list (and the edit was in range). The
+    /// default is "this style has no lists"; the derive generates the routing
+    /// and `Vec<T>` implements the edit itself.
+    fn edit_style_list(&mut self, _path: &str, _edit: ListEdit) -> bool {
+        false
+    }
 }
 
 /// One node of a style's field tree: a leaf token or a group of them.
@@ -106,6 +130,15 @@ pub trait StyleNode {
     /// Write one leaf below this node. `path` is the remainder after the
     /// node's own key: empty means this node itself is the leaf.
     fn write(&mut self, path: &str, value: &StyleValue) -> bool;
+
+    /// Apply one structural list edit below this node, with the same
+    /// remainder-path convention as [`StyleNode::write`].
+    ///
+    /// The default is "no list here"; `Vec<T>` implements it and a derived
+    /// struct routes it like a write.
+    fn edit_list(&mut self, _path: &str, _edit: ListEdit) -> bool {
+        false
+    }
 }
 
 /// One panel's editable skin, as the Preferences panel sees it.
@@ -266,10 +299,21 @@ impl StyleNode for String {
     }
 }
 
-/// A list of tokens (the Profiler's category palette): each item is a field
-/// addressed by its index, so a list is editable without a bespoke widget.
-impl<T: StyleNode> StyleNode for Vec<T> {
+/// A list of tokens (the Profiler's category palette, a font fallback chain).
+///
+/// The list itself is a field: `collect` emits it before its entries, so an
+/// *empty* list still exists in the field table (it has a header and a count,
+/// which is what lets the editor add the first entry). Its value is the length;
+/// writing an integer resizes the list, growing with `T::default()` entries.
+/// `edit_list` covers the changes a resize cannot express.
+impl<T: StyleNode + Default> StyleNode for Vec<T> {
     fn collect(&self, path: &str, out: &mut Vec<StyleField>) {
+        out.push(StyleField {
+            path: path.to_owned(),
+            name: humanize(path),
+            value: StyleValue::Integer(self.len() as u32),
+            kind: StyleKind::List,
+        });
         for (index, item) in self.iter().enumerate() {
             let child = if path.is_empty() {
                 format!("{index}")
@@ -281,6 +325,17 @@ impl<T: StyleNode> StyleNode for Vec<T> {
     }
 
     fn write(&mut self, path: &str, value: &StyleValue) -> bool {
+        if path.is_empty() {
+            // The list node itself: the value is its length.
+            let StyleValue::Integer(len) = value else {
+                return false;
+            };
+            if *len > LIST_MAX {
+                return false;
+            }
+            self.resize_with(*len as usize, T::default);
+            return true;
+        }
         let (head, tail) = match path.split_once('.') {
             Some((head, tail)) => (head, tail),
             None => (path, ""),
@@ -290,6 +345,44 @@ impl<T: StyleNode> StyleNode for Vec<T> {
         };
         self.get_mut(index)
             .is_some_and(|item| item.write(tail, value))
+    }
+
+    fn edit_list(&mut self, path: &str, edit: ListEdit) -> bool {
+        let (head, tail) = match path.split_once('.') {
+            Some((head, tail)) => (head, tail),
+            None => (path, ""),
+        };
+        if head.is_empty() && tail.is_empty() {
+            return match edit {
+                ListEdit::Insert { index } => {
+                    let at = index.min(self.len());
+                    self.insert(at, T::default());
+                    true
+                }
+                ListEdit::Remove { index } => {
+                    if index >= self.len() {
+                        return false;
+                    }
+                    self.remove(index);
+                    true
+                }
+                ListEdit::Move { from, to } => {
+                    if from >= self.len() || to >= self.len() {
+                        return false;
+                    }
+                    if from != to {
+                        let item = self.remove(from);
+                        self.insert(to, item);
+                    }
+                    true
+                }
+            };
+        }
+        let Ok(index) = head.parse::<usize>() else {
+            return false;
+        };
+        self.get_mut(index)
+            .is_some_and(|item| item.edit_list(tail, edit))
     }
 }
 

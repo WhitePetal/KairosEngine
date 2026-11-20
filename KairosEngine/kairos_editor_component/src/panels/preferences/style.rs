@@ -110,6 +110,18 @@ pub struct PreferencesPanelStyle {
     /// Side of the square boolean checkbox.
     pub checkbox_size: f32,
 
+    /// Band of a selected list element (Unity's inspector blue).
+    pub list_selection: Color,
+    /// Height of the list header's add/remove control.
+    pub list_button_height: f32,
+    /// Width of one cell of that control; it is two cells side by side.
+    pub list_button_cell_width: f32,
+    /// Left gutter of a list element, holding the drag handle. The divider that
+    /// separates it from the element's content sits at its right edge.
+    pub list_gutter_width: f32,
+    /// Width of the list header's size box.
+    pub list_count_width: f32,
+
     /// Space between the last row and the rule above the footer.
     pub footer_gap: f32,
     pub footer_height: f32,
@@ -190,6 +202,12 @@ impl Style for PreferencesPanelStyle {
             scrollbar_gap: 8.0,
             checkbox_size: 15.0,
 
+            list_selection: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
+            list_button_height: 18.0,
+            list_button_cell_width: 24.0,
+            list_gutter_width: 20.0,
+            list_count_width: 48.0,
+
             footer_gap: 10.0,
             footer_height: 22.0,
 
@@ -232,6 +250,7 @@ impl Style for PreferencesPanelStyle {
             control_edge_hover: Color::from_srgb8([0x7A, 0x7A, 0x7A, 255]),
             control_value: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
             accent: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
+            list_selection: Color::from_srgb8([0xB9, 0xD7, 0xF2, 255]),
 
             button_fill: Color::from_srgb8([0xF5, 0xF5, 0xF5, 255]),
             button_hover: Color::WHITE,

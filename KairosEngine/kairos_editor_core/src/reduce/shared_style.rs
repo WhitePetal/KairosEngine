@@ -17,6 +17,13 @@ pub(super) fn reduce(_state: &mut EditorState, action: SharedStyleAction) -> Vec
                 value,
             })]
         }
+        SharedStyleAction::EditList { style, path, edit } => {
+            vec![Effect::SharedStyle(SharedStyleEffect::EditList {
+                style,
+                path,
+                edit,
+            })]
+        }
         SharedStyleAction::Commit { style } => {
             vec![Effect::SharedStyle(SharedStyleEffect::Persist { style })]
         }

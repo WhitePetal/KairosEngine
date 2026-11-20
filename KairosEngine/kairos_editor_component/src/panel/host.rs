@@ -127,6 +127,20 @@ impl PanelHost {
             .is_some_and(|instance| instance.set_skin_field(path, value))
     }
 
+    /// Apply one structural list edit to a live panel's skin. `false` when the
+    /// panel is not open or the path is not a list.
+    pub fn edit_skin_list(
+        &mut self,
+        panel: PanelId,
+        path: &str,
+        edit: kairos_editor_core::ListEdit,
+    ) -> bool {
+        self.instances
+            .values_mut()
+            .find(|instance| instance.kind() == panel)
+            .is_some_and(|instance| instance.edit_skin_list(path, edit))
+    }
+
     /// Persist one live panel's skin to its RON file.
     pub fn save_skin(&self, panel: PanelId, ctx: &egui::Context) -> Result<(), String> {
         let Some(instance) = self

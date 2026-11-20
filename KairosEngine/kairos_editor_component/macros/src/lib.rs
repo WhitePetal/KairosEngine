@@ -236,6 +236,19 @@ fn expand_panel(args: TokenStream2, mut item: ItemImpl) -> syn::Result<TokenStre
             }
         });
         item.items.push(parse_quote! {
+            fn edit_skin_list(
+                &mut self,
+                path: &str,
+                edit: ::kairos_editor_core::ListEdit,
+            ) -> bool {
+                ::kairos_editor_component::skin::StyleFields::edit_style_list(
+                    &mut self.style,
+                    path,
+                    edit,
+                )
+            }
+        });
+        item.items.push(parse_quote! {
             fn save_skin(
                 &self,
                 ctx: &::egui::Context,
@@ -384,6 +397,7 @@ fn expand_style_fields(input: DeriveInput) -> syn::Result<TokenStream2> {
 
     let mut collects = Vec::new();
     let mut writes = Vec::new();
+    let mut edits = Vec::new();
     for field in fields {
         if is_skipped(field) {
             continue;
@@ -404,6 +418,9 @@ fn expand_style_fields(input: DeriveInput) -> syn::Result<TokenStream2> {
         });
         writes.push(quote! {
             #key => ::kairos_editor_component::skin::StyleNode::write(&mut self.#ident, tail, value),
+        });
+        edits.push(quote! {
+            #key => ::kairos_editor_component::skin::StyleNode::edit_list(&mut self.#ident, tail, edit),
         });
     }
 
@@ -431,6 +448,21 @@ fn expand_style_fields(input: DeriveInput) -> syn::Result<TokenStream2> {
                     _ => false,
                 }
             }
+
+            fn edit_list(
+                &mut self,
+                path: &str,
+                edit: ::kairos_editor_core::ListEdit,
+            ) -> bool {
+                let (head, tail) = match path.split_once('.') {
+                    ::std::option::Option::Some((head, tail)) => (head, tail),
+                    ::std::option::Option::None => (path, ""),
+                };
+                match head {
+                    #(#edits)*
+                    _ => false,
+                }
+            }
         }
 
         impl ::kairos_editor_component::skin::StyleFields for #name {
@@ -446,6 +478,14 @@ fn expand_style_fields(input: DeriveInput) -> syn::Result<TokenStream2> {
                 value: &::kairos_editor_core::StyleValue,
             ) -> bool {
                 ::kairos_editor_component::skin::StyleNode::write(self, path, value)
+            }
+
+            fn edit_style_list(
+                &mut self,
+                path: &str,
+                edit: ::kairos_editor_core::ListEdit,
+            ) -> bool {
+                ::kairos_editor_component::skin::StyleNode::edit_list(self, path, edit)
             }
         }
 

@@ -22,9 +22,10 @@ use serde::{Deserialize, Serialize};
 ///
 /// The shell's font skin stores this alongside each entry, so it keeps the
 /// serde derives even though the install structure itself is a runtime value.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FontPriority {
     /// Goes in front of its family, so it draws the editor's text.
+    #[default]
     First,
     /// Appends to its family, so it is a fallback for glyphs the front lacks.
     Push,

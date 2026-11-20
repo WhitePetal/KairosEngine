@@ -283,11 +283,17 @@ fn describe(action: &Action) -> String {
             StyleAction::SetField { panel, path, .. } => {
                 format!("set {panel} skin: {path}")
             }
+            StyleAction::EditList { panel, path, edit } => {
+                format!("edit {panel} skin list: {path} {edit:?}")
+            }
             StyleAction::Commit { panel } => format!("save {panel} skin"),
         },
         Action::SharedStyle(action) => match action {
             SharedStyleAction::SetField { style, path, .. } => {
                 format!("set {style} shared skin: {path}")
+            }
+            SharedStyleAction::EditList { style, path, edit } => {
+                format!("edit {style} shared skin list: {path} {edit:?}")
             }
             SharedStyleAction::Commit { style } => format!("save {style} shared skin"),
             SharedStyleAction::Reload { style } => format!("reload {style} shared skin"),

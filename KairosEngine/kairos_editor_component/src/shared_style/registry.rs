@@ -131,6 +131,18 @@ impl SharedStyles {
             .is_some_and(|entry| entry.value.set_style_field(path, value))
     }
 
+    /// Insert, remove or move one entry of a list token on the live style.
+    pub fn edit_list(
+        &mut self,
+        id: SharedStyleId,
+        path: &str,
+        edit: kairos_editor_core::ListEdit,
+    ) -> bool {
+        self.entries
+            .get_mut(&id)
+            .is_some_and(|entry| entry.value.edit_style_list(path, edit))
+    }
+
     /// Persist one live style into its RON file.
     pub fn save(&self, id: SharedStyleId, theme: egui::Theme) -> Result<(), String> {
         let Some(entry) = self.entries.get(&id) else {
@@ -168,6 +180,8 @@ impl Default for SharedStyles {
 #[cfg(test)]
 mod tests {
     use kairos_color::Color;
+
+    use kairos_editor_core::ListEdit;
 
     use super::*;
     use crate::shared_style::{COLOR_PICKER, EditorFonts, FONTS, TOOLBAR};
@@ -227,6 +241,39 @@ mod tests {
                 .any(|field| field.path == "proportional.0.name"),
             "font entries are indexed token groups"
         );
+    }
+
+    /// A list token grows, shrinks and reorders on the live style; the panel
+    /// path and the shared-style path share the same validation.
+    #[test]
+    fn a_list_edit_lands_on_the_live_style() {
+        let mut shared = SharedStyles::default();
+        let entries = shared
+            .get::<EditorFonts>(FONTS)
+            .expect("fonts style")
+            .proportional
+            .len();
+
+        assert!(shared.edit_list(FONTS, "proportional", ListEdit::Insert { index: 0 }));
+        assert_eq!(
+            shared
+                .get::<EditorFonts>(FONTS)
+                .expect("fonts")
+                .proportional
+                .len(),
+            entries + 1
+        );
+        assert!(shared.edit_list(FONTS, "proportional", ListEdit::Remove { index: 0 }));
+        assert_eq!(
+            shared
+                .get::<EditorFonts>(FONTS)
+                .expect("fonts")
+                .proportional
+                .len(),
+            entries
+        );
+        assert!(!shared.edit_list(FONTS, "proportional", ListEdit::Remove { index: 99 }));
+        assert!(!shared.edit_list(FONTS, "missing", ListEdit::Insert { index: 0 }));
     }
 
     #[test]

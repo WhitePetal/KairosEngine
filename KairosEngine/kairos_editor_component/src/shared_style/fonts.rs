@@ -11,9 +11,11 @@
 //! the call site. That is the same split the color picker uses between its
 //! serde skin and its runtime tokens.
 //!
-//! The list's **shape** (how many fonts, in which order) still comes from the
-//! file: the page edits the rows a file has, while adding or removing a row
-//! needs a bespoke list editor — the same limit as the Profiler's palette.
+//! The list's **shape** is editable too: the list node carries the entry
+//! count, so the page's list header can add, remove and reorder entries (the
+//! order is meaningful: the first `First` entry registers the family, later
+//! ones are fallbacks). `priority` stays file-authored until the enum field
+//! widget lands.
 
 use std::path::PathBuf;
 
@@ -39,7 +41,7 @@ pub struct EditorFonts {
 }
 
 /// One font file in the list.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, StyleFields)]
 pub struct FontEntry {
     /// Family name registered with egui.
     pub name: String,
@@ -116,8 +118,10 @@ impl SharedStyle for EditorFonts {
 mod tests {
     use kairos_editor_widgets::style::StyleFile;
 
+    use kairos_editor_core::{ListEdit, StyleValue};
+
     use super::*;
-    use crate::skin::{StyleFields, StyleKind};
+    use crate::skin::{LIST_MAX, StyleFields, StyleKind};
 
     /// The code defaults point at files that ship with the workspace.
     #[test]
@@ -134,27 +138,74 @@ mod tests {
         }
     }
 
-    /// The page edits names and paths; the install order stays file-authored
-    /// until there is a choice control.
+    /// The page edits names and paths; each list node is a token of its own, so
+    /// the header can add, remove and reorder entries.
     #[test]
-    fn the_page_edits_names_and_paths_but_not_the_install_order() {
+    fn the_page_edits_names_paths_and_the_list_itself() {
         let fields = EditorFonts::dark().style_fields();
         let paths: Vec<&str> = fields.iter().map(|field| field.path.as_str()).collect();
 
         assert_eq!(
             paths,
             [
+                "proportional",
                 "proportional.0.name",
                 "proportional.0.path",
                 "proportional.1.name",
                 "proportional.1.path",
+                "monospace",
             ]
         );
-        assert!(fields.iter().all(|field| field.kind == StyleKind::Text));
+        assert_eq!(fields[0].kind, StyleKind::List);
+        assert_eq!(fields[0].value, StyleValue::Integer(2));
+        assert_eq!(fields[5].kind, StyleKind::List);
+        assert_eq!(
+            fields[5].value,
+            StyleValue::Integer(0),
+            "an empty list still has a node, which is what gives it a header"
+        );
+        assert!(
+            fields[1..5]
+                .iter()
+                .all(|field| field.kind == StyleKind::Text),
+            "entry tokens stay strings"
+        );
         assert!(
             !fields.iter().any(|field| field.path.ends_with("priority")),
             "the install order is not a token yet"
         );
+    }
+
+    /// The list node's value is the entry count: writing it resizes, and the
+    /// structural edits cover what a resize cannot express.
+    #[test]
+    fn the_list_token_resizes_and_reorders() {
+        let mut fonts = EditorFonts::dark();
+        let entries = fonts.proportional.len();
+
+        assert!(fonts.set_style_field("proportional", &StyleValue::Integer((entries + 1) as u32)));
+        assert_eq!(fonts.proportional.len(), entries + 1);
+        assert_eq!(
+            fonts.proportional[entries],
+            FontEntry::default(),
+            "growth appends a blank entry"
+        );
+        assert!(fonts.set_style_field("proportional", &StyleValue::Integer(entries as u32)));
+        assert_eq!(fonts.proportional.len(), entries);
+        assert!(
+            !fonts.set_style_field("proportional", &StyleValue::Integer(LIST_MAX + 1)),
+            "the editor's cap does not grow an unbounded list"
+        );
+
+        assert!(fonts.edit_style_list("proportional", ListEdit::Insert { index: 1 }));
+        assert_eq!(fonts.proportional[1], FontEntry::default());
+        let first = fonts.proportional[0].clone();
+        assert!(fonts.edit_style_list("proportional", ListEdit::Move { from: 0, to: 1 }));
+        assert_eq!(fonts.proportional[1], first);
+        assert!(fonts.edit_style_list("proportional", ListEdit::Remove { index: 1 }));
+        assert_eq!(fonts.proportional.len(), entries);
+        assert!(!fonts.edit_style_list("proportional", ListEdit::Remove { index: entries }));
+        assert!(!fonts.edit_style_list("monospace", ListEdit::Remove { index: 0 }));
     }
 
     /// The projection keeps the file's order and the two priorities.

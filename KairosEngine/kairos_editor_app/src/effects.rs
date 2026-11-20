@@ -72,6 +72,14 @@ impl<'a> EffectExecutor<'a> {
                     );
                 }
             }
+            StyleEffect::EditList { panel, path, edit } => {
+                if !self.host.edit_skin_list(panel, &path, edit) {
+                    kairos_log::warn!(
+                        target: "kairos_editor",
+                        "skin {panel}: no list {path}"
+                    );
+                }
+            }
             StyleEffect::Persist { panel } => {
                 if let Err(error) = self.host.save_skin(panel, ctx) {
                     kairos_log::warn!(target: "kairos_editor", "skin {panel}: {error}");
@@ -89,6 +97,14 @@ impl<'a> EffectExecutor<'a> {
                     kairos_log::warn!(
                         target: "kairos_editor",
                         "shared skin {style}: no editable field {path}"
+                    );
+                }
+            }
+            SharedStyleEffect::EditList { style, path, edit } => {
+                if !self.shared.edit_list(style, &path, edit) {
+                    kairos_log::warn!(
+                        target: "kairos_editor",
+                        "shared skin {style}: no list {path}"
                     );
                 }
             }

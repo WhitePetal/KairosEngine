@@ -50,7 +50,8 @@ use egui::{
 };
 use kairos_color::ColorUsage;
 use kairos_editor_core::{
-    Action, LayoutAction, PanelId, SharedStyleAction, SharedStyleId, StyleAction, StyleValue,
+    Action, LayoutAction, ListEdit, PanelId, SharedStyleAction, SharedStyleId, StyleAction,
+    StyleValue,
 };
 use kairos_editor_widgets::button::Button;
 use kairos_editor_widgets::color_picker::{
@@ -65,7 +66,7 @@ use kairos_editor_widgets::text::TextStyle;
 use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
 use crate::shared_style::SharedSkin;
-use crate::skin::{StyleField, StyleKind, humanize};
+use crate::skin::{LIST_MAX, StyleField, StyleKind, humanize};
 
 use self::style::PreferencesPanelStyle;
 
@@ -128,6 +129,22 @@ fn field_id(page: impl Into<PageKey>, path: &str) -> Id {
 /// Stable id of a boolean checkbox; see field_id.
 fn toggle_id(page: impl Into<PageKey>, path: &str) -> Id {
     Id::new(("kairos.preferences.toggle", page.into(), path))
+}
+
+/// Stable id of a list header's add / remove cells.
+fn list_add_id(page: impl Into<PageKey>, path: &str) -> Id {
+    Id::new(("kairos.preferences.list.add", page.into(), path))
+}
+
+fn list_remove_id(page: impl Into<PageKey>, path: &str) -> Id {
+    Id::new(("kairos.preferences.list.remove", page.into(), path))
+}
+
+/// Stable id of a list element's drag handle. The element band itself uses
+/// [`group_id`] (its caret) and [`label_id`] (its selection), like a foldout
+/// and a row share a path.
+fn list_handle_id(page: impl Into<PageKey>, path: &str) -> Id {
+    Id::new(("kairos.preferences.list.handle", page.into(), path))
 }
 
 /// The action that writes one field on whichever page owns it.
@@ -212,6 +229,32 @@ struct PageState {
     /// this offset fixed so a TextEdit focus inside the picker cannot scroll
     /// the page behind it.
     scroll_offset: egui::Vec2,
+    /// A structural list edit was pushed. The page's snapshot is otherwise
+    /// re-read only on a page change or a reload, so a new entry's rows would
+    /// not exist until the user left the page: the next pass re-reads it.
+    stale: bool,
+    /// The list element being dragged for reordering, if any.
+    list_drag: Option<ListDrag>,
+}
+
+/// The list element a drag started on.
+///
+/// The target slot is recomputed every pass from the element bands the page
+/// just laid out, so only the origin has to survive between passes.
+#[derive(Clone, Debug)]
+struct ListDrag {
+    /// The list token's path (`"proportional"`).
+    list: String,
+    /// Index of the element the drag started on.
+    from: usize,
+}
+
+/// One element band this pass laid out, so the drag can resolve the slot the
+/// pointer is over without keeping the page's geometry between passes.
+struct ElementBand {
+    list: String,
+    index: usize,
+    rect: Rect,
 }
 
 impl PageState {
@@ -226,6 +269,20 @@ impl PageState {
             let Some(page) = page else {
                 return;
             };
+            if self.stale {
+                // A list edit landed under this page: take the owner's new
+                // table (new rows, new count) and keep the foldout state, the
+                // selection and an in-flight count edit. The edit is keyed by
+                // path, and the count is the only field that can resize the
+                // list while being typed into.
+                self.fields = page.fields.to_vec();
+                self.title = page.title.to_owned();
+                self.file = page.file;
+                self.revision = page.revision;
+                self.stale = false;
+                self.list_drag = None;
+                return;
+            }
             if self.revision == page.revision {
                 return;
             }
@@ -267,6 +324,8 @@ impl PageState {
         self.collapsed.clear();
         self.edit = None;
         self.drag = DragState::default();
+        self.list_drag = None;
+        self.stale = false;
     }
 
     /// Ask the app to persist the page being left, if it has an edit that was
@@ -625,11 +684,85 @@ impl PageWriter<'_> {
         // The scroll bar floats over the content in egui; reserving its lane
         // keeps the rightmost value box (an icon path, typically) clear of it.
         let row_width = (ui.available_width() - style.scrollbar_gap).max(1.0);
+        // The groups opened so far, one segment name per level. Comparing
+        // segments (not joined paths) is what keeps a nested run open across
+        // all of its fields: a stack holding `"proportional.0"` never matches
+        // the `"0"` segment, so the entry would be re-opened — and its band's
+        // widget id re-created — for every field inside it.
         let mut open: Vec<String> = Vec::new();
         let mut row_number = 0usize;
+        // Every element band this pass, in draw order: the reorder target is a
+        // slot between them, so it can only be resolved once they all exist.
+        let mut bands: Vec<ElementBand> = Vec::new();
+
+        // A `Vec<T>` token is a list, empty or not: the list node is the only
+        // field an empty list has, and it is what gives the empty list a
+        // header to add the first entry from.
+        let lists: Vec<(String, u32)> = self
+            .page
+            .fields
+            .iter()
+            .filter(|field| field.kind == StyleKind::List)
+            .map(|field| {
+                let len = match field.value {
+                    StyleValue::Integer(len) => len,
+                    _ => 0,
+                };
+                (field.path.clone(), len)
+            })
+            .collect();
 
         for index in 0..self.page.fields.len() {
-            let group = group_path(&self.page.fields[index].path);
+            let (path, kind) = {
+                let field = &self.page.fields[index];
+                (field.path.clone(), field.kind)
+            };
+
+            // A list node draws its own two-row header (name, then count and
+            // add/remove) instead of a row in the value column.
+            if kind == StyleKind::List {
+                let segments: Vec<&str> = path.split('.').filter(|part| !part.is_empty()).collect();
+                let depth = segments.len().saturating_sub(1);
+                let common = open
+                    .iter()
+                    .zip(segments.iter())
+                    .take_while(|(opened, segment)| opened.as_str() == **segment)
+                    .count();
+                open.truncate(common);
+
+                for level in common..depth {
+                    // Open a group only when nothing above it is folded; the
+                    // stack is this band's ancestors, so ask before pushing it.
+                    let hidden = collapsed_above(&segments[..level], &self.page.collapsed);
+                    open.push(segments[level].to_owned());
+                    if !hidden {
+                        let band = open.join(".");
+                        self.band(
+                            ui,
+                            &band,
+                            level,
+                            humanize(segments[level]),
+                            row_width,
+                            &mut row_number,
+                            &lists,
+                            &mut bands,
+                        );
+                    }
+                }
+
+                // A folded group hides the list's entries, not its header.
+                let hidden = collapsed_above(&segments[..depth], &self.page.collapsed);
+                open.push(segments[depth].to_owned());
+                if !hidden {
+                    self.list_header(ui, index, depth, row_width);
+                }
+                if style.row_gap > 0.0 {
+                    ui.add_space(style.row_gap);
+                }
+                continue;
+            }
+
+            let group = group_path(&path);
             let segments: Vec<&str> = group.split('.').filter(|part| !part.is_empty()).collect();
 
             // Close the groups this field is no longer in, then open the ones
@@ -643,21 +776,35 @@ impl PageWriter<'_> {
             open.truncate(common);
 
             for depth in common..segments.len() {
-                let path = segments[..=depth].join(".");
-                let hidden = open
-                    .iter()
-                    .any(|ancestor| self.page.collapsed.contains(ancestor));
-                open.push(path.clone());
+                // Open a group only when nothing above it is folded; the stack
+                // is this row's ancestors, so ask before pushing the group.
+                let hidden = collapsed_above(&segments[..depth], &self.page.collapsed);
+                open.push(segments[depth].to_owned());
                 if !hidden {
-                    self.foldout(ui, &path, depth, humanize(segments[depth]), row_width);
+                    let band = open.join(".");
+                    self.band(
+                        ui,
+                        &band,
+                        depth,
+                        humanize(segments[depth]),
+                        row_width,
+                        &mut row_number,
+                        &lists,
+                        &mut bands,
+                    );
                 }
             }
 
-            let hidden = open
-                .iter()
-                .any(|ancestor| self.page.collapsed.contains(ancestor));
-            if !hidden {
-                self.row(ui, index, open.len(), row_width, row_number);
+            // A folded group hides its rows, not its own band.
+            if !collapsed_above(&segments, &self.page.collapsed) {
+                // A field whose group path is exactly a list element sits in
+                // that element's block: it keeps the handle gutter's divider
+                // and is not indented a second time.
+                let element = segments.len() >= 2
+                    && lists
+                        .iter()
+                        .any(|(list, _)| list == &segments[..segments.len() - 1].join("."));
+                self.row(ui, index, segments.len(), row_width, row_number, element);
                 row_number += 1;
                 if style.row_gap > 0.0 {
                     ui.add_space(style.row_gap);
@@ -665,12 +812,473 @@ impl PageWriter<'_> {
             }
         }
 
+        self.finish_list_drag(ui, &bands);
+
         // A click in the empty page (or on its heading) ends the selection;
         // rows, names and foldouts record their own clicks.
         if ui.input(|input| input.pointer.any_click()) && !self.clicked {
             self.page.selected = None;
             self.page.edit = None;
             self.page.drag = DragState::default();
+        }
+    }
+
+    /// One group band: a foldout, or — when its parent is a list — one of the
+    /// list's element rows (drag handle, caret, `Element N`).
+    #[allow(clippy::too_many_arguments)]
+    fn band(
+        &mut self,
+        ui: &mut Ui,
+        path: &str,
+        depth: usize,
+        label: String,
+        row_width: f32,
+        row_number: &mut usize,
+        lists: &[(String, u32)],
+        bands: &mut Vec<ElementBand>,
+    ) {
+        let parent = path.rsplit_once('.').map_or("", |(parent, _)| parent);
+        if lists.iter().any(|(list, _)| list == parent) {
+            let index = path
+                .rsplit('.')
+                .next()
+                .and_then(|part| part.parse::<usize>().ok())
+                .unwrap_or(0);
+            self.element_band(ui, path, index, depth, row_width, *row_number, bands);
+            *row_number += 1;
+        } else {
+            self.foldout(ui, path, depth, label, row_width);
+        }
+    }
+
+    /// A list's two-row header: the foldout band, then the count and the
+    /// add/remove pair in the block's bottom-right corner.
+    fn list_header(&mut self, ui: &mut Ui, index: usize, depth: usize, row_width: f32) {
+        let style = self.style;
+        let (path, name, len) = {
+            let field = &self.page.fields[index];
+            let len = match field.value {
+                StyleValue::Integer(len) => len,
+                _ => 0,
+            };
+            (field.path.clone(), field.name.clone(), len)
+        };
+        let collapsed = self.page.collapsed.contains(&path);
+
+        // Row 1: the band. Clicking it folds the list, like any group band.
+        let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.group_height), Sense::hover());
+        let response = ui
+            .interact(rect, group_id(self.key, &path), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        let fill = if response.hovered() {
+            style.group_hover
+        } else {
+            style.group_background
+        };
+        let painter = ui.painter();
+        painter.rect_filled(rect, CornerRadius::ZERO, fill.to_egui());
+        let arrow = pos2(
+            rect.left() + style.row_inset + depth as f32 * style.group_indent + 4.0,
+            rect.center().y,
+        );
+        paint_foldout_arrow(painter, arrow, collapsed, style.group.to_egui());
+        let text_left = rect.left() + style.row_inset + 16.0 + depth as f32 * style.group_indent;
+        let text = TextStyle::sized(style.group.to_egui(), style.group_size);
+        let galley = text.layout(ui, &name);
+        painter.with_clip_rect(rect).galley(
+            pos2(text_left, rect.center().y - galley.size().y * 0.5),
+            galley,
+            style.group.to_egui(),
+        );
+        labelled_widget_info(
+            &response,
+            WidgetType::SelectableLabel,
+            &name,
+            Some(!collapsed),
+        );
+        if response.clicked() {
+            if collapsed {
+                self.page.collapsed.remove(&path);
+            } else {
+                self.page.collapsed.insert(path.clone());
+            }
+            self.clicked = true;
+        }
+
+        // Row 2: the size and its controls.
+        let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
+        ui.painter()
+            .rect_filled(rect, CornerRadius::ZERO, style.group_background.to_egui());
+        let cell = style.list_button_cell_width;
+        let buttons = Rect::from_min_size(
+            pos2(
+                rect.right() - style.row_inset - cell * 2.0,
+                rect.center().y - style.list_button_height * 0.5,
+            ),
+            vec2(cell * 2.0, style.list_button_height),
+        );
+        let count_rect = Rect::from_min_size(
+            pos2(
+                buttons.left() - 4.0 - style.list_count_width,
+                rect.center().y - style.field_height * 0.5,
+            ),
+            vec2(style.list_count_width, style.field_height),
+        );
+
+        // The count is a normal integer field: drag to scrub, click to type.
+        // Writing it resizes the list (growing appends default entries).
+        let mut count = StyleField {
+            path: path.clone(),
+            name: name.clone(),
+            value: StyleValue::Integer(len),
+            kind: StyleKind::Integer { max: LIST_MAX },
+        };
+        let outcome = draw_value(
+            ui,
+            style,
+            self.key,
+            self.picker,
+            &mut count,
+            &mut self.page.selected,
+            &mut self.page.edit,
+            &mut self.page.drag,
+            self.swatches,
+            &mut self.clicked,
+            count_rect,
+        );
+        if outcome.changed {
+            self.out
+                .push(set_field_action(self.key, &path, &count.value));
+            self.page.fields[index].value = count.value.clone();
+            self.page.dirty = true;
+            self.page.stale = true;
+        }
+        if outcome.finished_edit && self.page.dirty {
+            self.page.commit(self.out);
+        }
+
+        if let Some(edit) = self.list_buttons(ui, &path, len, buttons) {
+            match edit {
+                // The new entry becomes the selection, so the next click of
+                // ~~-~~ removes what the user just added, not the old last row.
+                ListEdit::Insert { index } => {
+                    self.page.selected = Some(format!("{path}.{index}"));
+                }
+                ListEdit::Remove { .. } => self.page.selected = None,
+                ListEdit::Move { .. } => {}
+            }
+            self.push_list_edit(&path, edit);
+        }
+    }
+
+    /// The add/remove pair, drawn as one two-cell control. Returns the edit a
+    /// click asked for; the caller applies and persists it.
+    fn list_buttons(&mut self, ui: &mut Ui, path: &str, len: u32, rect: Rect) -> Option<ListEdit> {
+        let style = self.style;
+        let cell = rect.width() * 0.5;
+        let add_rect = Rect::from_min_size(rect.min, vec2(cell, rect.height()));
+        let remove_rect = Rect::from_min_size(
+            pos2(rect.left() + cell, rect.top()),
+            vec2(cell, rect.height()),
+        );
+        let remove_enabled = len > 0;
+
+        let add = ui
+            .interact(add_rect, list_add_id(self.key, path), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        let remove = ui.interact(
+            remove_rect,
+            list_remove_id(self.key, path),
+            if remove_enabled {
+                Sense::click()
+            } else {
+                Sense::hover()
+            },
+        );
+
+        let painter = ui.painter();
+        let corner = CornerRadius::same(style.button_corner_radius.round() as u8);
+        painter.rect_filled(rect, corner, style.button_fill.to_egui());
+        painter.rect_stroke(
+            rect,
+            corner,
+            Stroke::new(style.button_border_width, style.button_border.to_egui()),
+            StrokeKind::Inside,
+        );
+        painter.rect_filled(
+            Rect::from_min_size(
+                pos2(rect.center().x, rect.top() + 1.0),
+                vec2(1.0, rect.height() - 2.0),
+            ),
+            CornerRadius::ZERO,
+            style.button_border.to_egui(),
+        );
+        for (response, cell_rect, enabled) in [
+            (&add, add_rect, true),
+            (&remove, remove_rect, remove_enabled),
+        ] {
+            if enabled && response.hovered() {
+                painter.rect_filled(cell_rect.shrink(1.0), corner, style.button_hover.to_egui());
+            }
+        }
+
+        let ink = style.button_text.to_egui();
+        let dim = style.path.to_egui();
+        let half = 4.0;
+        let plus = add_rect.center();
+        painter.line_segment(
+            [pos2(plus.x - half, plus.y), pos2(plus.x + half, plus.y)],
+            Stroke::new(1.0, ink),
+        );
+        painter.line_segment(
+            [pos2(plus.x, plus.y - half), pos2(plus.x, plus.y + half)],
+            Stroke::new(1.0, ink),
+        );
+        let minus = remove_rect.center();
+        painter.line_segment(
+            [pos2(minus.x - half, minus.y), pos2(minus.x + half, minus.y)],
+            Stroke::new(1.0, if remove_enabled { ink } else { dim }),
+        );
+        labelled_widget_info(&add, WidgetType::Button, "Add list entry", None);
+        labelled_widget_info(&remove, WidgetType::Button, "Remove list entry", None);
+
+        if add.clicked() {
+            self.clicked = true;
+            return Some(ListEdit::Insert {
+                index: len as usize,
+            });
+        }
+        if remove.clicked() && remove_enabled {
+            self.clicked = true;
+            if let Some(index) = self.remove_index(path, len) {
+                return Some(ListEdit::Remove { index });
+            }
+        }
+        None
+    }
+
+    /// One list element: drag handle, foldout caret, `Element N`. Its fields
+    /// follow as rows in the same block.
+    #[allow(clippy::too_many_arguments)]
+    fn element_band(
+        &mut self,
+        ui: &mut Ui,
+        path: &str,
+        index: usize,
+        depth: usize,
+        row_width: f32,
+        row_number: usize,
+        bands: &mut Vec<ElementBand>,
+    ) {
+        let style = self.style;
+        let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
+        let selected = self.page.selected.as_deref() == Some(path);
+        let fill = if selected {
+            style.list_selection
+        } else {
+            style.row_fill(row_number)
+        };
+        ui.painter()
+            .rect_filled(rect, CornerRadius::ZERO, fill.to_egui());
+
+        let x0 = rect.left() + style.row_inset + depth as f32 * style.group_indent;
+        let divider_x = x0 + style.list_gutter_width;
+        let content_left = divider_x + 4.0;
+        let label_x = content_left + 16.0;
+        ui.painter().rect_filled(
+            Rect::from_min_size(pos2(divider_x, rect.top()), vec2(1.0, rect.height())),
+            CornerRadius::ZERO,
+            style.divider.to_egui(),
+        );
+
+        // The handle: two bars, with the whole row height as its target so a
+        // drag can start on the row and not only on the 10x6 glyph.
+        let handle = Rect::from_center_size(
+            pos2(x0 + style.list_gutter_width * 0.5, rect.center().y),
+            vec2(style.list_gutter_width, rect.height()),
+        );
+        let drag = ui
+            .interact(handle, list_handle_id(self.key, path), Sense::drag())
+            .on_hover_cursor(CursorIcon::Grab);
+        let ink = if drag.hovered() || selected {
+            style.label.to_egui()
+        } else {
+            style.path.to_egui()
+        };
+        for offset in [-2.0, 2.0] {
+            ui.painter().rect_filled(
+                Rect::from_min_size(
+                    pos2(handle.center().x - 5.0, handle.center().y + offset - 0.5),
+                    vec2(10.0, 1.0),
+                ),
+                CornerRadius::ZERO,
+                ink,
+            );
+        }
+        let list = path
+            .rsplit_once('.')
+            .map_or(String::new(), |(list, _)| list.to_owned());
+        if drag.drag_started() {
+            self.page.list_drag = Some(ListDrag {
+                list: list.clone(),
+                from: index,
+            });
+        }
+        bands.push(ElementBand { list, index, rect });
+
+        // Caret: folds this element's fields, not the list.
+        let collapsed = self.page.collapsed.contains(path);
+        let caret_rect =
+            Rect::from_min_size(pos2(content_left, rect.top()), vec2(16.0, rect.height()));
+        let caret = ui
+            .interact(caret_rect, group_id(self.key, path), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        paint_foldout_arrow(
+            ui.painter(),
+            pos2(content_left + 4.0, rect.center().y),
+            collapsed,
+            style.group.to_egui(),
+        );
+        if caret.clicked() {
+            if collapsed {
+                self.page.collapsed.remove(path);
+            } else {
+                self.page.collapsed.insert(path.to_owned());
+            }
+            self.clicked = true;
+        }
+
+        // The rest of the row selects the element.
+        let label_rect =
+            Rect::from_min_max(pos2(label_x, rect.top()), pos2(rect.right(), rect.bottom()));
+        let select = ui.interact(label_rect, label_id(self.key, path), Sense::click());
+        let color = if selected { style.title } else { style.label }.to_egui();
+        let text = TextStyle::sized(color, style.body_size);
+        let galley = text.layout(ui, format!("Element {index}"));
+        ui.painter().with_clip_rect(label_rect).galley(
+            pos2(label_x, rect.center().y - galley.size().y * 0.5),
+            galley,
+            color,
+        );
+        if select.clicked() {
+            self.page.selected = Some(path.to_owned());
+            self.clicked = true;
+        }
+    }
+
+    /// Ask the owner to apply a structural list edit, then persist it: a list
+    /// edit is a discrete click, not a drag stream, so live value and file go
+    /// together.
+    fn push_list_edit(&mut self, path: &str, edit: ListEdit) {
+        match self.key {
+            PageKey::Panel(panel) => {
+                self.out.push(Action::Style(StyleAction::EditList {
+                    panel,
+                    path: path.to_owned(),
+                    edit,
+                }));
+                self.out.push(Action::Style(StyleAction::Commit { panel }));
+            }
+            PageKey::Shared(style) => {
+                self.out
+                    .push(Action::SharedStyle(SharedStyleAction::EditList {
+                        style,
+                        path: path.to_owned(),
+                        edit,
+                    }));
+                self.out
+                    .push(Action::SharedStyle(SharedStyleAction::Commit { style }));
+            }
+        }
+        // The new entry's rows come from the owner's next field table, and a
+        // text edit addressed into the old indices no longer means the same
+        // entry.
+        self.page.stale = true;
+        self.page.dirty = false;
+        self.page.edit = None;
+        self.clicked = true;
+    }
+
+    /// The selected element of `list`, or its last one.
+    fn remove_index(&self, list: &str, len: u32) -> Option<usize> {
+        if len == 0 {
+            return None;
+        }
+        let last = len as usize - 1;
+        let Some(selected) = self.page.selected.as_deref() else {
+            return Some(last);
+        };
+        let Some(rest) = selected
+            .strip_prefix(list)
+            .and_then(|rest| rest.strip_prefix('.'))
+        else {
+            return Some(last);
+        };
+        match rest
+            .split('.')
+            .next()
+            .and_then(|part| part.parse::<usize>().ok())
+        {
+            Some(index) if index <= last => Some(index),
+            _ => Some(last),
+        }
+    }
+
+    /// Resolve the reorder target from this pass's element bands and, on
+    /// release, move the element. The insertion line is painted while dragging.
+    fn finish_list_drag(&mut self, ui: &mut Ui, bands: &[ElementBand]) {
+        let Some(drag) = self.page.list_drag.clone() else {
+            return;
+        };
+        // A drag whose button is already up but never produced a release (the
+        // pointer left the window) has no slot to drop on: drop the drag.
+        if !ui.input(|input| input.pointer.any_released())
+            && !ui.input(|input| input.pointer.primary_down())
+        {
+            self.page.list_drag = None;
+            return;
+        }
+        let mut list_bands: Vec<&ElementBand> =
+            bands.iter().filter(|band| band.list == drag.list).collect();
+        list_bands.sort_by_key(|band| band.index);
+        let Some(first) = list_bands.first().copied() else {
+            self.page.list_drag = None;
+            return;
+        };
+        let Some(pointer) = ui.ctx().pointer_interact_pos() else {
+            return;
+        };
+        let slot = list_bands
+            .iter()
+            .take_while(|band| pointer.y > band.rect.center().y)
+            .count();
+        let y = if slot == 0 {
+            first.rect.top()
+        } else {
+            list_bands[slot - 1].rect.bottom()
+        };
+        let style = self.style;
+        let left = first.rect.left() + style.row_inset;
+        let right = first.rect.right() - style.row_inset;
+        ui.painter().rect_filled(
+            Rect::from_min_size(pos2(left, y - 1.0), vec2(right - left, 2.0)),
+            CornerRadius::ZERO,
+            style.accent.to_egui(),
+        );
+
+        if ui.input(|input| input.pointer.any_released()) {
+            let to = if slot > drag.from { slot - 1 } else { slot };
+            self.page.list_drag = None;
+            if to != drag.from && to < list_bands.len() {
+                self.push_list_edit(
+                    &drag.list,
+                    ListEdit::Move {
+                        from: drag.from,
+                        to,
+                    },
+                );
+                self.page.selected = Some(format!("{}.{}", drag.list, to));
+            }
         }
     }
 
@@ -725,7 +1333,21 @@ impl PageWriter<'_> {
     }
 
     /// One leaf row: alternating band, left name, value box.
-    fn row(&mut self, ui: &mut Ui, index: usize, depth: usize, row_width: f32, row_number: usize) {
+    ///
+    /// `in_element` marks a row that sits directly inside a list element: it
+    /// keeps the element block's handle gutter (the divider runs through it)
+    /// and starts its name where the element's own label starts, so the block
+    /// does not indent its fields twice.
+    #[allow(clippy::too_many_arguments)]
+    fn row(
+        &mut self,
+        ui: &mut Ui,
+        index: usize,
+        depth: usize,
+        row_width: f32,
+        row_number: usize,
+        in_element: bool,
+    ) {
         let style = self.style;
         let key = self.key;
         let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
@@ -760,6 +1382,24 @@ impl PageWriter<'_> {
             pos2(content_left, rect.top()),
             pos2(value_left - style.label_gap, rect.bottom()),
         );
+        let (label_x, divider_x) = if in_element {
+            let x0 =
+                rect.left() + style.row_inset + depth.saturating_sub(1) as f32 * style.group_indent;
+            let divider = x0 + style.list_gutter_width;
+            (divider + 4.0 + 16.0, Some(divider))
+        } else {
+            (
+                content_left + 16.0 + depth as f32 * style.group_indent,
+                None,
+            )
+        };
+        if let Some(x) = divider_x {
+            ui.painter().rect_filled(
+                Rect::from_min_size(pos2(x, rect.top()), vec2(1.0, rect.height())),
+                CornerRadius::ZERO,
+                style.divider.to_egui(),
+            );
+        }
 
         // The name is an interaction, not just paint: clicking it selects the
         // field, and a text field takes keyboard focus so typing starts.
@@ -823,8 +1463,7 @@ impl PageWriter<'_> {
         let color = style.label_color(active).to_egui();
         let text = TextStyle::sized(color, style.body_size);
         let galley = text.layout(ui, &name);
-        let text_left = label_rect.left() + 16.0 + depth as f32 * style.group_indent;
-        let text_pos = pos2(text_left, rect.center().y - galley.size().y * 0.5);
+        let text_pos = pos2(label_x, rect.center().y - galley.size().y * 0.5);
         ui.painter()
             .with_clip_rect(label_rect)
             .galley(text_pos, galley, color);
@@ -905,6 +1544,9 @@ fn draw_value(
         StyleKind::Color | StyleKind::HdrColor => draw_color(
             ui, picker, field, selected, clicked, swatches, rect, id, &path, active,
         ),
+        // A list draws its own header: the count box is an integer field the
+        // header builds, so a list node never reaches a row's value column.
+        StyleKind::List => ValueOutcome::default(),
     }
 }
 
@@ -1362,6 +2004,23 @@ fn paint_foldout_arrow(
 fn group_path(path: &str) -> String {
     path.rsplit_once('.')
         .map_or_else(String::new, |(group, _)| group.to_owned())
+}
+
+/// Whether one of `segments`' prefixes — a group this row sits in, at any depth
+/// — is folded. `segments` are segment names, so the dotted paths the collapse
+/// set stores are rebuilt here.
+fn collapsed_above(segments: &[&str], collapsed: &HashSet<String>) -> bool {
+    let mut path = String::new();
+    for segment in segments {
+        if !path.is_empty() {
+            path.push('.');
+        }
+        path.push_str(segment);
+        if collapsed.contains(&path) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The displayed form of a numeric token.
@@ -1929,7 +2588,10 @@ mod tests {
             text.contains("Preferences/Fonts/Inter-Regular.otf"),
             "the row shows the font path: {text}"
         );
-        assert!(actions.is_empty(), "choosing a page emits nothing: {actions:?}");
+        assert!(
+            actions.is_empty(),
+            "choosing a page emits nothing: {actions:?}"
+        );
     }
 
     /// Shared edits use the separate action path: they have no panel instance
@@ -2195,6 +2857,192 @@ mod tests {
         assert!(text.contains("Warning"), "{text}");
         assert!(!text.contains("Tint"), "{text}");
         assert!(text.contains("Textures"), "{text}");
+    }
+
+    /// The font list's header and element bands, and the fold rules: the list
+    /// band folds every entry, an element's caret folds just its fields.
+    #[test]
+    fn the_font_list_has_one_header_and_folds_each_element() {
+        let mut harness = Harness::with_size(Vec::new(), vec2(700.0, 470.0));
+        harness.frame(Vec::new());
+        harness.click(nav_id(FONTS));
+        let (output, _) = harness.frame(Vec::new());
+
+        let runs = painted_texts(&output);
+        let text = painted_text(&output);
+        assert!(
+            !text.contains('🔥'),
+            "duplicate ids make egui paint its clash warning over the page: {text}"
+        );
+        assert_eq!(
+            runs.iter().filter(|run| run.text == "Proportional").count(),
+            1,
+            "the list header is painted once: {text}"
+        );
+        assert_eq!(
+            runs.iter().filter(|run| run.text == "2").count(),
+            1,
+            "the header shows the entry count: {text}"
+        );
+        for index in 0..2 {
+            assert_eq!(
+                runs.iter()
+                    .filter(|run| run.text == format!("Element {index}"))
+                    .count(),
+                1,
+                "element {index} is one band: {text}"
+            );
+        }
+
+        // Clicking the band selects the element; the next pass paints the blue.
+        harness.click(label_id(PageKey::Shared(FONTS), "proportional.0"));
+        let (output, _) = harness.frame(Vec::new());
+        assert_eq!(
+            harness.panel.page.selected.as_deref(),
+            Some("proportional.0"),
+            "the element band is selectable"
+        );
+        let blue = PreferencesPanelStyle::dark().list_selection.to_egui();
+        assert!(
+            painted_rects(&output)
+                .iter()
+                .any(|painted| painted.fill == blue),
+            "the selected element paints the selection band"
+        );
+
+        // The caret folds the element's fields, not the list.
+        let (output, actions) = harness.click(group_id(PageKey::Shared(FONTS), "proportional.0"));
+        let text = painted_text(&output);
+        assert!(
+            actions.is_empty(),
+            "folding is view state, not an action: {actions:?}"
+        );
+        assert!(
+            harness.panel.page.collapsed.contains("proportional.0"),
+            "the element folds under its own dotted path: {:?}",
+            harness.panel.page.collapsed
+        );
+        assert!(
+            !text.contains("Preferences/Fonts/Inter-Regular.otf"),
+            "entry 0's fields fold away: {text}"
+        );
+        assert!(
+            text.contains("Preferences/Fonts/Inter-Medium.otf"),
+            "entry 1 keeps its fields: {text}"
+        );
+        assert!(text.contains("Element 0"), "the band stays: {text}");
+    }
+
+    /// The header's two controls: `+` appends a default entry, `-` removes the
+    /// selected one (or the last when nothing is selected). Both persist at
+    /// once, because a list edit is a click, not a drag stream.
+    #[test]
+    fn the_list_header_adds_and_removes_entries() {
+        let mut harness = Harness::with_size(Vec::new(), vec2(700.0, 470.0));
+        harness.frame(Vec::new());
+        harness.click(nav_id(FONTS));
+
+        let (_, actions) = harness.click(list_add_id(PageKey::Shared(FONTS), "proportional"));
+        assert_eq!(
+            actions,
+            vec![
+                Action::SharedStyle(SharedStyleAction::EditList {
+                    style: FONTS,
+                    path: "proportional".to_owned(),
+                    edit: ListEdit::Insert { index: 2 },
+                }),
+                Action::SharedStyle(SharedStyleAction::Commit { style: FONTS }),
+            ]
+        );
+        assert!(
+            harness.panel.page.stale,
+            "the page re-reads the owner's table for the new entry"
+        );
+
+        let (_, actions) = harness.click(list_remove_id(PageKey::Shared(FONTS), "proportional"));
+        assert_eq!(
+            actions.first(),
+            Some(&Action::SharedStyle(SharedStyleAction::EditList {
+                style: FONTS,
+                path: "proportional".to_owned(),
+                edit: ListEdit::Remove { index: 1 },
+            })),
+            "with no selection, minus removes the last entry: {actions:?}"
+        );
+    }
+
+    /// The count box is an integer field on the list node: scrubbing it writes
+    /// the new length, which resizes the list (the same gesture as any number).
+    #[test]
+    fn dragging_the_entry_count_writes_the_new_length() {
+        let mut harness = Harness::with_size(Vec::new(), vec2(700.0, 470.0));
+        harness.frame(Vec::new());
+        harness.click(nav_id(FONTS));
+
+        let rect = harness.rect_of(field_id(PageKey::Shared(FONTS), "proportional"));
+        let start = rect.center();
+        let end = egui::pos2(start.x + 20.0, start.y);
+        harness.frame(vec![egui::Event::PointerMoved(start)]);
+        harness.frame(vec![pointer(start, true)]);
+        let (_, actions) = harness.frame(vec![egui::Event::PointerMoved(end)]);
+
+        assert_eq!(
+            actions.first(),
+            Some(&Action::SharedStyle(SharedStyleAction::SetField {
+                style: FONTS,
+                path: "proportional".to_owned(),
+                value: StyleValue::Integer(22),
+            })),
+            "a 20 px scrub adds 20 entries: {actions:?}"
+        );
+        assert!(
+            harness.panel.page.stale,
+            "the page re-reads the resized list"
+        );
+
+        // Releasing the scrub writes the file once, like every other drag.
+        let (_, actions) = harness.frame(vec![pointer(end, false)]);
+        assert_eq!(
+            actions,
+            vec![Action::SharedStyle(SharedStyleAction::Commit {
+                style: FONTS
+            })],
+            "the release persists the resize: {actions:?}"
+        );
+    }
+
+    /// Dragging an element's handle reorders it: the drop slot is resolved
+    /// from the element bands the page laid out, and the move is persisted at
+    /// once (a drop is a click, not a stream).
+    #[test]
+    fn dragging_an_element_handle_moves_it() {
+        let mut harness = Harness::with_size(Vec::new(), vec2(700.0, 470.0));
+        harness.frame(Vec::new());
+        harness.click(nav_id(FONTS));
+
+        let handle = harness.rect_of(list_handle_id(PageKey::Shared(FONTS), "proportional.0"));
+        let start = handle.center();
+        let end = egui::pos2(start.x, start.y + 70.0);
+        harness.frame(vec![egui::Event::PointerMoved(start)]);
+        harness.frame(vec![pointer(start, true)]);
+        harness.frame(vec![egui::Event::PointerMoved(end)]);
+        let (_, actions) = harness.frame(vec![pointer(end, false)]);
+
+        assert_eq!(
+            actions.first(),
+            Some(&Action::SharedStyle(SharedStyleAction::EditList {
+                style: FONTS,
+                path: "proportional".to_owned(),
+                edit: ListEdit::Move { from: 0, to: 1 },
+            })),
+            "the drag drops element 0 below element 1: {actions:?}"
+        );
+        assert!(
+            actions.contains(&Action::SharedStyle(SharedStyleAction::Commit {
+                style: FONTS
+            })),
+            "a drop is persisted with the move: {actions:?}"
+        );
     }
 
     #[test]

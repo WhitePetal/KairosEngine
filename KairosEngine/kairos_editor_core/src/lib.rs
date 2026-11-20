@@ -41,4 +41,4 @@ pub use effect::{AppEffect, Effect, LayoutEffect, SharedStyleEffect, StyleEffect
 pub use panel::{PanelId, PanelInstanceId};
 pub use reduce::reduce;
 pub use state::{EditorState, LayoutState};
-pub use style::{SharedStyleId, StyleValue};
+pub use style::{ListEdit, SharedStyleId, StyleValue};

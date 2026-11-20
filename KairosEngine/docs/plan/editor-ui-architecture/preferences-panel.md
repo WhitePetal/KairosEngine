@@ -141,7 +141,7 @@ StyleFields::set_style_field(path, value)
 - `ToolBarStyle` 与 `ColorPickerSkin` 在 `#[derive(StyleFields)]` 上加 `#[SharedStyle(TOOLBAR = "toolbar", title = "Toolbar")]`：宏生成 id 常量、sealed erasure impl 和 `inventory` 提交；类型只写 `impl SharedStyle for <Style> { fn preload(...) }`，`as_any` 不再手写。文件仍是 `Preferences/Styles/ToolBar.ron` / `ColorPicker.ron`（dark + light）。取色器的 42 个运行期 token 先落成 serde 友好的 `ColorPickerSkin`，再由 `tokens()` 投影到 widget 层。
 - app 在 `EditorApp::new` 的 `set_theme(Dark)` 之后 `SharedStyles::load(&StyleCatalog::builtin(), theme)` 一次；`Frame::shared` 把 live 值下发给所有面板，工具栏用 `frame.toolbar_style()`，取色器用 `frame.color_picker_style()`。
 - Preferences 在面板页之后固定追加 shared 页（Toolbar、Color Picker）；字段表来自 `SharedStyles::skins()`，不依赖任何面板实例，所以没有打开面板时也能编辑。
-- 写路径是独立的 `Action::SharedStyle(SharedStyleAction::{SetField, Commit, Reload})` → `Effect::SharedStyle` → `SharedStyles::{set_field, save, reload}`。`Commit` 仍然一次手势写一次文件；`Reload` 是显式刷新（页脚 Reload 按钮），reload 会 bump `SharedStyles::revision`，Preferences 下一帧重新取字段表。
+- 写路径是独立的 `Action::SharedStyle(SharedStyleAction::{SetField, EditList, Commit, Reload})` → `Effect::SharedStyle` → `SharedStyles::{set_field, edit_list, save, reload}`。`Commit` 仍然一次手势写一次文件；`Reload` 是显式刷新（页脚 Reload 按钮），reload 会 bump `SharedStyles::revision`，Preferences 下一帧重新取字段表。
 - 取色器的 `window_controls`（红黄绿）不进 `ColorPicker.ron`：继续用共享的 `WindowControlsStyle::default()`，和 dock 浮动窗一致，直到 window-controls 自己有 skin。
 
 > **2026-11-20 补充**：字体页 `Fonts` 进 shared 页列表（排在 Color Picker 之后、Toolbar 之前，按 id 排序）。
@@ -151,8 +151,17 @@ StyleFields::set_style_field(path, value)
 > 字段是 `proportional.0.name` / `.path` 这类索引 token：`path` 用 `String`（字段编辑器写文本），
 > `FontEntry::priority` 暂 `#[style(skip)]`；安装结构 `fonts::FontsConfig` 由 `EditorFonts::config()`
 > 在调用点投影（和取色器 `tokens()` 同一套路）。`preload` 调 `install`，所以 app 启动不再单独调
-> `fonts::install`，编辑 Commit 后 app 的 `preload` 也会重装字体。已知边界：列表的增删/排序还没有
-> UI（字段表只能编辑文件里已有的行），`priority` 等有 choice 控件后再进页面。
+> `fonts::install`，编辑 Commit 后 app 的 `preload` 也会重装字体。
+>
+> **2026-11-20 补充（列表编辑器）**：`Vec<T>` 字段现在在字段表里生成一个 `StyleKind::List` 节点
+> （value = 元素个数），空列表也因此在页面上有表头；写这个整数就是 resize（`Vec<T>::write`，上限
+> `skin::LIST_MAX = 64`）。`+`/`−`/拖拽走新的 `ListEdit { Insert/Remove/Move }` 与
+> `StyleAction::EditList` / `SharedStyleAction::EditList` → `StyleFields::edit_style_list`；derive
+> 转发到 `StyleNode::edit_list`，`Vec<T>` 自己实现。页面按列表画两行表头（名字；计数 + 两格 +/−，
+> 右下角），每个元素是 `Element N` 带（手柄 + caret + 蓝色选中 + 斑马线），字段在同一个块里、不额外
+> 缩进，gutter 的分割线贯穿。结构变化后页面用一次性 `stale` 标记重读字段表（否则新元素要等换页）。
+> 叶子列表（Profiler `category_palette`）已经有表头和增删，但元素行还是普通行，`Element N` +
+> 颜色框留在下一轮；`priority` 仍 skip。
 
 ### 2.6 页面列表：活着的面板 + 固定 shared 页
 

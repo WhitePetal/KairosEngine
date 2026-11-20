@@ -24,6 +24,26 @@ impl std::fmt::Display for SharedStyleId {
     }
 }
 
+/// One structural edit of a list-valued token (a `Vec<T>` field).
+///
+/// The list's *length* is an ordinary integer token — writing it through
+/// [`StyleValue::Integer`] resizes the list. These three edits are what a
+/// resize cannot express: inserting in the middle, removing an entry that is
+/// not the last, and reordering. They travel as values for the same reason
+/// `StyleValue` does: the field table lives in the component layer, the host
+/// that owns the style lives outside core, and the intent must cross the
+/// `Action`/`Effect` boundary as plain data.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ListEdit {
+    /// Insert a default entry at `index` (clamped to the list's length).
+    Insert { index: usize },
+    /// Remove the entry at `index`; out-of-range is a no-op.
+    Remove { index: usize },
+    /// Move the entry at `from` so it ends up at `to`, both in the final
+    /// list's coordinates. Out-of-range is a no-op.
+    Move { from: usize, to: usize },
+}
+
 /// One editable value from a panel's or shared style's skin.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StyleValue {
