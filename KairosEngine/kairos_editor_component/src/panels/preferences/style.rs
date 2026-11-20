@@ -14,6 +14,7 @@ use egui::{CornerRadius, Vec2};
 use kairos_color::Color;
 use kairos_editor_widgets::button::ButtonStyle;
 use kairos_editor_widgets::color::ColorExt;
+use kairos_editor_widgets::field::FieldStyle;
 use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::text::TextStyle;
 use serde::{Deserialize, Serialize};
@@ -280,6 +281,25 @@ impl PreferencesPanelStyle {
             .height(self.button_height)
     }
 
+    /// Project the value-box tokens onto the reusable field widgets: every
+    /// number, string, boolean and color box on the page is one of those.
+    pub fn field_style(&self) -> FieldStyle {
+        FieldStyle::new(TextStyle::sized(
+            self.control_value.to_egui(),
+            self.body_size,
+        ))
+        .fills(self.control_rail.to_egui(), self.control_hover.to_egui())
+        .edges(
+            self.control_edge.to_egui(),
+            self.control_edge_hover.to_egui(),
+            self.accent.to_egui(),
+        )
+        .border_width(self.control_border_width)
+        .corner_radius(self.control_corner_radius.round() as u8)
+        .padding(self.field_padding)
+        .checkbox(self.checkbox_size)
+    }
+
     /// The left-hand list entry: flat until hovered or selected.
     pub fn nav_style(&self) -> ButtonStyle {
         ButtonStyle::new(TextStyle::sized(self.nav_text.to_egui(), self.body_size))
@@ -299,18 +319,6 @@ impl PreferencesPanelStyle {
             self.row_odd
         } else {
             self.row_even
-        }
-    }
-
-    /// Outline of a value box: blue while selected, a lighter edge under the
-    /// pointer, the quiet edge otherwise.
-    pub fn value_edge(&self, selected: bool, hovered: bool) -> Color {
-        if selected {
-            self.accent
-        } else if hovered {
-            self.control_edge_hover
-        } else {
-            self.control_edge
         }
     }
 
@@ -359,19 +367,26 @@ mod tests {
         assert_eq!(style.row_fill(2), style.row_odd);
         assert_ne!(style.row_odd, style.row_even);
 
-        assert_eq!(style.value_edge(false, false), style.control_edge);
+        assert_eq!(style.label_color(true), style.label_active);
+        assert_eq!(style.label_color(false), style.label);
+
+        // The field widgets take the same three edge states through their own
+        // style: blue while selected, a lighter edge under the pointer, the
+        // quiet edge otherwise.
+        let field = style.field_style();
+        assert_eq!(field.outline(false, false), style.control_edge.to_egui());
         assert_eq!(
-            style.value_edge(false, true),
-            style.control_edge_hover,
+            field.outline(false, true),
+            style.control_edge_hover.to_egui(),
             "hover lightens the edge before the field is selected"
         );
         assert_eq!(
-            style.value_edge(true, false),
-            style.accent,
+            field.outline(true, false),
+            style.accent.to_egui(),
             "a selected field keeps its blue outline regardless of hover"
         );
-        assert_eq!(style.label_color(true), style.label_active);
-        assert_eq!(style.label_color(false), style.label);
+        assert_eq!(field.fill, style.control_rail.to_egui());
+        assert_eq!(field.checkbox, style.checkbox_size);
     }
 
     /// The checked-in reference skin and the code defaults are the same skin.

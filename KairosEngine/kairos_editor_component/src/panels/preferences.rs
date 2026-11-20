@@ -46,7 +46,7 @@ use std::collections::HashSet;
 
 use egui::{
     Align, Context, CornerRadius, CursorIcon, Id, Key, Margin, Pos2, Rect, Sense, Shape, Stroke,
-    StrokeKind, TextEdit, Ui, UiBuilder, WidgetText, WidgetType, pos2, vec2,
+    StrokeKind, Ui, UiBuilder, WidgetText, WidgetType, pos2, vec2,
 };
 use kairos_color::ColorUsage;
 use kairos_editor_core::{
@@ -59,6 +59,9 @@ use kairos_editor_widgets::color_picker::{
     close_all_color_pickers, eyedropper, is_color_picker_open,
 };
 use kairos_editor_widgets::divider::Divider;
+use kairos_editor_widgets::field::{
+    FieldOutcome, FieldStyle, NumberEdit, NumberField, TextField, ToggleField,
+};
 use kairos_editor_widgets::paint::labelled_widget_info;
 use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::text::TextStyle;
@@ -171,34 +174,11 @@ fn reload_id(style: SharedStyleId) -> Id {
     Id::new(("kairos.preferences.reload", style))
 }
 
-/// A numeric token being typed into its value box.
+/// A number box being typed into: the field it belongs to, and the widget
+/// buffer that survives between passes.
 struct FieldEdit {
     path: String,
-    text: String,
-    /// Value before the edit, restored on Escape.
-    original: StyleValue,
-    /// Focus the editor and select its contents on the first pass.
-    focus: bool,
-}
-
-impl FieldEdit {
-    fn new(field: &StyleField) -> Self {
-        Self {
-            path: field.path.clone(),
-            text: number_text(&field.value),
-            original: field.value.clone(),
-            focus: true,
-        }
-    }
-}
-
-/// Fractional pointer movement accumulated by an integer drag. egui reports
-/// one-frame deltas; without the remainder a slow drag would never cross a
-/// whole unit.
-#[derive(Default)]
-struct DragState {
-    path: Option<String>,
-    remainder: f32,
+    number: NumberEdit,
 }
 
 /// The page being edited: a snapshot of one page's field table, plus the
@@ -224,7 +204,6 @@ struct PageState {
     collapsed: HashSet<String>,
     /// A numeric token being edited as text.
     edit: Option<FieldEdit>,
-    drag: DragState,
     /// Last page scroll offset. While a floating color picker is open we keep
     /// this offset fixed so a TextEdit focus inside the picker cannot scroll
     /// the page behind it.
@@ -294,7 +273,6 @@ impl PageState {
             self.file = page.file;
             self.revision = page.revision;
             self.edit = None;
-            self.drag = DragState::default();
             // The reloaded file is now the truth; the discarded pre-reload
             // edit must not be written by a later release pass.
             self.dirty = false;
@@ -323,7 +301,6 @@ impl PageState {
         self.selected = None;
         self.collapsed.clear();
         self.edit = None;
-        self.drag = DragState::default();
         self.list_drag = None;
         self.stale = false;
     }
@@ -644,6 +621,7 @@ fn page_body(
 
             let mut writer = PageWriter {
                 style,
+                field: style.field_style(),
                 key: page_key.expect("a page body is only drawn for a selected page"),
                 picker: picker_style,
                 page,
@@ -668,6 +646,8 @@ fn page_body(
 /// Draws one page's field tree.
 struct PageWriter<'a> {
     style: &'a PreferencesPanelStyle,
+    /// The value-box tokens, projected once for the whole page.
+    field: FieldStyle,
     key: PageKey,
     picker: &'a ColorPickerStyle,
     page: &'a mut PageState,
@@ -819,7 +799,6 @@ impl PageWriter<'_> {
         if ui.input(|input| input.pointer.any_click()) && !self.clicked {
             self.page.selected = None;
             self.page.edit = None;
-            self.page.drag = DragState::default();
         }
     }
 
@@ -935,13 +914,12 @@ impl PageWriter<'_> {
         };
         let outcome = draw_value(
             ui,
-            style,
+            &self.field,
             self.key,
             self.picker,
             &mut count,
             &mut self.page.selected,
             &mut self.page.edit,
-            &mut self.page.drag,
             self.swatches,
             &mut self.clicked,
             count_rect,
@@ -1416,19 +1394,17 @@ impl PageWriter<'_> {
             fields,
             selected,
             edit,
-            drag,
             ..
         } = &mut *self.page;
         let field = &mut fields[index];
         let outcome = draw_value(
             ui,
-            style,
+            &self.field,
             key,
             self.picker,
             field,
             selected,
             edit,
-            drag,
             self.swatches,
             &mut self.clicked,
             value_rect,
@@ -1484,63 +1460,94 @@ struct ValueOutcome {
     popup_open: bool,
 }
 
-/// One token's editor. Returns whether it changed the field (which is updated
-/// in place so the page keeps its value between frames).
+/// One token's control: the page's field table mapped onto the reusable field
+/// widgets (kairos_editor_widgets::field). The widgets know boxes, drags and
+/// checkmarks; the mapping between a StyleValue and the plain value a widget
+/// edits lives here, next to the action that follows from it.
 #[allow(clippy::too_many_arguments)]
 fn draw_value(
     ui: &mut Ui,
-    style: &PreferencesPanelStyle,
+    field_style: &FieldStyle,
     key: PageKey,
     picker: &ColorPickerStyle,
     field: &mut StyleField,
     selected: &mut Option<String>,
     edit: &mut Option<FieldEdit>,
-    drag: &mut DragState,
     swatches: &mut ColorSwatches,
     clicked: &mut bool,
     rect: Rect,
 ) -> ValueOutcome {
     let path = field.path.clone();
-    let kind = field.kind;
     let id = field_id(key, &path);
-    let hovered = ui.rect_contains_pointer(rect);
     let editing = edit.as_ref().is_some_and(|current| current.path == path);
     let active = selected.as_deref() == Some(path.as_str())
         || editing
         || ui.memory(|memory| memory.has_focus(id));
 
-    match kind {
-        StyleKind::Float | StyleKind::Integer { .. } => {
-            if let Some(mut editor) = edit.take().filter(|current| current.path == path) {
-                let outcome = draw_number_edit(
-                    ui,
-                    style,
-                    kind,
-                    field,
-                    selected,
-                    clicked,
-                    rect,
-                    &path,
-                    id,
-                    hovered,
-                    &mut editor,
-                );
-                if !outcome.finished_edit {
-                    *edit = Some(editor);
-                }
-                return outcome;
-            }
-            draw_number(
-                ui, style, kind, field, selected, edit, drag, clicked, rect, id, &path, active,
-                hovered,
-            )
+    match field.kind {
+        StyleKind::Float => {
+            let StyleValue::Float(value) = &mut field.value else {
+                return ValueOutcome::default();
+            };
+            let mut number = take_number(edit, &path);
+            let outcome = NumberField::float(id, value, field_style)
+                .selected(active)
+                .label(&field.name)
+                .show(ui, rect, &mut number);
+            keep_number(edit, &path, number);
+            select_row(
+                outcome.clicked() || outcome.response.dragged(),
+                &path,
+                selected,
+                clicked,
+            );
+            finished(outcome)
         }
-        StyleKind::Text => draw_text(
-            ui, style, field, selected, clicked, rect, id, &path, active, hovered,
-        ),
-        StyleKind::Toggle => draw_toggle(
-            ui, style, field, selected, clicked, rect, key, &path, active,
-        ),
+        StyleKind::Integer { max } => {
+            let StyleValue::Integer(value) = &mut field.value else {
+                return ValueOutcome::default();
+            };
+            let mut number = take_number(edit, &path);
+            let outcome = NumberField::integer(id, value, max, field_style)
+                .selected(active)
+                .label(&field.name)
+                .show(ui, rect, &mut number);
+            keep_number(edit, &path, number);
+            select_row(
+                outcome.clicked() || outcome.response.dragged(),
+                &path,
+                selected,
+                clicked,
+            );
+            finished(outcome)
+        }
+        StyleKind::Text => {
+            let StyleValue::Text(value) = &mut field.value else {
+                return ValueOutcome::default();
+            };
+            let outcome = TextField::new(id, value, field_style)
+                .selected(active)
+                .label(&field.name)
+                .show(ui, rect);
+            if outcome.clicked() || outcome.response.has_focus() {
+                *selected = Some(path);
+                if outcome.clicked() {
+                    *clicked = true;
+                }
+            }
+            finished(outcome)
+        }
+        StyleKind::Toggle => {
+            let StyleValue::Toggle(on) = &mut field.value else {
+                return ValueOutcome::default();
+            };
+            let outcome = ToggleField::new(toggle_id(key, &path), on, field_style)
+                .selected(active)
+                .label(&field.name)
+                .show(ui, rect);
+            select_row(outcome.clicked(), &path, selected, clicked);
+            finished(outcome)
+        }
         StyleKind::Color | StyleKind::HdrColor => draw_color(
             ui, picker, field, selected, clicked, swatches, rect, id, &path, active,
         ),
@@ -1550,328 +1557,47 @@ fn draw_value(
     }
 }
 
-/// A numeric token at rest: a Unity-style inset box that drags to scrub and
-/// clicks into a text editor.
-#[allow(clippy::too_many_arguments)]
-fn draw_number(
-    ui: &mut Ui,
-    style: &PreferencesPanelStyle,
-    kind: StyleKind,
-    field: &mut StyleField,
-    selected: &mut Option<String>,
-    edit: &mut Option<FieldEdit>,
-    drag: &mut DragState,
-    clicked: &mut bool,
-    rect: Rect,
-    id: Id,
-    path: &str,
-    active: bool,
-    hovered: bool,
-) -> ValueOutcome {
-    let fill = if hovered && !active {
-        style.control_hover
-    } else {
-        style.control_rail
-    };
-    paint_value_background(ui, style, rect, fill.to_egui());
-
-    let text = number_text(&field.value);
-    let text_style = TextStyle::sized(style.control_value.to_egui(), style.body_size);
-    let galley = text_style.layout(ui, &text);
-    let text_pos = pos2(
-        rect.left() + style.field_padding,
-        rect.center().y - galley.size().y * 0.5,
-    );
-    ui.painter()
-        .with_clip_rect(rect.shrink2(vec2(style.field_padding, 0.0)))
-        .galley(text_pos, galley, style.control_value.to_egui());
-
-    let response = ui
-        .interact(rect, id, Sense::click_and_drag())
-        .on_hover_cursor(CursorIcon::ResizeHorizontal);
-    labelled_widget_info(&response, WidgetType::DragValue, &field.name, None);
-
-    let mut changed = false;
-    if response.clicked() {
-        *selected = Some(path.to_owned());
-        *clicked = true;
-        *edit = Some(FieldEdit::new(field));
-        response.request_focus();
+/// The number editor buffer for this field, taken out of the page so the widget
+/// can borrow it. A buffer that belongs to another row stays where it is.
+fn take_number(edit: &mut Option<FieldEdit>, path: &str) -> Option<NumberEdit> {
+    if edit.as_ref().is_some_and(|current| current.path == path) {
+        return edit.take().map(|current| current.number);
     }
+    None
+}
 
-    let delta = response.drag_delta().x - response.drag_delta().y;
-    if response.dragged() && delta != 0.0 {
-        *selected = Some(path.to_owned());
-        *clicked = true;
-        match kind {
-            StyleKind::Float => {
-                if let StyleValue::Float(current) = &field.value {
-                    let next = round_decimal(*current + delta * drag_speed(*current) as f32, 3);
-                    if next != *current {
-                        field.value = StyleValue::Float(next);
-                        changed = true;
-                    }
-                }
-            }
-            StyleKind::Integer { max } => {
-                if drag.path.as_deref() != Some(path) {
-                    drag.path = Some(path.to_owned());
-                    drag.remainder = 0.0;
-                }
-                let total = drag.remainder + delta;
-                let steps = total.trunc();
-                drag.remainder = total - steps;
-                if steps != 0.0
-                    && let StyleValue::Integer(current) = &field.value
-                {
-                    let next = ((*current as i64) + steps as i64).clamp(0, max as i64) as u32;
-                    if next != *current {
-                        field.value = StyleValue::Integer(next);
-                        changed = true;
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    if response.drag_stopped() {
-        *drag = DragState::default();
-    }
-
-    let focused = ui.memory(|memory| memory.has_focus(id));
-    let edge = style
-        .value_edge(
-            active || focused || selected.as_deref() == Some(path),
-            hovered,
-        )
-        .to_egui();
-    paint_value_outline(ui, style, rect, edge);
-
-    ValueOutcome {
-        changed,
-        finished_edit: false,
-        popup_open: false,
+/// Put the buffer back unless the edit ended (Enter, Escape, focus loss).
+fn keep_number(edit: &mut Option<FieldEdit>, path: &str, number: Option<NumberEdit>) {
+    if let Some(number) = number {
+        *edit = Some(FieldEdit {
+            path: path.to_owned(),
+            number,
+        });
     }
 }
 
-/// The text editor a numeric box switches into on click. Selecting all text
-/// on entry makes typing replace the number, like Unity and egui's DragValue.
-#[allow(clippy::too_many_arguments)]
-fn draw_number_edit(
-    ui: &mut Ui,
-    style: &PreferencesPanelStyle,
-    kind: StyleKind,
-    field: &mut StyleField,
-    selected: &mut Option<String>,
-    clicked: &mut bool,
-    rect: Rect,
-    path: &str,
-    id: Id,
-    hovered: bool,
-    editor: &mut FieldEdit,
-) -> ValueOutcome {
-    paint_value_background(ui, style, rect, style.control_rail.to_egui());
-    let padding = value_padding(ui, style, rect);
-    let mut changed = false;
-
-    let response = ui
-        .scope_builder(UiBuilder::new().max_rect(rect), |ui| {
-            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-            ui.visuals_mut().selection.bg_fill = style.accent.to_egui();
-            ui.visuals_mut().selection.stroke = Stroke::NONE;
-            ui.add(
-                TextEdit::singleline(&mut editor.text)
-                    .id(id)
-                    .font(
-                        TextStyle::sized(style.control_value.to_egui(), style.body_size)
-                            .font_id(ui.style()),
-                    )
-                    .text_color(style.control_value.to_egui())
-                    .frame(egui::Frame::NONE.inner_margin(padding))
-                    .horizontal_align(Align::Min)
-                    .vertical_align(Align::Center)
-                    .min_size(vec2(rect.width(), rect.height()))
-                    .desired_width(rect.width()),
-            )
-        })
-        .inner;
-
-    if editor.focus {
-        response.request_focus();
-        select_all_text(ui, id, editor.text.chars().count());
-        editor.focus = false;
-    }
-
-    if response.changed()
-        && let Some(value) = parse_number(kind, &editor.text)
-        && field.value != value
-    {
-        field.value = value;
-        changed = true;
-    }
-
-    let escape = ui.input(|input| input.key_pressed(Key::Escape));
-    let enter = ui.input(|input| input.key_pressed(Key::Enter));
-    let mut finished = false;
-    if escape {
-        if field.value != editor.original {
-            field.value = editor.original.clone();
-            changed = true;
-        }
-        response.surrender_focus();
-        finished = true;
-    } else if enter || response.lost_focus() {
-        if let Some(value) = parse_number(kind, &editor.text)
-            && field.value != value
-        {
-            field.value = value;
-            changed = true;
-        }
-        finished = true;
-    }
-
-    if response.clicked() {
+/// A click (or a scrub) on a value selects its row, so the name turns blue and
+/// the box keeps the accent edge.
+fn select_row(clicked: bool, path: &str, selected: &mut Option<String>, out: &mut bool) {
+    if clicked {
         *selected = Some(path.to_owned());
-        *clicked = true;
-    }
-
-    paint_value_outline(ui, style, rect, style.value_edge(true, hovered).to_egui());
-    editor.focus = false;
-
-    ValueOutcome {
-        changed,
-        finished_edit: finished,
-        popup_open: false,
+        *out = true;
     }
 }
 
-/// A string token (icon path, font family): a box whose whole interior is an
-/// editable field.
-#[allow(clippy::too_many_arguments)]
-fn draw_text(
-    ui: &mut Ui,
-    style: &PreferencesPanelStyle,
-    field: &mut StyleField,
-    selected: &mut Option<String>,
-    clicked: &mut bool,
-    rect: Rect,
-    id: Id,
-    path: &str,
-    active: bool,
-    hovered: bool,
-) -> ValueOutcome {
-    let fill = if hovered && !active {
-        style.control_hover
-    } else {
-        style.control_rail
-    };
-    paint_value_background(ui, style, rect, fill.to_egui());
-
-    let mut text = match &field.value {
-        StyleValue::Text(text) => text.clone(),
-        _ => String::new(),
-    };
-    let padding = value_padding(ui, style, rect);
-    let response = ui
-        .scope_builder(UiBuilder::new().max_rect(rect), |ui| {
-            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-            ui.visuals_mut().selection.bg_fill = style.accent.to_egui();
-            ui.visuals_mut().selection.stroke = Stroke::NONE;
-            ui.add(
-                TextEdit::singleline(&mut text)
-                    .id(id)
-                    .font(
-                        TextStyle::sized(style.control_value.to_egui(), style.body_size)
-                            .font_id(ui.style()),
-                    )
-                    .text_color(style.control_value.to_egui())
-                    .frame(egui::Frame::NONE.inner_margin(padding))
-                    .horizontal_align(Align::Min)
-                    .vertical_align(Align::Center)
-                    .min_size(vec2(rect.width(), rect.height()))
-                    .desired_width(rect.width()),
-            )
-        })
-        .inner;
-
-    let mut changed = false;
-    if response.changed() {
-        field.value = StyleValue::Text(text);
-        changed = true;
-    }
-    if response.clicked() || response.has_focus() {
-        *selected = Some(path.to_owned());
-        if response.clicked() {
-            *clicked = true;
-        }
-    }
-
-    let active_now = selected.as_deref() == Some(path) || response.has_focus();
-    let edge = style.value_edge(active_now, hovered).to_egui();
-    paint_value_outline(ui, style, rect, edge);
-
+fn finished(outcome: FieldOutcome) -> ValueOutcome {
     ValueOutcome {
-        changed,
-        finished_edit: response.lost_focus(),
-        popup_open: false,
-    }
-}
-
-/// A boolean token: Unity's square checkbox at the start of the value column.
-#[allow(clippy::too_many_arguments)]
-fn draw_toggle(
-    ui: &mut Ui,
-    style: &PreferencesPanelStyle,
-    field: &mut StyleField,
-    selected: &mut Option<String>,
-    clicked: &mut bool,
-    rect: Rect,
-    key: PageKey,
-    path: &str,
-    active: bool,
-) -> ValueOutcome {
-    let on = matches!(&field.value, StyleValue::Toggle(true));
-    let side = style.checkbox_size;
-    let box_rect = Rect::from_center_size(
-        pos2(rect.left() + side * 0.5, rect.center().y),
-        vec2(side, side),
-    );
-    let response = ui.interact(box_rect, toggle_id(key, path), Sense::click());
-    labelled_widget_info(&response, WidgetType::Checkbox, &field.name, Some(on));
-
-    let active_now = active || selected.as_deref() == Some(path);
-    let edge = if active_now {
-        style.accent
-    } else if response.hovered() {
-        style.control_edge_hover
-    } else {
-        style.control_edge
-    };
-    paint_value_background(ui, style, box_rect, style.control_rail.to_egui());
-    paint_value_outline(ui, style, box_rect, edge.to_egui());
-    if on {
-        paint_check(ui, style, box_rect);
-    }
-
-    let mut changed = false;
-    if response.clicked() {
-        field.value = StyleValue::Toggle(!on);
-        *selected = Some(path.to_owned());
-        *clicked = true;
-        changed = true;
-    }
-
-    ValueOutcome {
-        changed,
-        finished_edit: false,
+        changed: outcome.changed(),
+        finished_edit: outcome.finished,
         popup_open: false,
     }
 }
 
 /// A color token: Unity's inspector field, a full-width swatch with the HDR
-/// badge when the field's [`ColorProperty`] has HDR usage and the eyedropper
-/// slot. Clicking the swatch opens the shared color picker rather than egui's
-/// built-in one.
+/// badge when the field's ColorProperty has HDR usage and the eyedropper slot.
+/// Clicking the swatch opens the shared color picker rather than egui's
+/// built-in one; ColorField is already a widget, so this is only the mapping
+/// between a StyleValue and a ColorProperty.
 #[allow(clippy::too_many_arguments)]
 fn draw_color(
     ui: &mut Ui,
@@ -1931,52 +1657,6 @@ fn color_property(value: &StyleValue, usage: ColorUsage) -> Option<ColorProperty
     }
 }
 
-/// Horizontal text padding plus the vertical padding that centres one line
-/// inside a value box (TextEdit sizes itself by its font's row height, not by
-/// the box, so the difference is split above and below).
-fn value_padding(ui: &Ui, style: &PreferencesPanelStyle, rect: Rect) -> Margin {
-    let font = TextStyle::sized(style.control_value.to_egui(), style.body_size).font_id(ui.style());
-    let row_height = ui.fonts_mut(|fonts| fonts.row_height(&font));
-    let vertical = ((rect.height() - row_height) * 0.5).round().max(0.0) as i8;
-    Margin::symmetric(style.field_padding.round() as i8, vertical)
-}
-
-fn paint_value_background(ui: &Ui, style: &PreferencesPanelStyle, rect: Rect, fill: egui::Color32) {
-    ui.painter().rect_filled(
-        rect,
-        CornerRadius::same(style.control_corner_radius as u8),
-        fill,
-    );
-}
-
-fn paint_value_outline(ui: &Ui, style: &PreferencesPanelStyle, rect: Rect, edge: egui::Color32) {
-    if style.control_border_width <= 0.0 {
-        return;
-    }
-    ui.painter().rect_stroke(
-        rect,
-        CornerRadius::same(style.control_corner_radius as u8),
-        Stroke::new(style.control_border_width, edge),
-        StrokeKind::Inside,
-    );
-}
-
-fn paint_check(ui: &Ui, style: &PreferencesPanelStyle, rect: Rect) {
-    let color = style.control_value.to_egui();
-    let stroke = Stroke::new(1.5, color);
-    let a = pos2(rect.left() + rect.width() * 0.22, rect.center().y);
-    let b = pos2(
-        rect.left() + rect.width() * 0.42,
-        rect.bottom() - rect.height() * 0.22,
-    );
-    let c = pos2(
-        rect.right() - rect.width() * 0.18,
-        rect.top() + rect.height() * 0.22,
-    );
-    ui.painter().line_segment([a, b], stroke);
-    ui.painter().line_segment([b, c], stroke);
-}
-
 fn paint_foldout_arrow(
     painter: &egui::Painter,
     center: Pos2,
@@ -2021,62 +1701,6 @@ fn collapsed_above(segments: &[&str], collapsed: &HashSet<String>) -> bool {
         }
     }
     false
-}
-
-/// The displayed form of a numeric token.
-fn number_text(value: &StyleValue) -> String {
-    match value {
-        StyleValue::Float(value) => {
-            let mut text = format!("{value}");
-            if text == "-0" {
-                text = "0".to_owned();
-            }
-            text
-        }
-        StyleValue::Integer(value) => value.to_string(),
-        _ => String::new(),
-    }
-}
-
-/// Parse a typed number, clamped to the field's own range (a u8 corner radius
-/// is not a negative number and does not exceed 255).
-fn parse_number(kind: StyleKind, text: &str) -> Option<StyleValue> {
-    let text = text.trim();
-    match kind {
-        StyleKind::Float => text
-            .parse::<f32>()
-            .ok()
-            .filter(|value| value.is_finite())
-            .map(StyleValue::Float),
-        StyleKind::Integer { max } => text
-            .parse::<f32>()
-            .ok()
-            .filter(|value| value.is_finite())
-            .map(|value| StyleValue::Integer(value.round().clamp(0.0, max as f32) as u32)),
-        _ => None,
-    }
-}
-
-fn select_all_text(ui: &Ui, id: Id, chars: usize) {
-    let mut state = TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
-    state
-        .cursor
-        .set_char_range(Some(egui::text::CCursorRange::two(
-            egui::text::CCursor::default(),
-            egui::text::CCursor::new(chars),
-        )));
-    state.store(ui.ctx(), id);
-}
-
-fn round_decimal(value: f32, places: i32) -> f32 {
-    let factor = 10f32.powi(places);
-    (value * factor).round() / factor
-}
-
-/// Units per point of drag: a 3 px padding needs a finer hand than a 130 px
-/// pane height, and the style knows its own magnitude.
-fn drag_speed(value: f32) -> f64 {
-    (value.abs() / 50.0).clamp(0.01, 1.0) as f64
 }
 
 /// Close, right-aligned, plus Reload on a shared page. Every edit is already
@@ -3213,25 +2837,9 @@ mod tests {
         );
     }
 
+    /// Token paths are a tree: everything before the last dot is the group.
     #[test]
-    fn numeric_text_parses_and_clamps() {
-        assert_eq!(
-            parse_number(StyleKind::Float, " 1.5 "),
-            Some(StyleValue::Float(1.5))
-        );
-        assert_eq!(parse_number(StyleKind::Float, "NaN"), None);
-        assert_eq!(parse_number(StyleKind::Float, ""), None);
-        assert_eq!(
-            parse_number(StyleKind::Integer { max: 255 }, "300"),
-            Some(StyleValue::Integer(255))
-        );
-        assert_eq!(
-            parse_number(StyleKind::Integer { max: 255 }, "-4"),
-            Some(StyleValue::Integer(0))
-        );
-        assert_eq!(number_text(&StyleValue::Float(20.0)), "20");
-        assert_eq!(number_text(&StyleValue::Float(-0.0)), "0");
-        assert_eq!(number_text(&StyleValue::Integer(3)), "3");
+    fn token_paths_split_into_groups() {
         assert_eq!(group_path("icons.console.info"), "icons.console");
         assert_eq!(group_path("height"), "");
     }
