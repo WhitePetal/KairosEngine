@@ -49,9 +49,15 @@ impl<'a> FieldLabel<'a> {
         } else {
             CursorIcon::PointingHand
         };
-        FieldLabelResponse {
-            response: response.on_hover_cursor(cursor),
+        // Follow the rect rather than the response's hover flag: a row can be
+        // drawn under a chrome overlay that wins egui's hover test, and the
+        // label's own widget must still show its cursor over its own pixels.
+        // While a button is down, egui hovers only the dragged widget, so the
+        // drag keeps its cursor from that widget instead.
+        if !ui.input(|input| input.pointer.any_down()) && ui.rect_contains_pointer(rect) {
+            ui.ctx().set_cursor_icon(cursor);
         }
+        FieldLabelResponse { response }
     }
 
     /// Paint the name, left-aligned and vertically centred in its rect.
@@ -139,6 +145,33 @@ mod tests {
         hover.events = vec![egui::Event::PointerMoved(label_rect().center())];
         let output = ctx.run_ui(hover, |ui| {
             draw(&style, ui);
+        });
+
+        assert_eq!(
+            output.platform_output.cursor_icon,
+            egui::CursorIcon::ResizeHorizontal
+        );
+    }
+
+    /// A row can be drawn under chrome that wins egui's hover test (a dock
+    /// overlay, a drag layer). The name still has to show its own cursor over
+    /// its own pixels, so the cursor follows the rect, not the hover flag.
+    #[test]
+    fn an_overlay_above_the_name_does_not_steal_its_cursor() {
+        let ctx = Context::default();
+        let style = style();
+        let overlay = Id::new("kairos-field-label-overlay");
+        let cover = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(240.0, 80.0));
+
+        let _ = ctx.run_ui(input(), |ui| {
+            draw(&style, ui);
+            ui.interact(cover, overlay, Sense::click());
+        });
+        let mut hover = input();
+        hover.events = vec![egui::Event::PointerMoved(label_rect().center())];
+        let output = ctx.run_ui(hover, |ui| {
+            draw(&style, ui);
+            ui.interact(cover, overlay, Sense::click());
         });
 
         assert_eq!(

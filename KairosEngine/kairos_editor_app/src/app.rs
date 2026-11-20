@@ -1053,4 +1053,66 @@ mod tests {
         let text = std::fs::read_to_string(&file).expect("the commit writes the skin");
         assert!(text.contains("toolbar_height: 30.0"), "{text}");
     }
+    /// The field cursors survive the real dock: a numeric row publishes the
+    /// scrub cursor over its name and the text cursor over its box. The rows
+    /// live below the fold of the Console skin, so the pass scrolls first and
+    /// lets the smooth scroll settle before reading the painted rects.
+    #[test]
+    fn preferences_publish_the_scrub_and_text_cursors() {
+        let _guard = UI_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let mut app = build();
+        let engine = Engine::headless();
+        let ctx = egui::Context::default();
+
+        let _ = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
+        apply(
+            &mut app,
+            Action::Layout(LayoutAction::ShowPanel {
+                panel: panels::PREFERENCES,
+            }),
+            &ctx,
+        );
+        let mut output = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
+
+        for _ in 0..4 {
+            let mut input = raw_input();
+            input.events = vec![
+                egui::Event::PointerMoved(egui::pos2(800.0, 450.0)),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Line,
+                    delta: egui::vec2(0.0, -12.0),
+                    modifiers: egui::Modifiers::NONE,
+                    phase: egui::TouchPhase::Move,
+                },
+            ];
+            output = ctx.run_ui(input, |ui| app.ui(&engine, ui));
+        }
+        for _ in 0..90 {
+            output = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
+        }
+
+        let mut name = None;
+        for clipped in &output.shapes {
+            if let egui::Shape::Text(text) = &clipped.shape
+                && text.galley.text() == "Search radius"
+            {
+                name = Some(text.pos);
+            }
+        }
+        let name = name.expect("the Console skin keeps a Search radius token");
+
+        let mut hover = |offset: egui::Vec2| {
+            let mut input = raw_input();
+            input.events = vec![egui::Event::PointerMoved(name + offset)];
+            ctx.run_ui(input, |ui| app.ui(&engine, ui))
+                .platform_output
+                .cursor_icon
+        };
+
+        assert_eq!(
+            hover(egui::vec2(4.0, 5.0)),
+            egui::CursorIcon::ResizeHorizontal
+        );
+        assert_eq!(hover(egui::vec2(200.0, 5.0)), egui::CursorIcon::Text);
+    }
 }

@@ -224,9 +224,10 @@ impl<'a, N: Number> NumberField<'a, N> {
         } else {
             Sense::click()
         };
-        let mut response = ui
-            .interact(rect, self.id, sense)
-            .on_hover_cursor(CursorIcon::Text);
+        let mut response = ui.interact(rect, self.id, sense);
+        if !ui.input(|input| input.pointer.any_down()) && ui.rect_contains_pointer(rect) {
+            ui.ctx().set_cursor_icon(CursorIcon::Text);
+        }
         labelled_widget_info(&response, WidgetType::DragValue, self.label, None);
 
         if response.clicked() {
