@@ -1,8 +1,10 @@
-//! Shared styles: appearance owned by the editor shell, not by a panel.
+//! Shared styles: appearance and global resources owned by the editor shell,
+//! not by a panel.
 //!
 //! A panel owns its skin and loads it in [`Panel::init`](crate::Panel::init).
-//! The toolbar is app chrome and the color picker is a widget, so neither has a
-//! per-instance lifecycle to hang a skin on. They declare themselves with
+//! The toolbar is app chrome, the color picker is a widget and the font list is
+//! a global resource, so none has a per-instance lifecycle to hang a skin on.
+//! They declare themselves with
 //! `#[SharedStyle(...)]` next to `#[derive(StyleFields)]`; the derive emits the
 //! id constant and submits a [`SharedStyleDef`]. The app collects the
 //! [`StyleCatalog`] once at boot and [`SharedStyles`] owns the live values.
@@ -14,6 +16,11 @@
 //! * the Preferences panel edits them through the separate
 //!   [`SharedStyleAction`](kairos_editor_core::SharedStyleAction) path, because
 //!   there is no panel instance to route a `SetField` to.
+//!
+//! A widget reads its own runtime tokens, and the serde skin here projects onto
+//! them at the call site: the color picker's [`ColorPickerSkin::tokens`] and
+//! the font list's [`EditorFonts::config`] are the same move, which keeps the
+//! widget kit out of the editor's file format.
 //!
 //! The type writes only [`SharedStyle::preload`]. The derive implements the
 //! sealed erasure half and submits the definition; each half is what makes the
@@ -31,6 +38,7 @@
 //! [`SharedStyleDef::new`] instead.
 
 mod catalog;
+mod fonts;
 mod registry;
 
 pub mod color_picker;
@@ -38,6 +46,7 @@ pub mod color_picker;
 pub use crate::toolbar::style::TOOLBAR;
 pub use catalog::{SharedStyleDef, StyleCatalog};
 pub use color_picker::{COLOR_PICKER, ColorPickerSkin};
+pub use fonts::{EditorFonts, FONTS};
 pub use registry::{SharedSkin, SharedStyles};
 
 use egui::Context;

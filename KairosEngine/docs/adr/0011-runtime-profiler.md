@@ -313,7 +313,6 @@
      ruler drops colliding labels.
   Tests: `the_module_pane_defaults_to_the_cpu_card_and_half_the_next`,
   `the_splitter_collapses_the_timeline_to_its_header`,
-  `a_short_module_pane_keeps_the_usage_charts_zero_line`,
   `a_short_chart_drops_the_guide_chips_that_collide`.
 - **Decision**:
   1. **New foundation crate `kairos_profile`.** It owns the recorder, the

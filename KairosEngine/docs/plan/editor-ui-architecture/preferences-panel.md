@@ -144,6 +144,16 @@ StyleFields::set_style_field(path, value)
 - 写路径是独立的 `Action::SharedStyle(SharedStyleAction::{SetField, Commit, Reload})` → `Effect::SharedStyle` → `SharedStyles::{set_field, save, reload}`。`Commit` 仍然一次手势写一次文件；`Reload` 是显式刷新（页脚 Reload 按钮），reload 会 bump `SharedStyles::revision`，Preferences 下一帧重新取字段表。
 - 取色器的 `window_controls`（红黄绿）不进 `ColorPicker.ron`：继续用共享的 `WindowControlsStyle::default()`，和 dock 浮动窗一致，直到 window-controls 自己有 skin。
 
+> **2026-11-20 补充**：字体页 `Fonts` 进 shared 页列表（排在 Color Picker 之后、Toolbar 之前，按 id 排序）。
+> `shared_style/fonts.rs` 的 `EditorFonts` 是普通 shared style——`#[derive(StyleFields)]` +
+> `#[SharedStyle(FONTS = "fonts", title = "Fonts")]`，id 常量、seal 和 inventory 提交都由宏生成；
+> `EditorFonts.ron` 从单值改成 dark/light 成对（`StyleFile<EditorFonts>`），所以既有页机制原样复用。
+> 字段是 `proportional.0.name` / `.path` 这类索引 token：`path` 用 `String`（字段编辑器写文本），
+> `FontEntry::priority` 暂 `#[style(skip)]`；安装结构 `fonts::FontsConfig` 由 `EditorFonts::config()`
+> 在调用点投影（和取色器 `tokens()` 同一套路）。`preload` 调 `install`，所以 app 启动不再单独调
+> `fonts::install`，编辑 Commit 后 app 的 `preload` 也会重装字体。已知边界：列表的增删/排序还没有
+> UI（字段表只能编辑文件里已有的行），`priority` 等有 choice 控件后再进页面。
+
 ### 2.6 页面列表：活着的面板 + 固定 shared 页
 
 `Frame::skins` 携带活着的面板的 `[PanelSkin]`（`panel/title/file/fields`；`title` 是 `Panel::title` 的文本），由 app 在每帧 `sync` 时、仅当 Preferences 打开时调用 `PanelHost::skins(&state)` 生成。`Frame::shared` 携带 `SharedStyles`，Preferences 把它的 `SharedSkin` 页固定追加在面板页之后。列表因此是：

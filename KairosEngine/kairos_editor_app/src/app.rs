@@ -161,10 +161,6 @@ impl EditorApp {
     /// loaders and wires the repaint callback. The engine belongs to the loop
     /// and is not passed here; it arrives with every UI pass.
     pub fn new(egui_ctx: &egui::Context) -> Self {
-        if let Err(error) = kairos_editor_widgets::fonts::install(egui_ctx) {
-            kairos_log::warn!(target: "kairos_editor", "UI fonts: {error}");
-        }
-
         // The editor chrome is authored dark-only: the dock's `Style`, the
         // toolbar skin and the widget defaults are all dark, but each panel picks
         // its skin from `ctx.theme()`. Left to follow the desktop, a light system
@@ -175,8 +171,10 @@ impl EditorApp {
         egui_ctx.set_theme(egui::Theme::Dark);
 
         // Shared styles are editor chrome, not panel instances: one load at
-        // boot, before the first frame. A missing file is seeded in place, so
-        // the editor works on a fresh checkout without a build step.
+        // boot, before the first frame. `preload` installs what they point at —
+        // the font list, the toolbar logo, the eyedropper icon — so the fonts no
+        // longer need a boot call of their own. A missing file is seeded in
+        // place, so the editor works on a fresh checkout without a build step.
         let shared = SharedStyles::load(&StyleCatalog::builtin(), egui_ctx.theme());
         shared.preload(egui_ctx);
 

@@ -75,6 +75,13 @@ L2 与总架构（MVU）的关系：总架构里的 `Panel`/component 就是这�
 > 下发给所有面板；Preferences 固定追加它们的页，写路径是独立的
 > `SharedStyleAction`/`SharedStyleEffect`（含显式 `Reload`）。面板样式仍是 per-instance、
 > `Panel::init` 加载，两者不混用。
+>
+> **2026-11-20 补充**：字体表并入 shared style，没有引入第三层概念：`EditorFonts` 就是普通 shared
+> style（`#[derive(StyleFields)]` + `#[SharedStyle(FONTS = "fonts", title = "Fonts")]`），
+> `EditorFonts.ron` 从单值改成 dark/light 成对，Preferences 自动多出 `Fonts` 页。widget 层只保留
+> 「把字体文件交给 egui」：`fonts::FontsConfig::install`；serde 皮肤、文件策略和字段表都在 component
+> （`EditorFonts::config()` 在调用点投影，和取色器 `tokens()` 同一套路），所以 app 启动不再单独调
+> `fonts::install`。
 
 - **唯一外观来源**：颜色（bg/panel/text/muted/accent/border/error/success/warning）、间距（xs/sm/md/lg/xl）、字号（caption/body/heading/title）、行高、圆角、图标尺寸、动效时长。
 - 现状是「每个窗口一个 `XxxStyle` TOML + 自己的 `*Style::new()` + 偏好设置反射」；目标是**一个 `Theme`**（可含 per-panel override），由 host 每帧准备，widget 只读。

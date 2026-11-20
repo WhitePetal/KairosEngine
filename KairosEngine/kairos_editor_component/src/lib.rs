@@ -93,9 +93,9 @@
 //!
 //! ## Shared styles
 //!
-//! The toolbar and the color picker are not panels, so they have no instance to
-//! load a skin into. They declare `#[SharedStyle(...)]` next to their
-//! `#[derive(StyleFields)]`: the derive emits the id constant, the sealed erasure
+//! The toolbar, the color picker and the font list are not panels, so they have
+//! no instance to load a skin into. They declare `#[SharedStyle(...)]` next to
+//! their `#[derive(StyleFields)]`: the derive emits the id constant, the sealed erasure
 //! impl and a [`SharedStyleDef`](shared_style::SharedStyleDef) submission (the
 //! same inventory mechanism as panels). The app loads the
 //! [`StyleCatalog`](shared_style::StyleCatalog) once at boot into a

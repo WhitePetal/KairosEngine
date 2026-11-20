@@ -1469,7 +1469,7 @@ mod tests {
     use kairos_editor_widgets::color_picker::color_swatch_id;
     use kairos_editor_widgets::style::Style;
 
-    use crate::shared_style::COLOR_PICKER;
+    use crate::shared_style::{COLOR_PICKER, FONTS};
     use crate::skin::PanelSkin;
 
     struct NoHost;
@@ -1908,6 +1908,28 @@ mod tests {
             actions.is_empty(),
             "choosing a page is view state, not an action: {actions:?}"
         );
+    }
+
+    /// The font list is a shared page like the chrome: it exists with no panel
+    /// open, and its indexed rows are ordinary tokens.
+    #[test]
+    fn the_font_list_has_a_shared_page() {
+        let mut harness = Harness::new(Vec::new());
+        harness.frame(Vec::new());
+
+        let (output, actions) = harness.click(nav_id(FONTS));
+        let text = painted_text(&output);
+
+        assert!(
+            text.contains("Preferences/Styles/EditorFonts.ron"),
+            "{text}"
+        );
+        assert!(text.contains("Proportional"), "{text}");
+        assert!(
+            text.contains("Preferences/Fonts/Inter-Regular.otf"),
+            "the row shows the font path: {text}"
+        );
+        assert!(actions.is_empty(), "choosing a page emits nothing: {actions:?}");
     }
 
     /// Shared edits use the separate action path: they have no panel instance

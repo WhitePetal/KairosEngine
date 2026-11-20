@@ -124,7 +124,11 @@
     `Preferences/Styles/EditorFonts.ron` (Inter Regular/Medium from `Preferences/Fonts/`)
     and calls `Context::set_fonts` once when the app starts. The OFL licence moved next to
     the fonts (`Preferences/Fonts/Inter-LICENSE.txt`); no editor UI asset is embedded with
-    `include_bytes!` anymore.
+    `include_bytes!` anymore. (Update 2026-11-20: the file and its lifecycle moved to the
+    shared style `kairos_editor_component::shared_style::EditorFonts` — the RON file is a
+    dark/light pair and the list has a Preferences page; `FontsConfig` in
+    `kairos_editor_widgets` is now only the install structure, installed from that style's
+    `preload`.)
   - `PanelHost::sync(layout, ctx)` calls `Panel::init(ctx)` exactly once per instance,
     after construction and before the first draw. A panel loads its own UI resources
     there (the Console preloads its severity icons and tab icon; the demo panels preload

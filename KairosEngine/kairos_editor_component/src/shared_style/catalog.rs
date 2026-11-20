@@ -141,21 +141,16 @@ fn save_shared<S: Style + SharedStyle>(
 
 #[cfg(test)]
 mod tests {
-    use crate::shared_style::{COLOR_PICKER, TOOLBAR};
+    use crate::shared_style::{COLOR_PICKER, FONTS, TOOLBAR};
 
     use super::StyleCatalog;
 
     #[test]
-    fn the_builtin_catalog_registers_the_toolbar_and_the_color_picker() {
+    fn the_builtin_catalog_registers_the_editor_chrome() {
         let catalog = StyleCatalog::builtin();
 
-        assert!(
-            catalog.get(TOOLBAR).is_some(),
-            "toolbar style not registered"
-        );
-        assert!(
-            catalog.get(COLOR_PICKER).is_some(),
-            "color picker style not registered"
-        );
+        for id in [TOOLBAR, COLOR_PICKER, FONTS] {
+            assert!(catalog.get(id).is_some(), "shared style {id} not registered");
+        }
     }
 }

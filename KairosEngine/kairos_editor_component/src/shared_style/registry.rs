@@ -170,16 +170,18 @@ mod tests {
     use kairos_color::Color;
 
     use super::*;
-    use crate::shared_style::{COLOR_PICKER, TOOLBAR};
+    use crate::shared_style::{COLOR_PICKER, EditorFonts, FONTS, TOOLBAR};
 
     #[test]
-    fn the_registry_exposes_both_field_tables() {
+    fn the_registry_exposes_a_page_for_every_shared_style() {
         let shared = SharedStyles::default();
         let skins = shared.skins();
 
         assert!(skins.iter().any(|skin| skin.id == TOOLBAR));
         assert!(skins.iter().any(|skin| skin.id == COLOR_PICKER));
+        assert!(skins.iter().any(|skin| skin.id == FONTS));
         assert!(shared.toolbar().is_some());
+        assert!(shared.get::<EditorFonts>(FONTS).is_some());
         assert!(shared.color_picker().is_some());
         assert!(shared.color_picker_style().is_some());
         assert!(
@@ -212,6 +214,18 @@ mod tests {
                 .fields
                 .iter()
                 .any(|field| field.path == "eyedropper_icon")
+        );
+
+        let fonts = skins
+            .iter()
+            .find(|skin| skin.id == FONTS)
+            .expect("fonts page");
+        assert!(
+            fonts
+                .fields
+                .iter()
+                .any(|field| field.path == "proportional.0.name"),
+            "font entries are indexed token groups"
         );
     }
 

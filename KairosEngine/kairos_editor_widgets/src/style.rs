@@ -54,9 +54,9 @@ pub fn set_style_root(root: impl AsRef<Path>) {
 /// The directory style files are resolved against: the redirected root in tests,
 /// `Preferences/Styles` in the editor.
 ///
-/// Shared with sibling modules that persist a file next to the component styles
-/// (`fonts::FontsConfig`), so one redirect keeps a test run out of the working
-/// directory for all of them.
+/// The one root for every style file: the component styles and the shell's
+/// shared styles (`ToolBar.ron`, `ColorPicker.ron`, `EditorFonts.ron`), so one
+/// redirect keeps a test run out of the working directory for all of them.
 pub(crate) fn style_root() -> PathBuf {
     STYLE_ROOT
         .with(|cell| cell.borrow().clone())

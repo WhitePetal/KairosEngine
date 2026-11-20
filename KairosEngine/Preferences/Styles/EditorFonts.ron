@@ -1,15 +1,32 @@
 (
-    proportional: [
-        (
-            name: "Inter",
-            path: "Preferences/Fonts/Inter-Regular.otf",
-            priority: First,
-        ),
-        (
-            name: "Inter Medium",
-            path: "Preferences/Fonts/Inter-Medium.otf",
-            priority: Push,
-        ),
-    ],
-    monospace: [],
+    dark: (
+        proportional: [
+            (
+                name: "Inter",
+                path: "Preferences/Fonts/Inter-Regular.otf",
+                priority: First,
+            ),
+            (
+                name: "Inter Medium",
+                path: "Preferences/Fonts/Inter-Medium.otf",
+                priority: Push,
+            ),
+        ],
+        monospace: [],
+    ),
+    light: (
+        proportional: [
+            (
+                name: "Inter",
+                path: "Preferences/Fonts/Inter-Regular.otf",
+                priority: First,
+            ),
+            (
+                name: "Inter Medium",
+                path: "Preferences/Fonts/Inter-Medium.otf",
+                priority: Push,
+            ),
+        ],
+        monospace: [],
+    ),
 )
