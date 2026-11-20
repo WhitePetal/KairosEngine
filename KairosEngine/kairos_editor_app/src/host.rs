@@ -27,11 +27,74 @@ use kairos_engine::{
 use winit::{
     event::WindowEvent,
     event_loop::{ActiveEventLoop, EventLoopProxy},
-    window::Window,
+    window::{CursorIcon as WinitCursor, Window},
 };
 
 use crate::eyedropper::ScreenPicker;
 use crate::{app::EditorApp, branding};
+
+/// Re-assert the window cursor after the pointer moved.
+///
+/// egui-winit tells the OS only when the icon @@changes@@, and winit skips an
+/// unchanged icon as well, so a steady hover is a single @@set_cursor@@ call for
+/// the whole gesture. macOS drops that cursor on the next pointer move when
+/// nothing re-invalidates the view's cursor rects: the pointer falls back to the
+/// arrow and the icon only flashes for the frame in which it changes. Re-applying
+/// it after every move keeps the rects fresh; the intermediate @@Default@@ is what
+/// gets past winit's unchanged-icon check.
+fn reassert_cursor(window: &Window, icon: egui::CursorIcon) {
+    if icon == egui::CursorIcon::Default {
+        return;
+    }
+    let Some(icon) = winit_cursor(icon) else {
+        return;
+    };
+    window.set_cursor(WinitCursor::Default);
+    window.set_cursor(icon);
+}
+
+/// egui's cursor vocabulary in winit's. Icons not listed here keep the
+/// change-triggered path only; the editor uses the ones above.
+fn winit_cursor(icon: egui::CursorIcon) -> Option<WinitCursor> {
+    use egui::CursorIcon as Egui;
+    Some(match icon {
+        Egui::Default => WinitCursor::Default,
+        Egui::ContextMenu => WinitCursor::ContextMenu,
+        Egui::Help => WinitCursor::Help,
+        Egui::PointingHand => WinitCursor::Pointer,
+        Egui::Progress => WinitCursor::Progress,
+        Egui::Wait => WinitCursor::Wait,
+        Egui::Cell => WinitCursor::Cell,
+        Egui::Crosshair => WinitCursor::Crosshair,
+        Egui::Text => WinitCursor::Text,
+        Egui::VerticalText => WinitCursor::VerticalText,
+        Egui::Alias => WinitCursor::Alias,
+        Egui::Copy => WinitCursor::Copy,
+        Egui::Move => WinitCursor::Move,
+        Egui::NoDrop => WinitCursor::NoDrop,
+        Egui::NotAllowed => WinitCursor::NotAllowed,
+        Egui::Grab => WinitCursor::Grab,
+        Egui::Grabbing => WinitCursor::Grabbing,
+        Egui::AllScroll => WinitCursor::AllScroll,
+        Egui::ZoomIn => WinitCursor::ZoomIn,
+        Egui::ZoomOut => WinitCursor::ZoomOut,
+        Egui::ResizeHorizontal => WinitCursor::EwResize,
+        Egui::ResizeVertical => WinitCursor::NsResize,
+        Egui::ResizeNeSw => WinitCursor::NeswResize,
+        Egui::ResizeNwSe => WinitCursor::NwseResize,
+        Egui::ResizeColumn => WinitCursor::ColResize,
+        Egui::ResizeRow => WinitCursor::RowResize,
+        Egui::ResizeEast => WinitCursor::EResize,
+        Egui::ResizeSouthEast => WinitCursor::SeResize,
+        Egui::ResizeSouth => WinitCursor::SResize,
+        Egui::ResizeSouthWest => WinitCursor::SwResize,
+        Egui::ResizeWest => WinitCursor::WResize,
+        Egui::ResizeNorthWest => WinitCursor::NwResize,
+        Egui::ResizeNorth => WinitCursor::NResize,
+        Egui::ResizeNorthEast => WinitCursor::NeResize,
+        _ => return None,
+    })
+}
 
 /// The app's layer: egui state plus the panel pass.
 pub struct EditorLayer {
@@ -359,12 +422,22 @@ impl Layer for EditorLayer {
             .expect("the egui state was checked above");
 
         let raw_input = state.take_egui_input(window);
+        let pointer_moved = raw_input.events.iter().any(|event| {
+            matches!(
+                event,
+                egui::Event::PointerMoved(_) | egui::Event::PointerButton { .. }
+            )
+        });
 
         let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
             self.app.ui(engine, ui);
         });
 
+        let cursor_icon = full_output.platform_output.cursor_icon;
         state.handle_platform_output(window, full_output.platform_output);
+        if pointer_moved {
+            reassert_cursor(window, cursor_icon);
+        }
 
         let mut output = FrameOutput::default();
 
