@@ -18,6 +18,8 @@
 //! * `toggle`: [ToggleField];
 //! * `enum_field`: [EnumField], a popup field over an enum, and [VariantMenu]
 //!   for a style token's static variant table;
+//! * `list`: [ListField], a `Vec<T>` edited in place, and [ListChrome], its
+//!   length-plus-edits view for a style-token page;
 //! * `label`: [FieldLabel], the row name that scrubs a number.
 //!
 //! Every control has the same shape:
@@ -50,6 +52,7 @@
 mod edit;
 mod enum_field;
 mod label;
+mod list;
 mod number;
 mod paint;
 mod style;
@@ -61,6 +64,12 @@ mod testing;
 
 pub use enum_field::{EnumField, VariantMenu, enum_item_id, enum_popup_id};
 pub use label::{FieldLabel, FieldLabelResponse};
+pub use list::{
+    ListBandIds, ListBandOutcome, ListChrome, ListChromeEdit, ListChromeIds, ListChromeState,
+    ListChromeStyle, ListField, ListHeaderOutcome, ListItem, ListItemOutcome, ListOutcome,
+    ListState, list_add_id, list_count_id, list_fold_id, list_handle_id, list_header_id,
+    list_item_id, list_remove_id,
+};
 pub use number::{Number, NumberEdit, NumberField};
 pub use style::FieldStyle;
 pub use text::TextField;

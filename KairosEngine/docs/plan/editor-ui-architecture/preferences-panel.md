@@ -163,6 +163,15 @@ StyleFields::set_style_field(path, value)
 > 叶子列表（Profiler `category_palette`）已经有表头和增删，但元素行还是普通行，`Element N` +
 > 颜色框留在下一轮。
 >
+> **2026-11-21 补充（列表控件）**：widget 层现在有两套列表视图，边界和 enum 的
+> `EnumField` / `VariantMenu` 相同。`ListField<'a, T>` 借 `&mut Vec<T>` 直接增删/排序，新增元素用
+> caller 提供的 factory；元素内容由 `row` 闭包画，列表只负责 header、count、band、选中、折叠和拖拽。
+> `ListState` 是调用方持有但字段私有的跨帧记忆（选中/折叠/count 编辑/拖拽），widget 每帧按当前
+> `Vec` 长度 normalize，所以外部缩短列表也不会留下越界状态。`ListChrome` 给 style-token 页面用：它只拿
+> `len + ListChromeIds`，把 `SetLen/Insert/Remove/Move` 作为 `ListChromeEdit` 返回给页面；页面再转成
+> `StyleValue::ListLen` 或 `ListEdit`。Preferences 的两行表头、元素 band 和拖拽已经走这套 chrome，
+> 页面只保留 path 选择和字段行布局。
+>
 > **2026-11-20 补充（枚举控件）**：值协议新增 `StyleValue::Variant(String)`（稳定变体名，不是下标）；
 > 变体名由 `StyleField::variants: Option<&'static [&'static str]>` 携带，页面画菜单时读取，值本身
 > 只存当前 id。不再有 `StyleVariant` / `EnumVariant`：类型化控件 `EnumField` 用 strum 的 `EnumIter` +

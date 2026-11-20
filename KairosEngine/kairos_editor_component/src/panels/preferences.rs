@@ -46,7 +46,7 @@ use std::collections::HashSet;
 
 use egui::{
     Align, Context, CornerRadius, CursorIcon, Id, Key, Margin, Pos2, Rect, Sense, Shape, Stroke,
-    StrokeKind, Ui, UiBuilder, WidgetText, WidgetType, pos2, vec2,
+    Ui, UiBuilder, WidgetText, WidgetType, pos2, vec2,
 };
 use kairos_color::{Color, ColorUsage};
 use kairos_editor_core::{
@@ -60,8 +60,9 @@ use kairos_editor_widgets::color_picker::{
 };
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::field::{
-    FieldLabel, FieldLabelResponse, FieldOutcome, FieldStyle, Number, NumberEdit, NumberField,
-    TextField, ToggleField, VariantMenu, enum_popup_id,
+    FieldLabel, FieldLabelResponse, FieldOutcome, FieldStyle, ListBandIds, ListChrome,
+    ListChromeEdit, ListChromeIds, ListChromeState, ListChromeStyle, Number, NumberEdit,
+    NumberField, TextField, ToggleField, VariantMenu, enum_popup_id,
 };
 use kairos_editor_widgets::paint::labelled_widget_info;
 use kairos_editor_widgets::style::StyleFile;
@@ -151,6 +152,55 @@ fn list_handle_id(page: impl Into<PageKey>, path: &str) -> Id {
     Id::new(("kairos.preferences.list.handle", page.into(), path))
 }
 
+/// Stable key of one list's chrome state. The style page addresses lists by
+/// dotted token path; the widget only needs an id it can carry across passes.
+fn list_chrome_id(page: impl Into<PageKey>, path: &str) -> Id {
+    Id::new(("kairos.preferences.list.chrome", page.into(), path))
+}
+
+/// The element index a selected field path belongs to, if any.
+fn selected_element_index(selected: Option<&str>, list: &str, len: usize) -> Option<usize> {
+    let rest = selected?
+        .strip_prefix(list)?
+        .strip_prefix('.')?
+        .split('.')
+        .next()?;
+    let index = rest.parse::<usize>().ok()?;
+    (index < len).then_some(index)
+}
+
+/// The page's list chrome tokens. The style-token list is not a concrete
+/// `Vec<T>`, so it draws the same geometry and colours through this snapshot
+/// rather than through a ListField.
+fn list_chrome_style(style: &PreferencesPanelStyle, field: &FieldStyle) -> ListChromeStyle {
+    ListChromeStyle {
+        field: field.clone(),
+        header_text: TextStyle::sized(style.group.to_egui(), style.group_size),
+        band_text: TextStyle::sized(field.label, style.body_size),
+        band_text_selected: TextStyle::sized(style.title.to_egui(), style.body_size),
+        header_fill: style.group_background.to_egui(),
+        header_hover: style.group_hover.to_egui(),
+        selection: style.list_selection.to_egui(),
+        divider: style.divider.to_egui(),
+        handle: style.path.to_egui(),
+        accent: style.accent.to_egui(),
+        row_height: style.row_height,
+        group_height: style.group_height,
+        group_indent: style.group_indent,
+        row_inset: style.row_inset,
+        gutter_width: style.list_gutter_width,
+        button_cell: style.list_button_cell_width,
+        button_height: style.list_button_height,
+        count_width: style.list_count_width,
+        button_fill: style.button_fill.to_egui(),
+        button_hover: style.button_hover.to_egui(),
+        button_border: style.button_border.to_egui(),
+        button_border_width: style.button_border_width,
+        button_text: style.button_text.to_egui(),
+        button_corner_radius: style.button_corner_radius.round() as u8,
+    }
+}
+
 /// The action that writes one field on whichever page owns it.
 fn set_field_action(page: PageKey, path: &str, value: &StyleValue) -> Action {
     match page {
@@ -213,28 +263,8 @@ struct PageState {
     /// re-read only on a page change or a reload, so a new entry's rows would
     /// not exist until the user left the page: the next pass re-reads it.
     stale: bool,
-    /// The list element being dragged for reordering, if any.
-    list_drag: Option<ListDrag>,
-}
-
-/// The list element a drag started on.
-///
-/// The target slot is recomputed every pass from the element bands the page
-/// just laid out, so only the origin has to survive between passes.
-#[derive(Clone, Debug)]
-struct ListDrag {
-    /// The list token's path (`"proportional"`).
-    list: String,
-    /// Index of the element the drag started on.
-    from: usize,
-}
-
-/// One element band this pass laid out, so the drag can resolve the slot the
-/// pointer is over without keeping the page's geometry between passes.
-struct ElementBand {
-    list: String,
-    index: usize,
-    rect: Rect,
+    /// Retained list chrome: the count editor and the reorder gesture.
+    list_chrome: ListChromeState,
 }
 
 impl PageState {
@@ -260,7 +290,7 @@ impl PageState {
                 self.file = page.file;
                 self.revision = page.revision;
                 self.stale = false;
-                self.list_drag = None;
+                self.list_chrome.cancel_drag();
                 return;
             }
             if self.revision == page.revision {
@@ -274,6 +304,7 @@ impl PageState {
             self.file = page.file;
             self.revision = page.revision;
             self.edit = None;
+            self.list_chrome.clear();
             // The reloaded file is now the truth; the discarded pre-reload
             // edit must not be written by a later release pass.
             self.dirty = false;
@@ -302,7 +333,7 @@ impl PageState {
         self.selected = None;
         self.collapsed.clear();
         self.edit = None;
-        self.list_drag = None;
+        self.list_chrome.clear();
         self.stale = false;
     }
 
@@ -625,6 +656,7 @@ fn page_body(
             let mut writer = PageWriter {
                 style,
                 field: field_style,
+                chrome: list_chrome_style(style, field_style),
                 key: page_key.expect("a page body is only drawn for a selected page"),
                 picker: picker_style,
                 page,
@@ -651,6 +683,8 @@ struct PageWriter<'a> {
     style: &'a PreferencesPanelStyle,
     /// The value-box tokens, shared by every field on any panel.
     field: &'a FieldStyle,
+    /// The list chrome's tokens, built once from the page and field styles.
+    chrome: ListChromeStyle,
     key: PageKey,
     picker: &'a ColorPickerStyle,
     page: &'a mut PageState,
@@ -674,9 +708,9 @@ impl PageWriter<'_> {
         // widget id re-created — for every field inside it.
         let mut open: Vec<String> = Vec::new();
         let mut row_number = 0usize;
-        // Every element band this pass, in draw order: the reorder target is a
-        // slot between them, so it can only be resolved once they all exist.
-        let mut bands: Vec<ElementBand> = Vec::new();
+        // The list bands are collected by the chrome widget; it resolves a
+        // reorder only after every list on the page has laid out its rows.
+        ListChrome::begin(&mut self.page.list_chrome);
 
         // A `Vec<T>` token is a list, empty or not: the list node is the only
         // field an empty list has, and it is what gives the empty list a
@@ -736,7 +770,6 @@ impl PageWriter<'_> {
                     row_width,
                     &mut row_number,
                     &lists,
-                    &mut bands,
                 );
 
                 // A folded group hides the list's entries, not its header.
@@ -763,7 +796,6 @@ impl PageWriter<'_> {
                 row_width,
                 &mut row_number,
                 &lists,
-                &mut bands,
             );
 
             // A folded group hides its rows, not its own band.
@@ -784,7 +816,7 @@ impl PageWriter<'_> {
             }
         }
 
-        self.finish_list_drag(ui, &bands);
+        self.finish_list_drag(ui);
 
         // A click in the empty page (or on its heading) ends the selection;
         // rows, names and foldouts record their own clicks.
@@ -811,7 +843,6 @@ impl PageWriter<'_> {
         row_width: f32,
         row_number: &mut usize,
         lists: &[(String, usize)],
-        bands: &mut Vec<ElementBand>,
     ) -> usize {
         let common = open
             .iter()
@@ -842,7 +873,6 @@ impl PageWriter<'_> {
                         row_width,
                         row_number,
                         lists,
-                        bands,
                     );
                 }
             }
@@ -865,7 +895,6 @@ impl PageWriter<'_> {
         row_width: f32,
         row_number: &mut usize,
         lists: &[(String, usize)],
-        bands: &mut Vec<ElementBand>,
     ) {
         let parent = path.rsplit_once('.').map_or("", |(parent, _)| parent);
         if lists.iter().any(|(list, _)| list == parent) {
@@ -874,7 +903,7 @@ impl PageWriter<'_> {
                 .next()
                 .and_then(|part| part.parse::<usize>().ok())
                 .unwrap_or(0);
-            self.element_band(ui, path, index, depth, row_width, *row_number, bands);
+            self.element_band(ui, path, index, depth, row_width, *row_number);
             *row_number += 1;
         } else {
             self.foldout(ui, path, depth, label, row_width);
@@ -882,218 +911,79 @@ impl PageWriter<'_> {
     }
 
     /// A list's two-row header: the foldout band, then the count and the
-    /// add/remove pair in the block's bottom-right corner.
+    /// add/remove pair in the block's bottom-right corner. The chrome widget
+    /// owns the layout and the count editor; the page maps its edit back onto
+    /// the style token (a length) and the owner's action path.
     fn list_header(&mut self, ui: &mut Ui, index: usize, depth: usize, row_width: f32) {
-        let style = self.style;
-        let (path, name, mut len, range) = {
+        let (path, name, len) = {
             let field = &self.page.fields[index];
             let len = match field.value {
                 StyleValue::ListLen(len) => len,
                 _ => 0,
             };
-            (
-                field.path.clone(),
-                field.name.clone(),
-                len,
-                field.range.unwrap_or((0.0, LIST_MAX as f64)),
-            )
+            (field.path.clone(), field.name.clone(), len)
         };
-        let collapsed = self.page.collapsed.contains(&path);
-
-        // Row 1: the band. Clicking it folds the list, like any group band.
-        let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.group_height), Sense::hover());
-        let response = ui
-            .interact(rect, group_id(self.key, &path), Sense::click())
-            .on_hover_cursor(CursorIcon::PointingHand);
-        let fill = if response.hovered() {
-            style.group_hover
-        } else {
-            style.group_background
-        };
-        let painter = ui.painter();
-        painter.rect_filled(rect, CornerRadius::ZERO, fill.to_egui());
-        let arrow = pos2(
-            rect.left() + style.row_inset + depth as f32 * style.group_indent + 4.0,
-            rect.center().y,
-        );
-        paint_foldout_arrow(painter, arrow, collapsed, style.group.to_egui());
-        let text_left = rect.left() + style.row_inset + 16.0 + depth as f32 * style.group_indent;
-        let text = TextStyle::sized(style.group.to_egui(), style.group_size);
-        let galley = text.layout(ui, &name);
-        painter.with_clip_rect(rect).galley(
-            pos2(text_left, rect.center().y - galley.size().y * 0.5),
-            galley,
-            style.group.to_egui(),
-        );
-        labelled_widget_info(
-            &response,
-            WidgetType::SelectableLabel,
+        let selected = selected_element_index(self.page.selected.as_deref(), &path, len);
+        let folded = self.page.collapsed.contains(&path);
+        let outcome = ListChrome::header(
+            ui,
+            &mut self.page.list_chrome,
+            &self.chrome,
+            list_chrome_id(self.key, &path),
+            ListChromeIds {
+                header: group_id(self.key, &path),
+                count: field_id(self.key, &path),
+                add: list_add_id(self.key, &path),
+                remove: list_remove_id(self.key, &path),
+            },
             &name,
-            Some(!collapsed),
+            len,
+            selected,
+            folded,
+            depth,
+            row_width,
+            LIST_MAX as usize,
         );
-        if response.clicked() {
-            if collapsed {
-                self.page.collapsed.remove(&path);
-            } else {
+        if outcome.clicked {
+            self.page.selected = Some(path.clone());
+            self.clicked = true;
+        }
+        if let Some(folded) = outcome.folded {
+            if folded {
                 self.page.collapsed.insert(path.clone());
+            } else {
+                self.page.collapsed.remove(&path);
             }
             self.clicked = true;
         }
-
-        // Row 2: the size and its controls.
-        let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
-        ui.painter()
-            .rect_filled(rect, CornerRadius::ZERO, style.group_background.to_egui());
-        let cell = style.list_button_cell_width;
-        let buttons = Rect::from_min_size(
-            pos2(
-                rect.right() - style.row_inset - cell * 2.0,
-                rect.center().y - style.list_button_height * 0.5,
-            ),
-            vec2(cell * 2.0, style.list_button_height),
-        );
-        let count_rect = Rect::from_min_size(
-            pos2(
-                buttons.left() - 4.0 - style.list_count_width,
-                rect.center().y - self.field.height * 0.5,
-            ),
-            vec2(style.list_count_width, self.field.height),
-        );
-
-        // The count is a normal number field: drag to scrub, click to type.
-        // Writing it resizes the list (growing appends default entries). The
-        // UI range caps growth; usize itself is the type bound.
-        let outcome = draw_number(
-            ui,
-            self.field,
-            self.key,
-            &path,
-            &name,
-            &mut len,
-            &mut self.page.selected,
-            &mut self.page.edit,
-            &mut self.clicked,
-            count_rect,
-            None,
-            Some(range),
-        );
-        if outcome.changed {
-            let value = StyleValue::ListLen(len);
-            self.out.push(set_field_action(self.key, &path, &value));
-            self.page.fields[index].value = value;
-            self.page.dirty = true;
-            self.page.stale = true;
-        }
-        if outcome.finished_edit && self.page.dirty {
-            self.page.commit(self.out);
-        }
-
-        if let Some(edit) = self.list_buttons(ui, &path, len, buttons) {
-            match edit {
+        match outcome.edit {
+            Some(ListChromeEdit::SetLen { len, .. }) => {
+                let value = StyleValue::ListLen(len);
+                self.out.push(set_field_action(self.key, &path, &value));
+                self.page.fields[index].value = value;
+                self.page.dirty = true;
+                self.page.stale = true;
+            }
+            Some(ListChromeEdit::Insert { index, .. }) => {
                 // The new entry becomes the selection, so the next click of
                 // ~~-~~ removes what the user just added, not the old last row.
-                ListEdit::Insert { index } => {
-                    self.page.selected = Some(format!("{path}.{index}"));
-                }
-                ListEdit::Remove { .. } => self.page.selected = None,
-                ListEdit::Move { .. } => {}
+                self.page.selected = Some(format!("{path}.{index}"));
+                self.push_list_edit(&path, ListEdit::Insert { index });
             }
-            self.push_list_edit(&path, edit);
+            Some(ListChromeEdit::Remove { index, .. }) => {
+                self.page.selected = None;
+                self.push_list_edit(&path, ListEdit::Remove { index });
+            }
+            Some(ListChromeEdit::Move { .. }) | None => {}
+        }
+        if outcome.finished && self.page.dirty {
+            self.page.commit(self.out);
         }
     }
 
-    /// The add/remove pair, drawn as one two-cell control. Returns the edit a
-    /// click asked for; the caller applies and persists it.
-    fn list_buttons(
-        &mut self,
-        ui: &mut Ui,
-        path: &str,
-        len: usize,
-        rect: Rect,
-    ) -> Option<ListEdit> {
-        let style = self.style;
-        let cell = rect.width() * 0.5;
-        let add_rect = Rect::from_min_size(rect.min, vec2(cell, rect.height()));
-        let remove_rect = Rect::from_min_size(
-            pos2(rect.left() + cell, rect.top()),
-            vec2(cell, rect.height()),
-        );
-        let remove_enabled = len > 0;
-
-        let add = ui
-            .interact(add_rect, list_add_id(self.key, path), Sense::click())
-            .on_hover_cursor(CursorIcon::PointingHand);
-        let remove = ui.interact(
-            remove_rect,
-            list_remove_id(self.key, path),
-            if remove_enabled {
-                Sense::click()
-            } else {
-                Sense::hover()
-            },
-        );
-
-        let painter = ui.painter();
-        let corner = CornerRadius::same(style.button_corner_radius.round() as u8);
-        painter.rect_filled(rect, corner, style.button_fill.to_egui());
-        painter.rect_stroke(
-            rect,
-            corner,
-            Stroke::new(style.button_border_width, style.button_border.to_egui()),
-            StrokeKind::Inside,
-        );
-        painter.rect_filled(
-            Rect::from_min_size(
-                pos2(rect.center().x, rect.top() + 1.0),
-                vec2(1.0, rect.height() - 2.0),
-            ),
-            CornerRadius::ZERO,
-            style.button_border.to_egui(),
-        );
-        for (response, cell_rect, enabled) in [
-            (&add, add_rect, true),
-            (&remove, remove_rect, remove_enabled),
-        ] {
-            if enabled && response.hovered() {
-                painter.rect_filled(cell_rect.shrink(1.0), corner, style.button_hover.to_egui());
-            }
-        }
-
-        let ink = style.button_text.to_egui();
-        let dim = style.path.to_egui();
-        let half = 4.0;
-        let plus = add_rect.center();
-        painter.line_segment(
-            [pos2(plus.x - half, plus.y), pos2(plus.x + half, plus.y)],
-            Stroke::new(1.0, ink),
-        );
-        painter.line_segment(
-            [pos2(plus.x, plus.y - half), pos2(plus.x, plus.y + half)],
-            Stroke::new(1.0, ink),
-        );
-        let minus = remove_rect.center();
-        painter.line_segment(
-            [pos2(minus.x - half, minus.y), pos2(minus.x + half, minus.y)],
-            Stroke::new(1.0, if remove_enabled { ink } else { dim }),
-        );
-        labelled_widget_info(&add, WidgetType::Button, "Add list entry", None);
-        labelled_widget_info(&remove, WidgetType::Button, "Remove list entry", None);
-
-        if add.clicked() {
-            self.clicked = true;
-            return Some(ListEdit::Insert { index: len });
-        }
-        if remove.clicked() && remove_enabled {
-            self.clicked = true;
-            if let Some(index) = self.remove_index(path, len) {
-                return Some(ListEdit::Remove { index });
-            }
-        }
-        None
-    }
-
-    /// One list element: drag handle, foldout caret, `Element N`. Its fields
-    /// follow as rows in the same block.
+    /// One list element: drag handle, foldout caret, `Element N`. The band's
+    /// fields follow as rows in the same block; the chrome only draws and
+    /// reports the band interaction.
     #[allow(clippy::too_many_arguments)]
     fn element_band(
         &mut self,
@@ -1103,103 +993,36 @@ impl PageWriter<'_> {
         depth: usize,
         row_width: f32,
         row_number: usize,
-        bands: &mut Vec<ElementBand>,
     ) {
-        let style = self.style;
-        let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
+        let list_path = path.rsplit_once('.').map_or("", |(list, _)| list);
         let selected = self.page.selected.as_deref() == Some(path);
-        let fill = if selected {
-            style.list_selection
-        } else {
-            style.row_fill(row_number)
-        };
-        ui.painter()
-            .rect_filled(rect, CornerRadius::ZERO, fill.to_egui());
-
-        let x0 = rect.left() + style.row_inset + depth as f32 * style.group_indent;
-        let divider_x = x0 + style.list_gutter_width;
-        let content_left = divider_x + 4.0;
-        let label_x = content_left + 16.0;
-        ui.painter().rect_filled(
-            Rect::from_min_size(pos2(divider_x, rect.top()), vec2(1.0, rect.height())),
-            CornerRadius::ZERO,
-            style.divider.to_egui(),
+        let folded = self.page.collapsed.contains(path);
+        let outcome = ListChrome::band(
+            ui,
+            &mut self.page.list_chrome,
+            &self.chrome,
+            list_chrome_id(self.key, list_path),
+            ListBandIds {
+                fold: group_id(self.key, path),
+                select: label_id(self.key, path),
+                handle: list_handle_id(self.key, path),
+            },
+            index,
+            depth,
+            row_width,
+            self.style.row_fill(row_number).to_egui(),
+            selected,
+            folded,
         );
-
-        // The handle: two bars, with the whole row height as its target so a
-        // drag can start on the row and not only on the 10x6 glyph.
-        let handle = Rect::from_center_size(
-            pos2(x0 + style.list_gutter_width * 0.5, rect.center().y),
-            vec2(style.list_gutter_width, rect.height()),
-        );
-        let drag = ui
-            .interact(handle, list_handle_id(self.key, path), Sense::drag())
-            .on_hover_cursor(CursorIcon::Grab);
-        let ink = if drag.hovered() || selected {
-            self.field.label
-        } else {
-            style.path.to_egui()
-        };
-        for offset in [-2.0, 2.0] {
-            ui.painter().rect_filled(
-                Rect::from_min_size(
-                    pos2(handle.center().x - 5.0, handle.center().y + offset - 0.5),
-                    vec2(10.0, 1.0),
-                ),
-                CornerRadius::ZERO,
-                ink,
-            );
-        }
-        let list = path
-            .rsplit_once('.')
-            .map_or(String::new(), |(list, _)| list.to_owned());
-        if drag.drag_started() {
-            self.page.list_drag = Some(ListDrag {
-                list: list.clone(),
-                from: index,
-            });
-        }
-        bands.push(ElementBand { list, index, rect });
-
-        // Caret: folds this element's fields, not the list.
-        let collapsed = self.page.collapsed.contains(path);
-        let caret_rect =
-            Rect::from_min_size(pos2(content_left, rect.top()), vec2(16.0, rect.height()));
-        let caret = ui
-            .interact(caret_rect, group_id(self.key, path), Sense::click())
-            .on_hover_cursor(CursorIcon::PointingHand);
-        paint_foldout_arrow(
-            ui.painter(),
-            pos2(content_left + 4.0, rect.center().y),
-            collapsed,
-            style.group.to_egui(),
-        );
-        if caret.clicked() {
-            if collapsed {
-                self.page.collapsed.remove(path);
-            } else {
+        if let Some(folded) = outcome.folded {
+            if folded {
                 self.page.collapsed.insert(path.to_owned());
+            } else {
+                self.page.collapsed.remove(path);
             }
             self.clicked = true;
         }
-
-        // The rest of the row selects the element.
-        let label_rect =
-            Rect::from_min_max(pos2(label_x, rect.top()), pos2(rect.right(), rect.bottom()));
-        let select = ui.interact(label_rect, label_id(self.key, path), Sense::click());
-        let color = if selected {
-            style.title.to_egui()
-        } else {
-            self.field.label
-        };
-        let text = TextStyle::sized(color, style.body_size);
-        let galley = text.layout(ui, format!("Element {index}"));
-        ui.painter().with_clip_rect(label_rect).galley(
-            pos2(label_x, rect.center().y - galley.size().y * 0.5),
-            galley,
-            color,
-        );
-        if select.clicked() {
+        if outcome.selected {
             self.page.selected = Some(path.to_owned());
             self.clicked = true;
         }
@@ -1238,87 +1061,23 @@ impl PageWriter<'_> {
         self.clicked = true;
     }
 
-    /// The selected element of `list`, or its last one.
-    fn remove_index(&self, list: &str, len: usize) -> Option<usize> {
-        if len == 0 {
-            return None;
-        }
-        let last = len - 1;
-        let Some(selected) = self.page.selected.as_deref() else {
-            return Some(last);
-        };
-        let Some(rest) = selected
-            .strip_prefix(list)
-            .and_then(|rest| rest.strip_prefix('.'))
-        else {
-            return Some(last);
-        };
-        match rest
-            .split('.')
-            .next()
-            .and_then(|part| part.parse::<usize>().ok())
-        {
-            Some(index) if index <= last => Some(index),
-            _ => Some(last),
-        }
-    }
-
     /// Resolve the reorder target from this pass's element bands and, on
-    /// release, move the element. The insertion line is painted while dragging.
-    fn finish_list_drag(&mut self, ui: &mut Ui, bands: &[ElementBand]) {
-        let Some(drag) = self.page.list_drag.clone() else {
+    /// release, move the element. The chrome paints the insertion line.
+    fn finish_list_drag(&mut self, ui: &mut Ui) {
+        let Some(edit) = ListChrome::finish(ui, &mut self.page.list_chrome, &self.chrome) else {
             return;
         };
-        // A drag whose button is already up but never produced a release (the
-        // pointer left the window) has no slot to drop on: drop the drag.
-        if !ui.input(|input| input.pointer.any_released())
-            && !ui.input(|input| input.pointer.primary_down())
-        {
-            self.page.list_drag = None;
-            return;
-        }
-        let mut list_bands: Vec<&ElementBand> =
-            bands.iter().filter(|band| band.list == drag.list).collect();
-        list_bands.sort_by_key(|band| band.index);
-        let Some(first) = list_bands.first().copied() else {
-            self.page.list_drag = None;
+        let ListChromeEdit::Move { list, from, to } = edit else {
             return;
         };
-        let Some(pointer) = ui.ctx().pointer_interact_pos() else {
+        let Some(path) = self.page.fields.iter().find_map(|field| {
+            (field.value.is_list() && list_chrome_id(self.key, &field.path) == list)
+                .then(|| field.path.clone())
+        }) else {
             return;
         };
-        let slot = list_bands
-            .iter()
-            .take_while(|band| pointer.y > band.rect.center().y)
-            .count();
-        let y = if slot == 0 {
-            first.rect.top()
-        } else {
-            list_bands[slot - 1].rect.bottom()
-        };
-        let style = self.style;
-        let left = first.rect.left() + style.row_inset;
-        let right = first.rect.right() - style.row_inset;
-        ui.painter().rect_filled(
-            Rect::from_min_size(pos2(left, y - 1.0), vec2(right - left, 2.0)),
-            CornerRadius::ZERO,
-            style.accent.to_egui(),
-        );
-
-        if ui.input(|input| input.pointer.any_released()) {
-            let to = if slot > drag.from { slot - 1 } else { slot };
-            self.page.list_drag = None;
-            if to != drag.from && to < list_bands.len() {
-                self.push_list_edit(
-                    &drag.list,
-                    ListEdit::Move {
-                        from: drag.from,
-                        to,
-                    },
-                );
-                self.page.selected = Some(format!("{}.{}", drag.list, to));
-            }
-        }
+        self.page.selected = Some(format!("{path}.{to}"));
+        self.push_list_edit(&path, ListEdit::Move { from, to });
     }
 
     /// One foldout band: triangle, left-aligned group name, full-width hit
