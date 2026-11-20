@@ -141,7 +141,7 @@ fn save_shared<S: Style + SharedStyle>(
 
 #[cfg(test)]
 mod tests {
-    use crate::shared_style::{COLOR_PICKER, FONTS, TOOLBAR};
+    use crate::shared_style::{COLOR_PICKER, EDITOR_FIELD, FONTS, TOOLBAR};
 
     use super::StyleCatalog;
 
@@ -149,7 +149,7 @@ mod tests {
     fn the_builtin_catalog_registers_the_editor_chrome() {
         let catalog = StyleCatalog::builtin();
 
-        for id in [TOOLBAR, COLOR_PICKER, FONTS] {
+        for id in [TOOLBAR, COLOR_PICKER, EDITOR_FIELD, FONTS] {
             assert!(catalog.get(id).is_some(), "shared style {id} not registered");
         }
     }

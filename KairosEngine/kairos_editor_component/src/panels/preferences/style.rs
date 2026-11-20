@@ -14,7 +14,6 @@ use egui::{CornerRadius, Vec2};
 use kairos_color::Color;
 use kairos_editor_widgets::button::ButtonStyle;
 use kairos_editor_widgets::color::ColorExt;
-use kairos_editor_widgets::field::FieldStyle;
 use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::text::TextStyle;
 use serde::{Deserialize, Serialize};
@@ -43,10 +42,6 @@ pub struct PreferencesPanelStyle {
     /// Foldout header band. A band, not a label: the header is clickable.
     pub group_background: Color,
     pub group_hover: Color,
-    /// Row name (the token).
-    pub label: Color,
-    /// Row name while its value is selected: Unity's blue label.
-    pub label_active: Color,
     /// Rules between the heading, the rows and the footer.
     pub divider: Color,
 
@@ -55,16 +50,6 @@ pub struct PreferencesPanelStyle {
     pub row_odd: Color,
     pub row_even: Color,
 
-    /// Background of a value box.
-    pub control_rail: Color,
-    pub control_hover: Color,
-    pub control_active: Color,
-    /// Value-box outline.
-    pub control_edge: Color,
-    /// Value-box outline under the pointer, before it is selected.
-    pub control_edge_hover: Color,
-    /// Text of a control (numbers, token values).
-    pub control_value: Color,
     /// Selected outline, active slider fill, and the page-list stripe.
     pub accent: Color,
 
@@ -93,12 +78,6 @@ pub struct PreferencesPanelStyle {
     pub label_gap: f32,
     /// Height of one field row.
     pub row_height: f32,
-    /// Height of a value box (centred in its row).
-    pub field_height: f32,
-    /// Horizontal inner padding of a value box.
-    pub field_padding: f32,
-    pub control_border_width: f32,
-    pub control_corner_radius: f32,
 
     /// Height of a foldout header row.
     pub group_height: f32,
@@ -108,8 +87,6 @@ pub struct PreferencesPanelStyle {
     pub row_inset: f32,
     /// Right-hand gutter kept clear of the page scroll bar.
     pub scrollbar_gap: f32,
-    /// Side of the square boolean checkbox.
-    pub checkbox_size: f32,
 
     /// Band of a selected list element (Unity's inspector blue).
     pub list_selection: Color,
@@ -162,19 +139,11 @@ impl Style for PreferencesPanelStyle {
             group: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
             group_background: Color::from_srgb8([0x3C, 0x3C, 0x3C, 255]),
             group_hover: Color::from_srgb8([0x46, 0x46, 0x46, 255]),
-            label: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]),
-            label_active: Color::from_srgb8([0x8F, 0xB4, 0xD9, 255]),
             divider: Color::from_srgb8([0x2A, 0x2A, 0x2A, 255]),
 
             row_odd: Color::from_srgb8([0x38, 0x38, 0x38, 255]),
             row_even: Color::from_srgb8([0x33, 0x33, 0x33, 255]),
 
-            control_rail: Color::from_srgb8([0x28, 0x28, 0x28, 255]),
-            control_hover: Color::from_srgb8([0x3E, 0x3E, 0x3E, 255]),
-            control_active: Color::from_srgb8([0x4A, 0x4A, 0x4A, 255]),
-            control_edge: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
-            control_edge_hover: Color::from_srgb8([0x5A, 0x5A, 0x5A, 255]),
-            control_value: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
             accent: Color::from_srgb8([0x4A, 0x90, 0xD9, 255]),
 
             title_size: 15.0,
@@ -192,16 +161,11 @@ impl Style for PreferencesPanelStyle {
             field_width: 120.0,
             label_gap: 8.0,
             row_height: 20.0,
-            field_height: 18.0,
-            field_padding: 6.0,
-            control_border_width: 1.0,
-            control_corner_radius: 0.0,
 
             group_height: 20.0,
             group_indent: 16.0,
             row_inset: 8.0,
             scrollbar_gap: 8.0,
-            checkbox_size: 15.0,
 
             list_selection: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
             list_button_height: 18.0,
@@ -237,19 +201,11 @@ impl Style for PreferencesPanelStyle {
             group: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
             group_background: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
             group_hover: Color::from_srgb8([0xD2, 0xD2, 0xD2, 255]),
-            label: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
-            label_active: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
             divider: Color::from_srgb8([0xC4, 0xC4, 0xC4, 255]),
 
             row_odd: Color::from_srgb8([0xF6, 0xF6, 0xF6, 255]),
             row_even: Color::from_srgb8([0xED, 0xED, 0xED, 255]),
 
-            control_rail: Color::WHITE,
-            control_hover: Color::from_srgb8([0xF0, 0xF0, 0xF0, 255]),
-            control_active: Color::from_srgb8([0xE0, 0xE0, 0xE0, 255]),
-            control_edge: Color::from_srgb8([0xA8, 0xA8, 0xA8, 255]),
-            control_edge_hover: Color::from_srgb8([0x7A, 0x7A, 0x7A, 255]),
-            control_value: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
             accent: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
             list_selection: Color::from_srgb8([0xB9, 0xD7, 0xF2, 255]),
 
@@ -281,25 +237,6 @@ impl PreferencesPanelStyle {
             .height(self.button_height)
     }
 
-    /// Project the value-box tokens onto the reusable field widgets: every
-    /// number, string, boolean and color box on the page is one of those.
-    pub fn field_style(&self) -> FieldStyle {
-        FieldStyle::new(TextStyle::sized(
-            self.control_value.to_egui(),
-            self.body_size,
-        ))
-        .fills(self.control_rail.to_egui(), self.control_hover.to_egui())
-        .edges(
-            self.control_edge.to_egui(),
-            self.control_edge_hover.to_egui(),
-            self.accent.to_egui(),
-        )
-        .border_width(self.control_border_width)
-        .corner_radius(self.control_corner_radius.round() as u8)
-        .padding(self.field_padding)
-        .checkbox(self.checkbox_size)
-    }
-
     /// The left-hand list entry: flat until hovered or selected.
     pub fn nav_style(&self) -> ButtonStyle {
         ButtonStyle::new(TextStyle::sized(self.nav_text.to_egui(), self.body_size))
@@ -319,15 +256,6 @@ impl PreferencesPanelStyle {
             self.row_odd
         } else {
             self.row_even
-        }
-    }
-
-    /// Row name colour: Unity turns the label blue while the field is active.
-    pub fn label_color(&self, active: bool) -> Color {
-        if active {
-            self.label_active
-        } else {
-            self.label
         }
     }
 }
@@ -366,27 +294,6 @@ mod tests {
         assert_eq!(style.row_fill(1), style.row_even);
         assert_eq!(style.row_fill(2), style.row_odd);
         assert_ne!(style.row_odd, style.row_even);
-
-        assert_eq!(style.label_color(true), style.label_active);
-        assert_eq!(style.label_color(false), style.label);
-
-        // The field widgets take the same three edge states through their own
-        // style: blue while selected, a lighter edge under the pointer, the
-        // quiet edge otherwise.
-        let field = style.field_style();
-        assert_eq!(field.outline(false, false), style.control_edge.to_egui());
-        assert_eq!(
-            field.outline(false, true),
-            style.control_edge_hover.to_egui(),
-            "hover lightens the edge before the field is selected"
-        );
-        assert_eq!(
-            field.outline(true, false),
-            style.accent.to_egui(),
-            "a selected field keeps its blue outline regardless of hover"
-        );
-        assert_eq!(field.fill, style.control_rail.to_egui());
-        assert_eq!(field.checkbox, style.checkbox_size);
     }
 
     /// The checked-in reference skin and the code defaults are the same skin.

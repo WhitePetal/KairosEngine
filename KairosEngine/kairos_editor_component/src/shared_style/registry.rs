@@ -16,7 +16,7 @@ use crate::toolbar::style::ToolBarStyle;
 
 use super::catalog::{SharedStyleDef, StyleCatalog};
 use super::color_picker::ColorPickerSkin;
-use super::{COLOR_PICKER, SharedStyle, TOOLBAR};
+use super::{COLOR_PICKER, EDITOR_FIELD, EditorFieldStyle, SharedStyle, TOOLBAR};
 
 /// One shared style as the Preferences panel sees it.
 #[derive(Clone, Debug, PartialEq)]
@@ -107,6 +107,10 @@ impl SharedStyles {
 
     /// The color picker's runtime tokens; `None` when the style is not
     /// registered (a test catalog without it).
+    pub fn editor_field(&self) -> Option<&EditorFieldStyle> {
+        self.get(EDITOR_FIELD)
+    }
+
     pub fn color_picker_style(&self) -> Option<ColorPickerStyle> {
         self.color_picker().map(ColorPickerSkin::tokens)
     }
@@ -184,7 +188,7 @@ mod tests {
     use kairos_editor_core::ListEdit;
 
     use super::*;
-    use crate::shared_style::{COLOR_PICKER, EditorFonts, FONTS, TOOLBAR};
+    use crate::shared_style::{COLOR_PICKER, EDITOR_FIELD, EditorFonts, FONTS, TOOLBAR};
 
     #[test]
     fn the_registry_exposes_a_page_for_every_shared_style() {
@@ -193,6 +197,7 @@ mod tests {
 
         assert!(skins.iter().any(|skin| skin.id == TOOLBAR));
         assert!(skins.iter().any(|skin| skin.id == COLOR_PICKER));
+        assert!(skins.iter().any(|skin| skin.id == EDITOR_FIELD));
         assert!(skins.iter().any(|skin| skin.id == FONTS));
         assert!(shared.toolbar().is_some());
         assert!(shared.get::<EditorFonts>(FONTS).is_some());

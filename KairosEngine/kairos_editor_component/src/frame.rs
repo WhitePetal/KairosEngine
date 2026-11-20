@@ -38,7 +38,7 @@ use kairos_editor_widgets::style::Style;
 use kairos_log::{Level, StackFrame};
 use kairos_profile::Profiler;
 
-use crate::shared_style::{ColorPickerSkin, SharedStyles};
+use crate::shared_style::{ColorPickerSkin, EditorFieldStyle, SharedStyles};
 use crate::toolbar::style::ToolBarStyle;
 
 /// One host-owned console entry, rendered by the Console panel.
@@ -154,6 +154,14 @@ impl<'a> Frame<'a> {
     pub fn toolbar_style(&self) -> &ToolBarStyle {
         static FALLBACK: LazyLock<ToolBarStyle> = LazyLock::new(ToolBarStyle::dark);
         self.shared.toolbar().unwrap_or(&FALLBACK)
+    }
+
+    /// The value fields' runtime tokens, projected from the shared skin.
+    pub fn field_style(&self) -> kairos_editor_widgets::field::FieldStyle {
+        self.shared
+            .editor_field()
+            .map(EditorFieldStyle::tokens)
+            .unwrap_or_default()
     }
 
     /// The color picker's runtime tokens, projected from the shared skin.

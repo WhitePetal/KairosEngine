@@ -60,7 +60,7 @@ use kairos_editor_widgets::color_picker::{
 };
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::field::{
-    FieldOutcome, FieldStyle, NumberEdit, NumberField, TextField, ToggleField,
+    FieldLabel, FieldOutcome, FieldStyle, NumberEdit, NumberField, Scrub, TextField, ToggleField,
 };
 use kairos_editor_widgets::paint::labelled_widget_info;
 use kairos_editor_widgets::style::StyleFile;
@@ -437,6 +437,7 @@ impl Panel for PreferencesPanel {
         }));
 
         let picker_style = frame.color_picker_style();
+        let field_style = frame.field_style();
         let mut current = match *selected {
             Some(page) if pages.iter().any(|entry| entry.key == page) => Some(page),
             _ => pages.first().map(|page| page.key),
@@ -503,7 +504,7 @@ impl Panel for PreferencesPanel {
                 }
 
                 ui.scope_builder(UiBuilder::new().max_rect(page_rect), |ui| {
-                    page_body(ui, style, &picker_style, page, swatches, out);
+                    page_body(ui, style, &field_style, &picker_style, page, swatches, out);
                 });
 
                 footer(ui, style, footer_rect, page.key, out);
@@ -583,6 +584,7 @@ fn page_list(
 fn page_body(
     ui: &mut Ui,
     style: &PreferencesPanelStyle,
+    field_style: &FieldStyle,
     picker_style: &ColorPickerStyle,
     page: &mut PageState,
     swatches: &mut ColorSwatches,
@@ -621,7 +623,7 @@ fn page_body(
 
             let mut writer = PageWriter {
                 style,
-                field: style.field_style(),
+                field: field_style,
                 key: page_key.expect("a page body is only drawn for a selected page"),
                 picker: picker_style,
                 page,
@@ -646,8 +648,8 @@ fn page_body(
 /// Draws one page's field tree.
 struct PageWriter<'a> {
     style: &'a PreferencesPanelStyle,
-    /// The value-box tokens, projected once for the whole page.
-    field: FieldStyle,
+    /// The value-box tokens, shared by every field on any panel.
+    field: &'a FieldStyle,
     key: PageKey,
     picker: &'a ColorPickerStyle,
     page: &'a mut PageState,
@@ -899,9 +901,9 @@ impl PageWriter<'_> {
         let count_rect = Rect::from_min_size(
             pos2(
                 buttons.left() - 4.0 - style.list_count_width,
-                rect.center().y - style.field_height * 0.5,
+                rect.center().y - self.field.height * 0.5,
             ),
-            vec2(style.list_count_width, style.field_height),
+            vec2(style.list_count_width, self.field.height),
         );
 
         // The count is a normal integer field: drag to scrub, click to type.
@@ -914,7 +916,7 @@ impl PageWriter<'_> {
         };
         let outcome = draw_value(
             ui,
-            &self.field,
+            self.field,
             self.key,
             self.picker,
             &mut count,
@@ -923,6 +925,7 @@ impl PageWriter<'_> {
             self.swatches,
             &mut self.clicked,
             count_rect,
+            NumberDrag::Box,
         );
         if outcome.changed {
             self.out
@@ -1079,7 +1082,7 @@ impl PageWriter<'_> {
             .interact(handle, list_handle_id(self.key, path), Sense::drag())
             .on_hover_cursor(CursorIcon::Grab);
         let ink = if drag.hovered() || selected {
-            style.label.to_egui()
+            self.field.label
         } else {
             style.path.to_egui()
         };
@@ -1130,7 +1133,11 @@ impl PageWriter<'_> {
         let label_rect =
             Rect::from_min_max(pos2(label_x, rect.top()), pos2(rect.right(), rect.bottom()));
         let select = ui.interact(label_rect, label_id(self.key, path), Sense::click());
-        let color = if selected { style.title } else { style.label }.to_egui();
+        let color = if selected {
+            style.title.to_egui()
+        } else {
+            self.field.label
+        };
         let text = TextStyle::sized(color, style.body_size);
         let galley = text.layout(ui, format!("Element {index}"));
         ui.painter().with_clip_rect(label_rect).galley(
@@ -1353,8 +1360,8 @@ impl PageWriter<'_> {
         let value_left = content_left + label_width + style.label_gap;
         let value_width = (content_right - value_left).max(1.0);
         let value_rect = Rect::from_min_size(
-            pos2(value_left, rect.center().y - style.field_height * 0.5),
-            vec2(value_width, style.field_height),
+            pos2(value_left, rect.center().y - self.field.height * 0.5),
+            vec2(value_width, self.field.height),
         );
         let label_rect = Rect::from_min_max(
             pos2(content_left, rect.top()),
@@ -1380,8 +1387,11 @@ impl PageWriter<'_> {
         }
 
         // The name is an interaction, not just paint: clicking it selects the
-        // field, and a text field takes keyboard focus so typing starts.
-        let label_response = ui.interact(label_rect, label_id(key, &path), Sense::click());
+        // field, a text field takes keyboard focus so typing starts, and a
+        // number field is scrubbed by dragging it (Unity's left/right cursor).
+        let label = FieldLabel::new(label_id(key, &path), &name, self.field)
+            .draggable(matches!(kind, StyleKind::Float | StyleKind::Integer { .. }));
+        let label_response = label.interact(ui, label_rect);
         if label_response.clicked() {
             self.page.selected = Some(path.clone());
             self.clicked = true;
@@ -1399,7 +1409,7 @@ impl PageWriter<'_> {
         let field = &mut fields[index];
         let outcome = draw_value(
             ui,
-            &self.field,
+            self.field,
             key,
             self.picker,
             field,
@@ -1408,6 +1418,7 @@ impl PageWriter<'_> {
             self.swatches,
             &mut self.clicked,
             value_rect,
+            NumberDrag::Label(label_response.scrub()),
         );
 
         if outcome.popup_open {
@@ -1436,15 +1447,13 @@ impl PageWriter<'_> {
             .as_ref()
             .is_some_and(|edit| edit.path == path);
         let active = self.page.selected.as_deref() == Some(path.as_str()) || focused || editing;
-        let color = style.label_color(active).to_egui();
-        let text = TextStyle::sized(color, style.body_size);
-        let galley = text.layout(ui, &name);
-        let text_pos = pos2(label_x, rect.center().y - galley.size().y * 0.5);
-        ui.painter()
-            .with_clip_rect(label_rect)
-            .galley(text_pos, galley, color);
+        label.paint(
+            ui,
+            Rect::from_min_max(pos2(label_x, rect.top()), pos2(rect.right(), rect.bottom())),
+            active,
+        );
 
-        let _ = label_response.on_hover_text(path);
+        let _ = label_response.response.on_hover_text(path);
     }
 }
 
@@ -1458,6 +1467,15 @@ struct ValueOutcome {
     /// The color picker popup is open. Clicks inside it must not clear the
     /// row selection, so the page treats them as a row interaction.
     popup_open: bool,
+}
+
+/// Where a number row takes its scrub gesture from.
+#[derive(Clone, Copy, Debug)]
+enum NumberDrag {
+    /// Unity's inspector: the row's name is the handle, the box only clicks.
+    Label(Option<Scrub>),
+    /// No name to grab (a list's size box): the box itself drags.
+    Box,
 }
 
 /// One token's control: the page's field table mapped onto the reusable field
@@ -1476,6 +1494,7 @@ fn draw_value(
     swatches: &mut ColorSwatches,
     clicked: &mut bool,
     rect: Rect,
+    drag: NumberDrag,
 ) -> ValueOutcome {
     let path = field.path.clone();
     let id = field_id(key, &path);
@@ -1489,37 +1508,56 @@ fn draw_value(
             let StyleValue::Float(value) = &mut field.value else {
                 return ValueOutcome::default();
             };
-            let mut number = take_number(edit, &path);
-            let outcome = NumberField::float(id, value, field_style)
+            let mut number_field = NumberField::new(id, value, field_style)
                 .selected(active)
-                .label(&field.name)
-                .show(ui, rect, &mut number);
+                .label(&field.name);
+            if let NumberDrag::Box = drag {
+                number_field = number_field.box_drag(true);
+            }
+            let mut scrubbed = false;
+            if let NumberDrag::Label(Some(scrub)) = drag {
+                scrubbed = number_field.scrub(ui, scrub);
+            }
+            let mut number = take_number(edit, &path);
+            let outcome = number_field.show(ui, rect, &mut number);
             keep_number(edit, &path, number);
             select_row(
-                outcome.clicked() || outcome.response.dragged(),
+                outcome.clicked() || outcome.response.dragged() || scrubbed,
                 &path,
                 selected,
                 clicked,
             );
-            finished(outcome)
+            let mut out = finished(outcome);
+            out.changed |= scrubbed;
+            out
         }
         StyleKind::Integer { max } => {
             let StyleValue::Integer(value) = &mut field.value else {
                 return ValueOutcome::default();
             };
-            let mut number = take_number(edit, &path);
-            let outcome = NumberField::integer(id, value, max, field_style)
+            let mut number_field = NumberField::new(id, value, field_style)
+                .range(0.0, max as f64)
                 .selected(active)
-                .label(&field.name)
-                .show(ui, rect, &mut number);
+                .label(&field.name);
+            if let NumberDrag::Box = drag {
+                number_field = number_field.box_drag(true);
+            }
+            let mut scrubbed = false;
+            if let NumberDrag::Label(Some(scrub)) = drag {
+                scrubbed = number_field.scrub(ui, scrub);
+            }
+            let mut number = take_number(edit, &path);
+            let outcome = number_field.show(ui, rect, &mut number);
             keep_number(edit, &path, number);
             select_row(
-                outcome.clicked() || outcome.response.dragged(),
+                outcome.clicked() || outcome.response.dragged() || scrubbed,
                 &path,
                 selected,
                 clicked,
             );
-            finished(outcome)
+            let mut out = finished(outcome);
+            out.changed |= scrubbed;
+            out
         }
         StyleKind::Text => {
             let StyleValue::Text(value) = &mut field.value else {
@@ -1527,7 +1565,6 @@ fn draw_value(
             };
             let outcome = TextField::new(id, value, field_style)
                 .selected(active)
-                .label(&field.name)
                 .show(ui, rect);
             if outcome.clicked() || outcome.response.has_focus() {
                 *selected = Some(path);
@@ -2671,7 +2708,7 @@ mod tests {
 
     #[test]
     fn clicking_a_field_name_selects_it_and_outside_clicks_clear_it() {
-        let style = PreferencesPanelStyle::dark();
+        let field = crate::shared_style::EditorFieldStyle::dark().tokens();
         let mut harness = Harness::new(skins());
         harness.frame(Vec::new());
 
@@ -2681,11 +2718,11 @@ mod tests {
         let runs = painted_texts(&output);
         assert_eq!(
             run(&runs, "Height").color,
-            style.label_active.to_egui(),
+            field.label_active,
             "the selected field's name turns blue"
         );
         let box_rect = harness.rect_of(field_id(panels::CONSOLE, "height"));
-        let accent = style.accent.to_egui();
+        let accent = field.accent;
         assert!(
             painted_rects(&output).iter().any(|painted| {
                 painted.stroke.color == accent
@@ -2705,7 +2742,7 @@ mod tests {
         let runs = painted_texts(&output);
         assert_eq!(
             run(&runs, "Height").color,
-            style.label.to_egui(),
+            field.label,
             "the name returns to its normal colour"
         );
     }
@@ -2756,11 +2793,49 @@ mod tests {
         );
     }
 
+    /// Unity's inspector scrubs a number by dragging its name; the box itself
+    /// only clicks into the inline editor.
+    #[test]
+    fn dragging_a_field_name_scrubs_its_value() {
+        let mut harness = Harness::new(skins());
+        harness.frame(Vec::new());
+
+        let rect = harness.rect_of(label_id(panels::CONSOLE, "height"));
+        let start = rect.center();
+        let end = egui::pos2(start.x + 20.0, start.y);
+        harness.frame(vec![egui::Event::PointerMoved(start)]);
+        harness.frame(vec![pointer(start, true)]);
+        let (_, actions) = harness.frame(vec![egui::Event::PointerMoved(end)]);
+
+        assert_eq!(
+            actions.first(),
+            Some(&Action::Style(StyleAction::SetField {
+                panel: panels::CONSOLE,
+                path: "height".to_owned(),
+                value: StyleValue::Float(28.0),
+            })),
+            "20 px right on a 20 px height adds 20 * 0.4: {actions:?}"
+        );
+        assert_eq!(
+            harness.panel.page.selected.as_deref(),
+            Some("height"),
+            "the scrubbed row is the selected one"
+        );
+
+        let (_, actions) = harness.frame(vec![pointer(end, false)]);
+        assert!(
+            actions.contains(&Action::Style(StyleAction::Commit {
+                panel: panels::CONSOLE,
+            })),
+            "the release persists the scrub: {actions:?}"
+        );
+    }
+
     /// The value box is Unity's inset rail: dark fill, one quiet outline, and
     /// a left-aligned value.
     #[test]
     fn value_boxes_use_the_unity_fill_and_outline() {
-        let style = PreferencesPanelStyle::dark();
+        let field = crate::shared_style::EditorFieldStyle::dark().tokens();
         let mut harness = Harness::new(skins());
 
         let (output, _) = harness.frame(Vec::new());
@@ -2769,7 +2844,7 @@ mod tests {
 
         assert!(
             painted.iter().any(|shape| {
-                shape.fill == style.control_rail.to_egui()
+                shape.fill == field.fill
                     && approx(shape.rect.left(), rect.left())
                     && approx(shape.rect.top(), rect.top())
                     && approx(shape.rect.width(), rect.width())
@@ -2784,7 +2859,7 @@ mod tests {
         );
         assert!(
             painted.iter().any(|shape| {
-                shape.stroke.color == style.control_edge.to_egui()
+                shape.stroke.color == field.edge
                     && approx(shape.rect.width(), rect.width())
                     && approx(shape.rect.height(), rect.height())
             }),
