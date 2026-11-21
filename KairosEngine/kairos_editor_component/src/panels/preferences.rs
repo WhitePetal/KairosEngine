@@ -70,7 +70,7 @@ use kairos_editor_widgets::text::TextStyle;
 
 use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
-use crate::shared_style::SharedSkin;
+use crate::shared_style::{ListStyle, SharedSkin};
 use crate::skin::{LIST_MAX, StyleField, humanize};
 
 use self::style::PreferencesPanelStyle;
@@ -169,38 +169,6 @@ fn selected_element_index(selected: Option<&str>, list: &str, len: usize) -> Opt
     (index < len).then_some(index)
 }
 
-/// The page's list chrome tokens. The style-token list is not a concrete
-/// `Vec<T>`, so it draws the same geometry and colours through this snapshot
-/// rather than through a ListField.
-fn list_chrome_style(style: &PreferencesPanelStyle, field: &FieldStyle) -> ListChromeStyle {
-    ListChromeStyle {
-        field: field.clone(),
-        header_text: TextStyle::sized(style.group.to_egui(), style.group_size),
-        band_text: TextStyle::sized(field.label, style.body_size),
-        band_text_selected: TextStyle::sized(style.title.to_egui(), style.body_size),
-        header_fill: style.group_background.to_egui(),
-        header_hover: style.group_hover.to_egui(),
-        selection: style.list_selection.to_egui(),
-        divider: style.divider.to_egui(),
-        handle: style.path.to_egui(),
-        accent: style.accent.to_egui(),
-        row_height: style.row_height,
-        group_height: style.group_height,
-        group_indent: style.group_indent,
-        row_inset: style.row_inset,
-        gutter_width: style.list_gutter_width,
-        button_cell: style.list_button_cell_width,
-        button_height: style.list_button_height,
-        count_width: style.list_count_width,
-        button_fill: style.button_fill.to_egui(),
-        button_hover: style.button_hover.to_egui(),
-        button_border: style.button_border.to_egui(),
-        button_border_width: style.button_border_width,
-        button_text: style.button_text.to_egui(),
-        button_corner_radius: style.button_corner_radius.round() as u8,
-    }
-}
-
 /// The action that writes one field on whichever page owns it.
 fn set_field_action(page: PageKey, path: &str, value: &StyleValue) -> Action {
     match page {
@@ -290,7 +258,6 @@ impl PageState {
                 self.file = page.file;
                 self.revision = page.revision;
                 self.stale = false;
-                self.list_chrome.cancel_drag();
                 return;
             }
             if self.revision == page.revision {
@@ -470,6 +437,7 @@ impl Panel for PreferencesPanel {
 
         let picker_style = frame.color_picker_style();
         let field_style = frame.field_style();
+        let list_style = frame.list_style();
         let mut current = match *selected {
             Some(page) if pages.iter().any(|entry| entry.key == page) => Some(page),
             _ => pages.first().map(|page| page.key),
@@ -536,7 +504,16 @@ impl Panel for PreferencesPanel {
                 }
 
                 ui.scope_builder(UiBuilder::new().max_rect(page_rect), |ui| {
-                    page_body(ui, style, &field_style, &picker_style, page, swatches, out);
+                    page_body(
+                        ui,
+                        style,
+                        &field_style,
+                        list_style,
+                        &picker_style,
+                        page,
+                        swatches,
+                        out,
+                    );
                 });
 
                 footer(ui, style, footer_rect, page.key, out);
@@ -613,10 +590,12 @@ fn page_list(
 }
 
 /// One page: heading, the file being written, rule, grouped rows.
+#[allow(clippy::too_many_arguments)] // four style views plus the page and its buffers
 fn page_body(
     ui: &mut Ui,
     style: &PreferencesPanelStyle,
     field_style: &FieldStyle,
+    list_style: &ListStyle,
     picker_style: &ColorPickerStyle,
     page: &mut PageState,
     swatches: &mut ColorSwatches,
@@ -656,13 +635,15 @@ fn page_body(
             let mut writer = PageWriter {
                 style,
                 field: field_style,
-                chrome: list_chrome_style(style, field_style),
+                chrome: list_style.tokens(field_style),
                 key: page_key.expect("a page body is only drawn for a selected page"),
                 picker: picker_style,
                 page,
                 swatches,
                 out,
                 clicked: false,
+                active_shift: None,
+                ghost: None,
             };
             writer.rows(ui);
         });
@@ -693,6 +674,22 @@ struct PageWriter<'a> {
     /// A row, a field name or a foldout consumed this pass's click. Without
     /// one, a click elsewhere on the page ends the current selection.
     clicked: bool,
+    /// The element block whose rows are currently offset by a reorder slide,
+    /// and the offset that must be removed when the block ends.
+    active_shift: Option<(String, f32)>,
+    /// The element block being dragged. Its band and rows are drawn on a
+    /// floating layer, translated to the pointer, while the normal layout
+    /// keeps their height for the gap.
+    ghost: Option<GhostBlock>,
+}
+
+/// The floating copy of the dragged element block.
+#[derive(Clone)]
+struct GhostBlock {
+    layer: egui::LayerId,
+    offset: f32,
+    /// Dotted path of the element this block belongs to.
+    element: String,
 }
 
 impl PageWriter<'_> {
@@ -708,9 +705,17 @@ impl PageWriter<'_> {
         // widget id re-created — for every field inside it.
         let mut open: Vec<String> = Vec::new();
         let mut row_number = 0usize;
+        // The element whose field rows are being drawn, and how many of them
+        // have been drawn: the stripe and the block's bottom edge are per
+        // element, not per page.
+        let mut current_element: Option<String> = None;
+        let mut element_row = 0usize;
         // The list bands are collected by the chrome widget; it resolves a
         // reorder only after every list on the page has laid out its rows.
         ListChrome::begin(&mut self.page.list_chrome);
+        // Lists whose element rows have started but whose block has not closed
+        // yet. A list ends when the next field leaves its dotted path.
+        let mut list_stack: Vec<String> = Vec::new();
 
         // A `Vec<T>` token is a list, empty or not: the list node is the only
         // field an empty list has, and it is what gives the empty list a
@@ -757,8 +762,28 @@ impl PageWriter<'_> {
                 (field.path.clone(), field.value.is_list())
             };
 
-            // A list node draws its own two-row header (name, then count and
-            // add/remove) instead of a row in the value column.
+            // Restore the layout offset of the element block we just left.
+            if let Some((element, shift)) = self.active_shift.take() {
+                if path == element || path.starts_with(&format!("{element}.")) {
+                    self.active_shift = Some((element, shift));
+                } else {
+                    ui.add_space(-shift);
+                }
+            }
+
+            // Close every list block this field is no longer inside: its
+            // footer (add/remove under the container) belongs between the last
+            // element row and this field.
+            while let Some(list) = list_stack.last() {
+                if path == *list || path.starts_with(&format!("{list}.")) {
+                    break;
+                }
+                let list = list_stack.pop().expect("checked just above");
+                self.list_footer(ui, &list, row_width);
+            }
+
+            // A list node draws its own header (name and inline count) instead
+            // of a row in the value column.
             if is_list {
                 let segments: Vec<&str> = path.split('.').filter(|part| !part.is_empty()).collect();
                 let parents = &segments[..segments.len().saturating_sub(1)];
@@ -779,9 +804,20 @@ impl PageWriter<'_> {
                 }
                 if !hidden {
                     self.list_header(ui, index, depth, row_width);
-                }
-                if style.row_gap > 0.0 {
-                    ui.add_space(style.row_gap);
+                    if style.row_gap > 0.0 {
+                        ui.add_space(style.row_gap);
+                    }
+                    // Re-read the collapse state: clicking the header above
+                    // may have just toggled it. A folded list has no container
+                    // and no footer.
+                    if !self.page.collapsed.contains(&path) {
+                        ListChrome::open(
+                            &mut self.page.list_chrome,
+                            list_chrome_id(self.key, &path),
+                            ui.cursor().top(),
+                        );
+                        list_stack.push(path.clone());
+                    }
                 }
                 continue;
             }
@@ -798,22 +834,55 @@ impl PageWriter<'_> {
                 &lists,
             );
 
+            // Which element block this row belongs to, and where inside it.
+            // The path, not the visual depth, distinguishes two entries of the
+            // same list.
+            let element = element_path(&group, &list_paths);
+            if element.is_some() && element != current_element {
+                current_element = element.clone();
+                element_row = 0;
+            } else if element.is_none() {
+                current_element = None;
+                element_row = 0;
+            }
+            let next_element = self
+                .page
+                .fields
+                .get(index + 1)
+                .and_then(|field| element_path(&group_path(&field.path), &list_paths));
+            let last_in_element = element.is_some() && element != next_element;
+
             // A folded group hides its rows, not its own band.
             if !collapsed_above(&segments, &self.page.collapsed) {
-                // A row inside a list element keeps that element's gutter; an
-                // enum payload row keeps the enum row's label column instead
-                // of indenting, and its block background says it belongs.
+                // A row inside a list element keeps that element's gutter and
+                // stripes on the element's band background; an enum payload
+                // row keeps the menu button's label column instead of
+                // indenting, and has no tint or border of its own.
                 let slot = RowSlot {
                     depth,
-                    element: element_anchor(&group, &list_paths, &enums),
+                    element: element
+                        .as_ref()
+                        .map(|element| visual_depth(element, &enums)),
+                    element_row,
+                    last_in_element,
                 };
-                let block = enum_block(&path, index, &self.page.fields, &enum_blocks, &enums);
+                let block = enum_block(&path, &enum_blocks, &enums);
                 self.row(ui, index, slot, block, row_width, row_number);
                 row_number += 1;
+                if element.is_some() {
+                    element_row += 1;
+                }
                 if style.row_gap > 0.0 {
                     ui.add_space(style.row_gap);
                 }
             }
+        }
+
+        if let Some((_, shift)) = self.active_shift.take() {
+            ui.add_space(-shift);
+        }
+        while let Some(list) = list_stack.pop() {
+            self.list_footer(ui, &list, row_width);
         }
 
         self.finish_list_drag(ui);
@@ -903,17 +972,61 @@ impl PageWriter<'_> {
                 .next()
                 .and_then(|part| part.parse::<usize>().ok())
                 .unwrap_or(0);
-            self.element_band(ui, path, index, depth, row_width, *row_number);
+            let now = ui.input(|input| input.time);
+            let list_id = list_chrome_id(self.key, parent);
+            let dragging = self.page.list_chrome.drag_index(list_id) == Some(index);
+            if dragging
+                && let Some(pointer) = ui.ctx().pointer_interact_pos()
+                && let Some(offset) =
+                    self.page
+                        .list_chrome
+                        .drag_offset(list_id, ui.cursor().top(), pointer)
+            {
+                // The whole element block follows the pointer: its band and
+                // rows are drawn on a floating layer, translated by the grab
+                // offset, while the parent reserves the normal height.
+                let layer = egui::LayerId::new(
+                    egui::Order::Tooltip,
+                    Id::new(("kairos.list.block", list_id)),
+                );
+                self.ghost = Some(GhostBlock {
+                    layer,
+                    offset,
+                    element: path.to_owned(),
+                });
+                let rect =
+                    Rect::from_min_size(ui.cursor().min, vec2(row_width, self.chrome.row_height));
+                let mut child = ui.new_child(UiBuilder::new().max_rect(rect).layer_id(layer));
+                // A child inherits its parent's clip, which is the scroll
+                // viewport. The ghost must escape that viewport: clip it to
+                // its own row instead, so a half-scrolled element drags whole.
+                child.set_clip_rect(rect);
+                child.disable();
+                child.with_visual_transform(
+                    egui::emath::TSTransform::from_translation(vec2(0.0, offset)),
+                    |ui| self.element_band(ui, path, index, depth, row_width, 0.0),
+                );
+                ui.add_space(self.chrome.row_height);
+                *row_number += 1;
+                return;
+            }
+            self.ghost = None;
+            let shift = self.page.list_chrome.shift(list_id, index, now);
+            if shift != 0.0 {
+                ui.add_space(shift);
+                self.active_shift = Some((path.to_owned(), shift));
+            }
+            self.element_band(ui, path, index, depth, row_width, shift);
             *row_number += 1;
         } else {
+            self.ghost = None;
             self.foldout(ui, path, depth, label, row_width);
         }
     }
 
-    /// A list's two-row header: the foldout band, then the count and the
-    /// add/remove pair in the block's bottom-right corner. The chrome widget
-    /// owns the layout and the count editor; the page maps its edit back onto
-    /// the style token (a length) and the owner's action path.
+    /// A list's header: the foldout band and the inline count box. The
+    /// add/remove pair is drawn by [Self::list_footer] at the bottom-right of
+    /// the list block, like Unity's reorderable list.
     fn list_header(&mut self, ui: &mut Ui, index: usize, depth: usize, row_width: f32) {
         let (path, name, len) = {
             let field = &self.page.fields[index];
@@ -923,7 +1036,6 @@ impl PageWriter<'_> {
             };
             (field.path.clone(), field.name.clone(), len)
         };
-        let selected = selected_element_index(self.page.selected.as_deref(), &path, len);
         let folded = self.page.collapsed.contains(&path);
         let outcome = ListChrome::header(
             ui,
@@ -938,7 +1050,6 @@ impl PageWriter<'_> {
             },
             &name,
             len,
-            selected,
             folded,
             depth,
             row_width,
@@ -956,28 +1067,67 @@ impl PageWriter<'_> {
             }
             self.clicked = true;
         }
-        match outcome.edit {
-            Some(ListChromeEdit::SetLen { len, .. }) => {
-                let value = StyleValue::ListLen(len);
-                self.out.push(set_field_action(self.key, &path, &value));
-                self.page.fields[index].value = value;
-                self.page.dirty = true;
-                self.page.stale = true;
-            }
-            Some(ListChromeEdit::Insert { index, .. }) => {
-                // The new entry becomes the selection, so the next click of
-                // ~~-~~ removes what the user just added, not the old last row.
-                self.page.selected = Some(format!("{path}.{index}"));
-                self.push_list_edit(&path, ListEdit::Insert { index });
-            }
-            Some(ListChromeEdit::Remove { index, .. }) => {
-                self.page.selected = None;
-                self.push_list_edit(&path, ListEdit::Remove { index });
-            }
-            Some(ListChromeEdit::Move { .. }) | None => {}
+        if let Some(ListChromeEdit::SetLen { len, .. }) = outcome.edit {
+            self.page.list_chrome.clear_shifts();
+            let value = StyleValue::ListLen(len);
+            self.out.push(set_field_action(self.key, &path, &value));
+            self.page.fields[index].value = value;
+            self.page.dirty = true;
+            self.page.stale = true;
         }
         if outcome.finished && self.page.dirty {
             self.page.commit(self.out);
+        }
+    }
+
+    /// Close one list block: the container frame ends at the current cursor,
+    /// and the add/remove pair hangs outside it, flush under the bottom-right
+    /// corner.
+    fn list_footer(&mut self, ui: &mut Ui, path: &str, row_width: f32) {
+        let Some((len, selected)) = self.page.fields.iter().find_map(|field| {
+            if field.path != path || !field.value.is_list() {
+                return None;
+            }
+            let len = match field.value {
+                StyleValue::ListLen(len) => len,
+                _ => 0,
+            };
+            let selected = selected_element_index(self.page.selected.as_deref(), path, len);
+            Some((len, selected))
+        }) else {
+            return;
+        };
+        let outcome = ListChrome::footer(
+            ui,
+            &mut self.page.list_chrome,
+            &self.chrome,
+            list_chrome_id(self.key, path),
+            ListChromeIds {
+                header: group_id(self.key, path),
+                count: field_id(self.key, path),
+                add: list_add_id(self.key, path),
+                remove: list_remove_id(self.key, path),
+            },
+            len,
+            selected,
+            row_width,
+            LIST_MAX as usize,
+        );
+        if outcome.clicked {
+            self.clicked = true;
+        }
+        match outcome.edit {
+            Some(ListChromeEdit::Insert { index, .. }) => {
+                // The new entry becomes the selection, so the next click of the
+                // minus cell removes what the user just added.
+                self.page.selected = Some(format!("{path}.{index}"));
+                self.push_list_edit(path, ListEdit::Insert { index });
+            }
+            Some(ListChromeEdit::Remove { index, .. }) => {
+                self.page.selected = None;
+                self.push_list_edit(path, ListEdit::Remove { index });
+            }
+            Some(ListChromeEdit::SetLen { .. } | ListChromeEdit::Move { .. }) | None => {}
         }
     }
 
@@ -992,7 +1142,7 @@ impl PageWriter<'_> {
         index: usize,
         depth: usize,
         row_width: f32,
-        row_number: usize,
+        shift: f32,
     ) {
         let list_path = path.rsplit_once('.').map_or("", |(list, _)| list);
         let selected = self.page.selected.as_deref() == Some(path);
@@ -1008,12 +1158,18 @@ impl PageWriter<'_> {
                 handle: list_handle_id(self.key, path),
             },
             index,
+            &format!("Element {index}"),
+            shift,
             depth,
             row_width,
-            self.style.row_fill(row_number).to_egui(),
+            self.chrome.band_fill,
             selected,
             folded,
         );
+        if outcome.pressed || outcome.drag_started {
+            self.page.selected = Some(path.to_owned());
+            self.clicked = true;
+        }
         if let Some(folded) = outcome.folded {
             if folded {
                 self.page.collapsed.insert(path.to_owned());
@@ -1032,6 +1188,7 @@ impl PageWriter<'_> {
     /// edit is a discrete click, not a drag stream, so live value and file go
     /// together.
     fn push_list_edit(&mut self, path: &str, edit: ListEdit) {
+        self.page.list_chrome.clear_shifts();
         match self.key {
             PageKey::Panel(panel) => {
                 self.out.push(Action::Style(StyleAction::EditList {
@@ -1061,23 +1218,55 @@ impl PageWriter<'_> {
         self.clicked = true;
     }
 
-    /// Resolve the reorder target from this pass's element bands and, on
-    /// release, move the element. The chrome paints the insertion line.
+    /// Move one element when its drag is released. The owner applies the move
+    /// at once, so the next pass paints the new order and the drop animation
+    /// uses the slots the blocks land in.
+    fn push_list_move(&mut self, path: &str, from: usize, to: usize) {
+        let edit = ListEdit::Move { from, to };
+        match self.key {
+            PageKey::Panel(panel) => self.out.push(Action::Style(StyleAction::EditList {
+                panel,
+                path: path.to_owned(),
+                edit,
+            })),
+            PageKey::Shared(style) => {
+                self.out
+                    .push(Action::SharedStyle(SharedStyleAction::EditList {
+                        style,
+                        path: path.to_owned(),
+                        edit,
+                    }));
+            }
+        }
+        // The rows are re-read from the owner's new order, but the drag stays
+        // alive: its rebound index addresses the same element.
+        self.page.stale = true;
+        self.page.dirty = true;
+        self.page.edit = None;
+        self.clicked = true;
+    }
+
+    /// Resolve the active drag from this pass's element bands. Holding the
+    /// pointer previews the gap: the held block is drawn on the floating layer
+    /// at the pointer, and the neighbours slide to their preview slots. The
+    /// release emits the move once and commits the file once.
     fn finish_list_drag(&mut self, ui: &mut Ui) {
-        let Some(edit) = ListChrome::finish(ui, &mut self.page.list_chrome, &self.chrome) else {
-            return;
-        };
-        let ListChromeEdit::Move { list, from, to } = edit else {
-            return;
-        };
-        let Some(path) = self.page.fields.iter().find_map(|field| {
-            (field.value.is_list() && list_chrome_id(self.key, &field.path) == list)
-                .then(|| field.path.clone())
-        }) else {
-            return;
-        };
-        self.page.selected = Some(format!("{path}.{to}"));
-        self.push_list_edit(&path, ListEdit::Move { from, to });
+        let outcome = ListChrome::finish(ui, &mut self.page.list_chrome);
+        if let Some(ListChromeEdit::Move { list, from, to }) = outcome.edit
+            && let Some(path) = self.page.fields.iter().find_map(|field| {
+                (field.value.is_list() && list_chrome_id(self.key, &field.path) == list)
+                    .then(|| field.path.clone())
+            })
+        {
+            self.page.selected = Some(format!("{path}.{to}"));
+            self.push_list_move(&path, from, to);
+        }
+        if outcome.finished {
+            // A drag release is still a click inside the list: it must not be
+            // treated as the empty-page click that clears the selection.
+            self.clicked = true;
+            self.page.commit(self.out);
+        }
     }
 
     /// One foldout band: triangle, left-aligned group name, full-width hit
@@ -1085,6 +1274,29 @@ impl PageWriter<'_> {
     fn foldout(&mut self, ui: &mut Ui, path: &str, depth: usize, label: String, row_width: f32) {
         let style = self.style;
         let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.group_height), Sense::hover());
+        let ghost = self.ghost.as_ref().and_then(|ghost| {
+            (path == ghost.element || path.starts_with(&format!("{}.", ghost.element)))
+                .then_some((ghost.layer, ghost.offset))
+        });
+        if let Some((layer, offset)) = ghost {
+            // A nested group inside the dragged block: reserve its band and
+            // draw it on the floating layer with the rest of the block.
+            let mut child = ui.new_child(UiBuilder::new().max_rect(rect).layer_id(layer));
+            // Clip the floating row to itself, not to the scroll viewport it
+            // may have been cut by before the drag.
+            child.set_clip_rect(rect);
+            child.disable();
+            child.with_visual_transform(
+                egui::emath::TSTransform::from_translation(vec2(0.0, offset)),
+                |ui| self.foldout_at(ui, rect, path, depth, &label),
+            );
+            return;
+        }
+        self.foldout_at(ui, rect, path, depth, &label);
+    }
+
+    fn foldout_at(&mut self, ui: &mut Ui, rect: Rect, path: &str, depth: usize, label: &str) {
+        let style = self.style;
         let response = ui
             .interact(rect, group_id(self.key, path), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand);
@@ -1106,7 +1318,7 @@ impl PageWriter<'_> {
 
         let text_left = rect.left() + style.row_inset + 16.0 + depth as f32 * style.group_indent;
         let text = TextStyle::sized(style.group.to_egui(), style.group_size);
-        let galley = text.layout(ui, &label);
+        let galley = text.layout(ui, label);
         let text_pos = pos2(text_left, rect.center().y - galley.size().y * 0.5);
         let color = style.group.to_egui();
         painter.with_clip_rect(rect).galley(text_pos, galley, color);
@@ -1114,7 +1326,7 @@ impl PageWriter<'_> {
         labelled_widget_info(
             &response,
             WidgetType::SelectableLabel,
-            &label,
+            label,
             Some(!collapsed),
         );
 
@@ -1133,10 +1345,10 @@ impl PageWriter<'_> {
     /// One leaf row: its band, left name, value box.
     ///
     /// `slot` says where the name starts (a list element's fields keep the
-    /// element's gutter) and `block` is the enum tint that makes a menu row and
-    /// its payload one control. A payload row starts at the menu button, which
-    /// is that block's value column; a row with neither is an ordinary
-    /// alternating band.
+    /// element's gutter) and `block` says whether this row hangs under an
+    /// enum's menu button. A payload row starts at the menu button, which is
+    /// that block's value column; a row with neither is an ordinary alternating
+    /// band.
     #[allow(clippy::too_many_arguments)]
     fn row(
         &mut self,
@@ -1148,40 +1360,92 @@ impl PageWriter<'_> {
         row_number: usize,
     ) {
         let style = self.style;
-        let key = self.key;
-        let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
-        let fill = if block.fill {
-            style.enum_block
+        // Element rows are list chrome; ordinary property rows keep the
+        // panel's own height.
+        let row_height = if slot.element.is_some() {
+            self.chrome.row_height
         } else {
-            style.row_fill(row_number)
+            style.row_height
         };
-        ui.painter()
-            .rect_filled(rect, CornerRadius::ZERO, fill.to_egui());
-        // The block's own 1 px rules: under the previous row and above the
-        // next one, so the tint reads as a closed control rather than a stripe.
-        for y in [
-            block.top.then_some(rect.top()),
-            block.bottom.then_some(rect.bottom() - 1.0),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            ui.painter().rect_filled(
-                Rect::from_min_size(pos2(rect.left(), y), vec2(rect.width(), 1.0)),
+        let (rect, _) = ui.allocate_exact_size(vec2(row_width, row_height), Sense::hover());
+        let path = self.page.fields[index].path.clone();
+        let ghost = self.ghost.as_ref().and_then(|ghost| {
+            (path == ghost.element || path.starts_with(&format!("{}.", ghost.element)))
+                .then_some((ghost.layer, ghost.offset))
+        });
+        if let Some((layer, offset)) = ghost {
+            // The dragged block's row: keep the parent slot, paint the real
+            // row on the floating layer at the pointer.
+            let mut child = ui.new_child(UiBuilder::new().max_rect(rect).layer_id(layer));
+            // Clip the floating row to itself, not to the scroll viewport it
+            // may have been cut by before the drag.
+            child.set_clip_rect(rect);
+            child.disable();
+            child.with_visual_transform(
+                egui::emath::TSTransform::from_translation(vec2(0.0, offset)),
+                |ui| self.row_at(ui, rect, index, slot, block, row_number),
+            );
+            return;
+        }
+        self.row_at(ui, rect, index, slot, block, row_number);
+    }
+
+    fn row_at(
+        &mut self,
+        ui: &mut Ui,
+        rect: Rect,
+        index: usize,
+        slot: RowSlot,
+        block: EnumBlock,
+        row_number: usize,
+    ) {
+        let style = self.style;
+        let key = self.key;
+        let path = self.page.fields[index].path.clone();
+        let in_element = slot.element.is_some();
+        // A row inside a list element uses the list skin's inset and indent;
+        // a page-level row keeps the panel's inspector metrics.
+        let (row_inset, group_indent) = if in_element {
+            (self.chrome.row_inset, self.chrome.group_indent)
+        } else {
+            (style.row_inset, style.group_indent)
+        };
+        let gutter_width = self.chrome.gutter_width;
+        // Inside an element the fields stripe on the band background itself,
+        // so the block and its header read as one raised control. Outside,
+        // the page keeps its own two-grey property stripes.
+        let fill = if in_element {
+            if slot.element_row.is_multiple_of(2) {
+                self.chrome.band_fill
+            } else {
+                self.chrome.band_alt
+            }
+        } else {
+            style.row_fill(row_number).to_egui()
+        };
+        let painter = ui.painter();
+        painter.rect_filled(rect, CornerRadius::ZERO, fill);
+        if in_element && slot.last_in_element {
+            // The last field closes the block with the same dark edge the band
+            // has under its header.
+            painter.rect_filled(
+                Rect::from_min_size(
+                    pos2(rect.left(), rect.bottom() - 1.0),
+                    vec2(rect.width(), 1.0),
+                ),
                 CornerRadius::ZERO,
-                style.divider.to_egui(),
+                self.chrome.container_border,
             );
         }
 
-        let path = self.page.fields[index].path.clone();
         let name = self.page.fields[index].name.clone();
         let is_number = self.page.fields[index].value.is_number();
 
         // Unity's layout: one label column, then a value column that fills the
         // rest of the row. The label column shrinks before the value box would
         // run under the scroll bar.
-        let content_left = rect.left() + style.row_inset;
-        let content_right = (rect.right() - style.row_inset).max(content_left + 1.0);
+        let content_left = rect.left() + row_inset;
+        let content_right = (rect.right() - row_inset).max(content_left + 1.0);
         let content_width = content_right - content_left;
         let max_label = (content_width - style.label_gap - style.field_width).max(48.0);
         let label_width = style
@@ -1214,34 +1478,18 @@ impl PageWriter<'_> {
             pos2(label_left, rect.top()),
             pos2(value_left - style.label_gap, rect.bottom()),
         );
-        let (label_x, divider_x) = if block.payload {
+        let label_x = if block.payload {
             let relative = slot.depth.saturating_sub(block.base_depth);
-            (label_left + relative as f32 * style.group_indent, None)
+            label_left + relative as f32 * style.group_indent
         } else if let Some(element) = slot.element {
-            let x0 = rect.left()
-                + style.row_inset
-                + element.saturating_sub(1) as f32 * style.group_indent;
-            let divider = x0 + style.list_gutter_width;
-            (
-                divider
-                    + 4.0
-                    + 16.0
-                    + slot.depth.saturating_sub(element) as f32 * style.group_indent,
-                Some(divider),
-            )
+            let x0 = rect.left() + row_inset + element.saturating_sub(1) as f32 * group_indent;
+            x0 + gutter_width
+                + 4.0
+                + 16.0
+                + slot.depth.saturating_sub(element) as f32 * group_indent
         } else {
-            (
-                content_left + 16.0 + slot.depth as f32 * style.group_indent,
-                None,
-            )
+            content_left + 16.0 + slot.depth as f32 * style.group_indent
         };
-        if let Some(x) = divider_x {
-            ui.painter().rect_filled(
-                Rect::from_min_size(pos2(x, rect.top()), vec2(1.0, rect.height())),
-                CornerRadius::ZERO,
-                style.divider.to_egui(),
-            );
-        }
 
         // The name is an interaction, not just paint: clicking it selects the
         // field, a text field takes keyboard focus so typing starts, and a
@@ -1625,19 +1873,20 @@ fn paint_foldout_arrow(
 /// A payload row is laid out under the menu button (see [EnumBlock]), not in
 /// the enum row's label column. `element` is the visual depth of the list
 /// element block the row is inside, if any; every row of that block keeps its
-/// gutter and dividing line.
+/// gutter and stripes on the element's raised background.
 #[derive(Clone, Copy)]
 struct RowSlot {
     depth: usize,
     element: Option<usize>,
+    /// Zero-based field row inside the element, for the two-grey stripe.
+    element_row: usize,
+    /// Last row of the element block: it paints the block's bottom edge.
+    last_in_element: bool,
 }
 
-/// The block tint of an enum row and the rules that close it.
+/// How a row relates to an enum's payload.
 #[derive(Clone, Copy, Default)]
 struct EnumBlock {
-    fill: bool,
-    top: bool,
-    bottom: bool,
     /// The row is a payload row, not the enum row itself: it is laid out under
     /// the menu button (whose column starts at the row's value column) rather
     /// than in the row's left label column.
@@ -1669,12 +1918,12 @@ fn visual_depth(group: &str, enums: &[String]) -> usize {
     depth
 }
 
-/// The visual depth of the deepest list element (`list.0`) containing `group`.
+/// The deepest list element dotted path (`list.N`) containing `group`.
 ///
-/// Every row below that element keeps the block's gutter, including the rows
-/// of an enum payload: the element block is the outer container, the enum block
-/// the inner one.
-fn element_anchor(group: &str, lists: &[String], enums: &[String]) -> Option<usize> {
+/// The depth is not enough to tell elements apart: two entries of one list sit
+/// at the same depth. The path is what identifies the element block whose
+/// stripes and edges a row belongs to.
+fn element_path(group: &str, lists: &[String]) -> Option<String> {
     let mut best: Option<String> = None;
     for list in lists {
         let Some(rest) = group
@@ -1697,40 +1946,20 @@ fn element_anchor(group: &str, lists: &[String], enums: &[String]) -> Option<usi
             best = Some(element);
         }
     }
-    best.map(|element| visual_depth(&element, enums))
+    best
 }
 
-/// The block an enum row starts, and the rows it owns.
+/// How a row relates to the innermost enum that owns it.
 ///
 /// `blocks` are the enum paths whose active variant has at least one payload
-/// row. A row belongs to every block whose path is a prefix; a block's top
-/// rule is drawn on the enum row itself, its bottom rule on the last payload
-/// row before the next field leaves the block.
-fn enum_block(
-    path: &str,
-    index: usize,
-    fields: &[StyleField],
-    blocks: &[String],
-    enums: &[String],
-) -> EnumBlock {
-    let mut enclosing = 0usize;
-    let mut top = false;
-    let mut bottom = false;
+/// row. A payload hangs under the menu button; it gets no tint and no border,
+/// so it stays part of the same element block as the field rows above it.
+fn enum_block(path: &str, blocks: &[String], enums: &[String]) -> EnumBlock {
     // The payload is laid out under the menu button of the *innermost* enum
     // that strictly contains this row: the row's own enum is not a payload,
     // but a nested enum row is a payload of its parent.
     let mut parent: Option<&String> = None;
     for block in blocks {
-        let inside = path == block || path.starts_with(&format!("{block}."));
-        if !inside {
-            continue;
-        }
-        enclosing += 1;
-        top |= path == block;
-        let next_left = fields
-            .get(index + 1)
-            .is_none_or(|next| next.path != *block && !next.path.starts_with(&format!("{block}.")));
-        bottom |= next_left;
         if path.starts_with(&format!("{block}."))
             && parent.is_none_or(|current| block.len() > current.len())
         {
@@ -1738,9 +1967,6 @@ fn enum_block(
         }
     }
     EnumBlock {
-        fill: enclosing > 0,
-        top,
-        bottom,
         payload: parent.is_some(),
         base_depth: parent.map_or(0, |block| visual_depth(block, enums)),
     }
@@ -1820,7 +2046,7 @@ mod tests {
     use kairos_editor_widgets::field::enum_item_id;
     use kairos_editor_widgets::style::Style;
 
-    use crate::shared_style::{COLOR_PICKER, FONTS};
+    use crate::shared_style::{COLOR_PICKER, FONTS, LIST, SharedStyles};
     use crate::skin::PanelSkin;
 
     struct NoHost;
@@ -1950,6 +2176,9 @@ mod tests {
         size: egui::Vec2,
         state: EditorState,
         skins: Vec<PanelSkin>,
+        /// The live shared skins this pass reads; tests may edit one to prove
+        /// the page is wired to the registry and not to local constants.
+        shared: SharedStyles,
         panel: PreferencesPanel,
     }
 
@@ -1966,6 +2195,7 @@ mod tests {
                 size,
                 state: EditorState::new(),
                 skins,
+                shared: SharedStyles::default(),
                 panel: PreferencesPanel::new(),
             }
         }
@@ -1982,10 +2212,13 @@ mod tests {
                 ctx,
                 state,
                 skins,
+                shared,
                 panel,
                 ..
             } = self;
-            let frame = Frame::with_host(state, &host).with_skins(skins);
+            let frame = Frame::with_host(state, &host)
+                .with_skins(skins)
+                .with_shared(shared);
             let mut out = UiOut::new();
             let output = ctx.run_ui(input, |ui| panel.ui(ui, &frame, &mut out));
             (output, out.take())
@@ -2055,6 +2288,40 @@ mod tests {
         let mut out = Vec::new();
         for clipped in &output.shapes {
             walk(&clipped.shape, &mut out);
+        }
+        out
+    }
+
+    /// A text run plus the clip the pass painted it through. The ghost's
+    /// clipping is invisible in the flattened text list, so the drag tests
+    /// inspect this to prove the whole block survives the scroll viewport.
+    #[derive(Clone, Debug)]
+    struct ClippedText {
+        text: String,
+        rect: egui::Rect,
+        clip: egui::Rect,
+    }
+
+    fn painted_clipped_texts(output: &egui::FullOutput) -> Vec<ClippedText> {
+        fn walk(shape: &egui::Shape, clip: egui::Rect, out: &mut Vec<ClippedText>) {
+            match shape {
+                egui::Shape::Text(text) => out.push(ClippedText {
+                    text: text.galley.text().to_owned(),
+                    rect: egui::Rect::from_min_size(text.pos, text.galley.size()),
+                    clip,
+                }),
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, clip, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut out = Vec::new();
+        for clipped in &output.shapes {
+            walk(&clipped.shape, clipped.clip_rect, &mut out);
         }
         out
     }
@@ -2593,6 +2860,95 @@ mod tests {
             1,
             "the header shows the entry count: {text}"
         );
+
+        // Unity's list header carries the count inline; the add/remove pair
+        // lives under the rows, at the bottom-right of the block.
+        let header = harness.rect_of(group_id(PageKey::Shared(FONTS), "proportional"));
+        let count = harness.rect_of(field_id(PageKey::Shared(FONTS), "proportional"));
+        assert!(
+            approx(header.center().y, count.center().y),
+            "the count box shares the header row: header {header:?}, count {count:?}"
+        );
+        assert!(
+            count.left() > header.left(),
+            "the count box is at the far right of the header: {count:?}"
+        );
+        let handle = harness.rect_of(list_handle_id(PageKey::Shared(FONTS), "proportional.0"));
+        let band = harness.rect_of(label_id(PageKey::Shared(FONTS), "proportional.0"));
+        assert!(
+            handle.right() <= band.left(),
+            "the drag handle is the leftmost cell: handle {handle:?}, band {band:?}"
+        );
+        let add = harness.rect_of(list_add_id(PageKey::Shared(FONTS), "proportional"));
+        let last = harness.rect_of(label_id(PageKey::Shared(FONTS), "proportional.1"));
+        assert!(
+            add.top() >= last.bottom(),
+            "the add/remove pair sits under the rows: add {add:?}, last band {last:?}"
+        );
+        let style = PreferencesPanelStyle::dark();
+        let frame = painted_rects(&output)
+            .into_iter()
+            .find(|painted| {
+                painted.stroke.color == style.divider.to_egui()
+                    && painted.stroke.width >= 1.0
+                    && painted.rect.height() > last.height()
+                    && painted.rect.width() > last.width() * 0.8
+            })
+            .expect("the list container frame is painted around the rows");
+        assert!(
+            frame.rect.top() >= header.bottom() && approx(frame.rect.bottom(), add.top()),
+            "the frame ends at the last row, and the pair hangs outside it flush underneath: frame {frame:?}, add {add:?}"
+        );
+        assert!(
+            add.bottom() > frame.rect.bottom(),
+            "the pair is below the frame, not inside it: add {add:?}, frame {frame:?}"
+        );
+        assert!(
+            handle.left() <= frame.rect.left() + 3.0,
+            "the grip is at the container's left edge: handle {handle:?}, frame {frame:?}"
+        );
+        let field = crate::shared_style::EditorFieldStyle::dark().tokens();
+        let chrome = ListStyle::dark().tokens(&field);
+        let stripes: Vec<PaintedRect> = painted_rects(&output)
+            .into_iter()
+            .filter(|painted| {
+                (painted.fill == chrome.band_fill || painted.fill == chrome.band_alt)
+                    && approx(painted.rect.height(), chrome.row_height)
+                    && painted.rect.width() > 400.0
+            })
+            .collect();
+        assert!(
+            stripes
+                .iter()
+                .any(|painted| painted.fill == chrome.band_alt),
+            "the fields stripe on the element's raised band: {stripes:?}"
+        );
+        assert!(
+            !painted_rects(&output).iter().any(|painted| {
+                painted.fill == style.nav_background.to_egui()
+                    && approx(painted.rect.height(), 20.0)
+                    && painted.rect.width() > 400.0
+            }),
+            "the element body is not a second dark interior"
+        );
+        assert!(
+            !painted_rects(&output).iter().any(|painted| {
+                painted.fill == field.edge_hover
+                    && approx(painted.rect.height(), 1.0)
+                    && painted.rect.width() > 40.0
+                    && painted.rect.width() < 500.0
+            }),
+            "the enum payload has no horizontal border rules"
+        );
+        assert!(
+            !painted_rects(&output).iter().any(|painted| {
+                painted.fill == field.edge_hover
+                    && painted.rect.width() <= 1.5
+                    && painted.rect.height() >= 10.0
+            }),
+            "the enum payload has no vertical border edge"
+        );
+
         for index in 0..2 {
             assert_eq!(
                 runs.iter()
@@ -2611,7 +2967,7 @@ mod tests {
             Some("proportional.0"),
             "the element band is selectable"
         );
-        let blue = PreferencesPanelStyle::dark().list_selection.to_egui();
+        let blue = ListStyle::dark().selection.to_egui();
         assert!(
             painted_rects(&output)
                 .iter()
@@ -2640,6 +2996,58 @@ mod tests {
             "entry 1 keeps its fields: {text}"
         );
         assert!(text.contains("Element 0"), "the band stays: {text}");
+    }
+
+    /// The list chrome is a shared page, not a group inside another panel's
+    /// skin: it must be selectable in the nav and expose its own tokens.
+    #[test]
+    fn the_list_page_is_the_shared_list_skin() {
+        let mut harness = Harness::new(skins());
+        harness.frame(Vec::new());
+        harness.click(nav_id(LIST));
+
+        assert_eq!(harness.panel.page.key, Some(PageKey::Shared(LIST)));
+        let paths: Vec<&str> = harness
+            .panel
+            .page
+            .fields
+            .iter()
+            .map(|field| field.path.as_str())
+            .collect();
+        assert!(paths.contains(&"band_fill"), "{paths:?}");
+        assert!(paths.contains(&"button_fill"), "{paths:?}");
+        assert!(
+            !paths.contains(&"field"),
+            "the value boxes stay on their own page: {paths:?}"
+        );
+    }
+
+    /// Changing a ListStyle token in the registry must repaint the page's list:
+    /// the page reads Frame::list_style(), not a local constant or the panel
+    /// skin.
+    #[test]
+    fn the_list_skin_restyles_the_preferences_list() {
+        let mut harness = Harness::with_size(skins(), vec2(700.0, 470.0));
+        let ink = Color::from_srgb8([0x12, 0x34, 0x56, 255]);
+        assert!(
+            harness
+                .shared
+                .set_field(LIST, "band_fill", &StyleValue::Color(ink)),
+            "the list skin is registered"
+        );
+        harness.frame(Vec::new());
+        harness.click(nav_id(FONTS));
+        let (output, _) = harness.frame(Vec::new());
+
+        assert!(
+            painted_rects(&output).iter().any(|painted| {
+                painted.fill == ink.to_egui()
+                    && painted.rect.width() > 400.0
+                    && approx(painted.rect.height(), ListStyle::dark().row_height)
+            }),
+            "the element band reads the shared ListStyle: {output_shapes}",
+            output_shapes = painted_rects(&output).len()
+        );
     }
 
     /// The header's two controls: `+` appends a default entry, `-` removes the
@@ -2720,40 +3128,215 @@ mod tests {
         );
     }
 
-    /// Dragging an element's handle reorders it: the drop slot is resolved
-    /// from the element bands the page laid out, and the move is persisted at
-    /// once (a drop is a click, not a stream).
+    /// A plain click on the handle selects the row, like Unity's mouse-down
+    /// selection, and the release is not mistaken for an empty-page click.
     #[test]
-    fn dragging_an_element_handle_moves_it() {
+    fn clicking_a_drag_handle_selects_the_element() {
+        let mut harness = Harness::with_size(Vec::new(), vec2(700.0, 470.0));
+        harness.frame(Vec::new());
+        harness.click(nav_id(FONTS));
+        harness.click(list_handle_id(PageKey::Shared(FONTS), "proportional.1"));
+
+        assert_eq!(
+            harness.panel.page.selected.as_deref(),
+            Some("proportional.1"),
+            "the handle selects its element on mouse-down"
+        );
+    }
+
+    /// Dragging an element's handle lifts a ghost that follows the pointer; the
+    /// list does not reorder until the release, which then emits one move and
+    /// one commit.
+    #[test]
+    fn dragging_an_element_handle_lifts_a_ghost_and_moves_on_release() {
         let mut harness = Harness::with_size(Vec::new(), vec2(700.0, 470.0));
         harness.frame(Vec::new());
         harness.click(nav_id(FONTS));
 
         let handle = harness.rect_of(list_handle_id(PageKey::Shared(FONTS), "proportional.0"));
         let start = handle.center();
-        // Drop on element 1's band, below its centre: the row count inside an
-        // element is not fixed (the priority token is one of them).
         let target = harness.rect_of(label_id(PageKey::Shared(FONTS), "proportional.1"));
+        let neighbour_top = target.top();
         let end = egui::pos2(start.x, target.bottom() - 2.0);
         harness.frame(vec![egui::Event::PointerMoved(start)]);
         harness.frame(vec![pointer(start, true)]);
-        harness.frame(vec![egui::Event::PointerMoved(end)]);
-        let (_, actions) = harness.frame(vec![pointer(end, false)]);
+        let (output, actions) = harness.frame(vec![egui::Event::PointerMoved(end)]);
 
+        assert!(
+            actions.is_empty(),
+            "the list stands still while the pointer is down: {actions:?}"
+        );
+        let runs = painted_texts(&output);
         assert_eq!(
-            actions.first(),
-            Some(&Action::SharedStyle(SharedStyleAction::EditList {
-                style: FONTS,
-                path: "proportional".to_owned(),
-                edit: ListEdit::Move { from: 0, to: 1 },
-            })),
-            "the drag drops element 0 below element 1: {actions:?}"
+            runs.iter().filter(|run| run.text == "Element 0").count(),
+            1,
+            "the held block is painted once"
+        );
+        assert_eq!(
+            harness.panel.page.selected.as_deref(),
+            Some("proportional.0"),
+            "the held element is selected without moving"
+        );
+
+        // The next pass hides the held block and applies the preview slide:
+        // only the ghost is painted, and the neighbour moves up into the gap.
+        let (output, actions) = harness.frame(Vec::new());
+        assert!(
+            actions.is_empty(),
+            "the preview still does not reorder: {actions:?}"
+        );
+        let runs = painted_texts(&output);
+        assert_eq!(
+            runs.iter().filter(|run| run.text == "Element 0").count(),
+            1,
+            "the held block is painted once, on the floating layer"
+        );
+        let ghost_path = runs
+            .iter()
+            .find(|run| run.text == "Preferences/Fonts/Inter-Regular.otf")
+            .unwrap_or_else(|| {
+                panic!(
+                    "the ghost carries the element's body, not just its header: {}",
+                    runs.iter()
+                        .map(|run| run.text.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                )
+            });
+        assert!(
+            ghost_path.rect.top() > neighbour_top,
+            "the ghost block's fields follow the pointer, not their old slot: {:?}",
+            ghost_path.rect
+        );
+        let ghost_band = runs
+            .iter()
+            .find(|run| run.text == "Element 0")
+            .expect("the ghost band label");
+        assert!(
+            ghost_band.rect.top() > 100.0,
+            "the ghost band sits under the pointer, not at its old top: {:?}",
+            ghost_band.rect
+        );
+        // The neighbour eases over 160 ms and `read_response` is one pass
+        // behind; let the slide finish before measuring its band.
+        for _ in 0..12 {
+            let (_, actions) = harness.frame(Vec::new());
+            assert!(actions.is_empty(), "the preview still holds: {actions:?}");
+        }
+        let moved = harness.rect_of(label_id(PageKey::Shared(FONTS), "proportional.1"));
+        assert!(
+            moved.top() < neighbour_top - 20.0,
+            "the neighbour slides into the preview slot while the pointer is held: {neighbour_top} -> {}",
+            moved.top()
+        );
+
+        let (_, actions) = harness.frame(vec![pointer(end, false)]);
+        assert_eq!(
+            actions,
+            vec![
+                Action::SharedStyle(SharedStyleAction::EditList {
+                    style: FONTS,
+                    path: "proportional".to_owned(),
+                    edit: ListEdit::Move { from: 0, to: 1 },
+                }),
+                Action::SharedStyle(SharedStyleAction::Commit { style: FONTS }),
+            ],
+            "the release is the one move and the one save: {actions:?}"
+        );
+        assert_eq!(
+            harness.panel.page.selected.as_deref(),
+            Some("proportional.1"),
+            "the released row stays selected in its new slot"
+        );
+    }
+
+    /// Dragging upward does not swap the list under the pointer: the release
+    /// moves it once, and a resting pointer afterwards emits nothing.
+    #[test]
+    fn dragging_up_moves_once_on_release_and_does_not_bounce() {
+        let mut harness = Harness::with_size(Vec::new(), vec2(700.0, 470.0));
+        harness.frame(Vec::new());
+        harness.click(nav_id(FONTS));
+
+        let handle = harness.rect_of(list_handle_id(PageKey::Shared(FONTS), "proportional.1"));
+        let start = handle.center();
+        let band = harness.rect_of(label_id(PageKey::Shared(FONTS), "proportional.0"));
+        let end = egui::pos2(start.x, band.top() + 2.0);
+        harness.frame(vec![egui::Event::PointerMoved(start)]);
+        harness.frame(vec![pointer(start, true)]);
+        let (_, actions) = harness.frame(vec![egui::Event::PointerMoved(end)]);
+        assert!(
+            actions.is_empty(),
+            "the row stays in its slot until the release: {actions:?}"
+        );
+
+        let (_, actions) = harness.frame(Vec::new());
+        assert!(
+            actions.is_empty(),
+            "resting the pointer over another slot does not reorder: {actions:?}"
+        );
+
+        let (_, actions) = harness.frame(vec![pointer(end, false)]);
+        assert_eq!(
+            actions,
+            vec![
+                Action::SharedStyle(SharedStyleAction::EditList {
+                    style: FONTS,
+                    path: "proportional".to_owned(),
+                    edit: ListEdit::Move { from: 1, to: 0 },
+                }),
+                Action::SharedStyle(SharedStyleAction::Commit { style: FONTS }),
+            ],
+            "the release persists the one move: {actions:?}"
+        );
+        assert_eq!(
+            harness.panel.page.selected.as_deref(),
+            Some("proportional.0"),
+            "the released row stays selected"
+        );
+    }
+
+    /// An element that is only half inside the scroll viewport must still be
+    /// dragged as one whole block. The ghost is clipped to its own rows, not to
+    /// the viewport that hid the rest of the element before the drag.
+    #[test]
+    fn a_half_visible_element_drags_as_a_whole_block() {
+        let height = 230.0;
+        let mut harness = Harness::with_size(Vec::new(), vec2(700.0, height));
+        harness.frame(Vec::new());
+        let (before, _) = harness.click(nav_id(FONTS));
+
+        let handle = harness.rect_of(list_handle_id(PageKey::Shared(FONTS), "proportional.1"));
+        assert!(
+            handle.top() < height - 20.0,
+            "the handle must be reachable before the drag: {handle:?}"
         );
         assert!(
-            actions.contains(&Action::SharedStyle(SharedStyleAction::Commit {
-                style: FONTS
-            })),
-            "a drop is persisted with the move: {actions:?}"
+            !painted_text(&before).contains("Preferences/Fonts/Inter-Medium.otf"),
+            "the half of the element below the page is not painted before the drag"
+        );
+
+        let start = handle.center();
+        harness.frame(vec![egui::Event::PointerMoved(start)]);
+        harness.frame(vec![pointer(start, true)]);
+        let (_, _) = harness.frame(vec![egui::Event::PointerMoved(start + vec2(0.0, 10.0))]);
+        let (output, _) = harness.frame(Vec::new());
+
+        let clips = painted_clipped_texts(&output);
+        let body = clips
+            .iter()
+            .find(|run| run.text == "Preferences/Fonts/Inter-Medium.otf")
+            .unwrap_or_else(|| {
+                panic!(
+                    "the ghost carries the hidden half of the element: {:?}",
+                    clips.iter().map(|run| &run.text).collect::<Vec<_>>()
+                )
+            });
+        assert!(
+            body.clip.contains_rect(body.rect),
+            "the ghost row is still clipped to the scroll viewport: clip {:?}, row {:?}",
+            body.clip,
+            body.rect
         );
     }
 
@@ -3080,8 +3663,8 @@ mod tests {
 
     /// A payload hangs under the menu button, not at the row's left edge: the
     /// button is the reference, so the payload labels start at its left and
-    /// the enum row keeps its own label column. The block tint ties the rows
-    /// together.
+    /// the enum row keeps its own label column. It has no tint and no border of
+    /// its own: it stays part of the surrounding property stripes.
     #[test]
     fn an_enum_block_hangs_its_payload_under_the_menu_button() {
         let mut harness = Harness::with_size(enum_skin("Soft"), vec2(700.0, 470.0));
@@ -3121,14 +3704,18 @@ mod tests {
         );
         assert!(approx(radius_value, samples_value));
 
-        let block = PreferencesPanelStyle::dark().enum_block.to_egui();
-        let rows = painted_rects(&output)
+        let style = PreferencesPanelStyle::dark();
+        let striped = painted_rects(&output)
             .into_iter()
-            .filter(|painted| painted.fill == block)
+            .filter(|painted| {
+                (painted.fill == style.row_odd.to_egui()
+                    || painted.fill == style.row_even.to_egui())
+                    && approx(painted.rect.height(), style.row_height)
+            })
             .count();
         assert_eq!(
-            rows, 3,
-            "the menu row and its two payload rows share one tint"
+            striped, 3,
+            "the menu row and its two payload rows stay on the property stripes"
         );
     }
 

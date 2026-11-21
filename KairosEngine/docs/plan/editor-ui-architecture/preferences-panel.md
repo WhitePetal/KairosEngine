@@ -138,7 +138,7 @@ StyleFields::set_style_field(path, value)
 工具栏和取色器不是 `Panel`（没有实例，也没有 `Panel::init`），但它们的样式同样需要一份 RON、一份 live 值和 Preferences 页。它们走 **shared style** 路径，而不是 `PanelSkin` 路径：
 
 - `kairos_editor_component/src/shared_style.rs` + `shared_style/`：根文件放 `SharedStyle` trait 与 re-export；`catalog.rs` 放 `SharedStyleDef` / `StyleCatalog`（inventory 注册，对应 `#[panel]` 的 `PanelDef`）；`registry.rs` 放 `SharedStyles` 注册表和 `SharedSkin` 字段表；`color_picker.rs` 放取色器 skin。
-- `ToolBarStyle` 与 `ColorPickerSkin` 在 `#[derive(StyleFields)]` 上加 `#[SharedStyle(TOOLBAR = "toolbar", title = "Toolbar")]`：宏生成 id 常量、sealed erasure impl 和 `inventory` 提交；类型只写 `impl SharedStyle for <Style> { fn preload(...) }`，`as_any` 不再手写。文件仍是 `Preferences/Styles/ToolBar.ron` / `ColorPicker.ron`（dark + light）。取色器的 42 个运行期 token 先落成 serde 友好的 `ColorPickerSkin`，再由 `tokens()` 投影到 widget 层。值框同理：`EditorFieldStyle`（`shared_style/field.rs`，文件 `Preferences/Styles/EditorField.ron`，标题 Field）持有文字/名称/选中名称/底色/悬停/描边三态/边框宽/圆角/内边距/高度/checkbox 边长，`tokens()` 投影成 widget 的 `FieldStyle`；任何画字段的面板（Preferences，将来的对象 Inspector）都读同一份。
+- `ToolBarStyle` 与 `ColorPickerSkin` 在 `#[derive(StyleFields)]` 上加 `#[SharedStyle(TOOLBAR = "toolbar", title = "Toolbar")]`：宏生成 id 常量、sealed erasure impl 和 `inventory` 提交；类型只写 `impl SharedStyle for <Style> { fn preload(...) }`，`as_any` 不再手写。文件仍是 `Preferences/Styles/ToolBar.ron` / `ColorPicker.ron`（dark + light）。取色器的 42 个运行期 token 先落成 serde 友好的 `ColorPickerSkin`，再由 `tokens()` 投影到 widget 层。值框同理：`EditorFieldStyle`（`shared_style/field.rs`，文件 `Preferences/Styles/EditorField.ron`，标题 Field）持有文字/名称/选中名称/底色/悬停/描边三态/边框宽/圆角/内边距/高度/checkbox 边长，`tokens()` 投影成 widget 的 `FieldStyle`；任何画字段的面板（Preferences，将来的对象 Inspector）都读同一份。列表 chrome 同样独立成 `ListStyle`（`shared_style/list.rs`，文件 `Preferences/Styles/List.ron`，标题 List），页面从 `Frame::list_style()` 取；值框仍读 `EditorFieldStyle`。
 - app 在 `EditorApp::new` 的 `set_theme(Dark)` 之后 `SharedStyles::load(&StyleCatalog::builtin(), theme)` 一次；`Frame::shared` 把 live 值下发给所有面板，工具栏用 `frame.toolbar_style()`，取色器用 `frame.color_picker_style()`，字段用 `frame.field_style()`。
 - Preferences 在面板页之后固定追加 shared 页（Toolbar、Color Picker）；字段表来自 `SharedStyles::skins()`，不依赖任何面板实例，所以没有打开面板时也能编辑。
 - 写路径是独立的 `Action::SharedStyle(SharedStyleAction::{SetField, EditList, Commit, Reload})` → `Effect::SharedStyle` → `SharedStyles::{set_field, edit_list, save, reload}`。`Commit` 仍然一次手势写一次文件；`Reload` 是显式刷新（页脚 Reload 按钮），reload 会 bump `SharedStyles::revision`，Preferences 下一帧重新取字段表。
@@ -157,9 +157,9 @@ StyleFields::set_style_field(path, value)
 > （value = 元素个数），空列表也因此在页面上有表头；写这个长度就是 resize（`Vec<T>::write`，上限
 > `skin::LIST_MAX = 64`）。`+`/`−`/拖拽走新的 `ListEdit { Insert/Remove/Move }` 与
 > `StyleAction::EditList` / `SharedStyleAction::EditList` → `StyleFields::edit_style_list`；derive
-> 转发到 `StyleNode::edit_list`，`Vec<T>` 自己实现。页面按列表画两行表头（名字；计数 + 两格 +/−，
-> 右下角），每个元素是 `Element N` 带（手柄 + caret + 蓝色选中 + 斑马线），字段在同一个块里、不额外
-> 缩进，gutter 的分割线贯穿。结构变化后页面用一次性 `stale` 标记重读字段表（否则新元素要等换页）。
+> 转发到 `StyleNode::edit_list`，`Vec<T>` 自己实现。页面按列表画一行表头（名字 + 计数；`+`/`−` 的
+> 位置见 2026-11-21 补充），每个元素是 `Element N` 带（手柄 + caret + 蓝色选中），字段在同一个块里、
+> 不额外缩进。结构变化后页面用一次性 `stale` 标记重读字段表（否则新元素要等换页）。
 > 叶子列表（Profiler `category_palette`）已经有表头和增删，但元素行还是普通行，`Element N` +
 > 颜色框留在下一轮。
 >
@@ -169,8 +169,27 @@ StyleFields::set_style_field(path, value)
 > `ListState` 是调用方持有但字段私有的跨帧记忆（选中/折叠/count 编辑/拖拽），widget 每帧按当前
 > `Vec` 长度 normalize，所以外部缩短列表也不会留下越界状态。`ListChrome` 给 style-token 页面用：它只拿
 > `len + ListChromeIds`，把 `SetLen/Insert/Remove/Move` 作为 `ListChromeEdit` 返回给页面；页面再转成
-> `StyleValue::ListLen` 或 `ListEdit`。Preferences 的两行表头、元素 band 和拖拽已经走这套 chrome，
-> 页面只保留 path 选择和字段行布局。
+> `StyleValue::ListLen` 或 `ListEdit`。Preferences 的列表走这套 chrome：count 与表头同一行；`+`/`−` 不再
+> 是容器里的 footer，而是容器 frame 之外的右下角按钮组——顶边和容器底边贴合，不占容器内高；band 手柄
+> 贴容器左缘。元素是**一个立体块**：band 和它的字段共用一个 `band_fill`（#464646）背景，字段在这个
+> 背景上按 `band_fill` / `band_alt`（#4D4D4D）斑马纹排列；band 顶 1 px 亮边、底 1 px 暗边，块底再 1 px
+> 暗边，块与块之间自然分开。enum payload 不再有单独的底色或左边/上下线框，只保留「从 menu
+> button 列开始」的布局和同一组斑马纹。拖拽是真正的拖拽过程：按下手柄后**整个 element 块**（band + 字段）
+> 画在 tooltip 层上，按抓取点跟着指针走（半透明，输入被禁用），原槽位只保留高度；指针越过另一个
+> element 时，邻居用 160 ms 缓动滑到预览槽位，指针下方让出一个和元素同高的 gap。按住期间**不发**
+> `Move`，数据顺序不变；松手才发一次 `Move`，仍在滑的块从当前位置收尾，松手只 `Commit` 一次。
+> `ListChromeState` / `ListState` 在 `stale` 重读字段表时保留这些滑移。`ListField` 新增 `item_label` 回调
+> 命名元素 band，`ListChrome::band` 的 label 由调用方传入。页面只保留 path 选择、字段行布局、斑马纹和
+> list scope 的 footer 调用。
+>
+> **2026-11-21 补充（ListStyle 与整块 ghost）**：列表 chrome 的皮肤不再从 `PreferencesPanelStyle`
+> 派生，而是独立成共享样式 `ListStyle`（`Preferences/Styles/List.ron`，标题 List）：表头、band、
+> 斑马纹、选中、手柄、容器线、`+`/`−` 按钮和列表自己的行高/缩进/ gutter/count 宽度都在这一页；
+> 元素里的值框仍用 `EditorFieldStyle`，页面用 `ListStyle::tokens(&FieldStyle)` 投影成运行期
+> `ListChromeStyle`，`ListField` 也可用 `.chrome()` 接收同一份投影。整块 ghost 的每个 band/row 都
+> 把裁剪矩形设成它自己的 rect，而不是父级 ScrollArea 的 viewport：父 `Ui` 的 clip 会被子 `Ui`
+> 继承，v0.35 的 `new_child` 不会重置它，所以只传 `page_clip` 等于没改；现在拖动前只露出一半的
+> 元素，拖动时也能画出完整块。
 >
 > **2026-11-20 补充（枚举控件）**：值协议新增 `StyleValue::Variant(String)`（稳定变体名，不是下标）；
 > 变体名由 `StyleField::variants: Option<&'static [&'static str]>` 携带，页面画菜单时读取，值本身
@@ -203,9 +222,8 @@ StyleFields::set_style_field(path, value)
 > 触发按钮是项目自己的 `Button`（Unity popup field：`menu.button_fill` + caret + 1px 描边），
 > 下拉是项目自己的 `Popup::menu` + `MenuStyle`（和菜单栏/Profiler 同一套行高、高亮、阴影），
 > 不再有单独的 `FieldMenuStyle` 或自画菜单。页面把 enum 行和载荷行画成同一块：载荷行**从 menu
-> button 的左边缘开始**（在按钮这一列里再分标签/值，而不是回到整行的左标签列），用
-> `PreferencesPanelStyle::enum_block` 底色和上下 1px `divider` 线表示整体；嵌套 struct 从按钮再缩进
-> 一级。切变体后 `stale = true`，下一 pass 重读 owner 的字段表并换掉载荷行。菜单 token 与值框 token
+> button 的左边缘开始**（在按钮这一列里再分标签/值，而不是回到整行的左标签列），不另加底色或
+> 边框，载荷行继续用所在容器的斑马纹；嵌套 struct 从按钮再缩进一级。切变体后 `stale = true`，下一 pass 重读 owner 的字段表并换掉载荷行。菜单 token 与值框 token
 > 同属 `Preferences/Styles/EditorField.ron` 的 `menu` 组，不单开 shared 页。
 
 ### 2.6 页面列表：活着的面板 + 固定 shared 页
@@ -243,7 +261,7 @@ StyleFields::set_style_field(path, value)
 - **Zebra 行**：每条叶子行铺满整行背景，`row_odd` / `row_even` 交替；组头用 `group_background`，悬停 `group_hover`。`row_gap = 0`，条带连续。
 - **Unity 值框**：`control_rail` 暗底、`control_edge` 1 px 框、0 圆角、文字左对齐并留 `field_padding`；悬停时框线变 `control_edge_hover`。Float/Integer 点击进入行内文本编辑（全选、Esc 还原、Enter/失焦提交），拖动仍然是 scrub；Text 直接是单行 `TextEdit`；Toggle 是 Unity 的方形 checkbox（`checkbox_size`）。
 - **值框是共享 widget，一个控件一个文件**：`field/style.rs`（FieldStyle）、`field/paint.rs`（底色/描边/勾）、`field/edit.rs`（行内编辑器与 Unity 的选中蒙版）、`field/number.rs`（NumberField + Number trait）、`field/text.rs`、`field/toggle.rs`、`field/label.rs`。NumberField 对任意 Rust 基本类型生效（f32/f64/i8..i64/u8..u64/usize/isize）：显示走类型自己的 Display（f32 不会变成 f64 噪声），写回按类型自身的范围取整截断。`StyleValue` 为每个具体类型保留一个 variant，页面 match 后调用 `NumberField<N>`（`N` 就是字段类型），所以类型安全由 widget 的 `N` 负责；`StyleField::range` / `.range(min, max)` 只表示 UI 拖动范围，不再承载类型边界。`FieldOutcome::finished` 是「这次键入结束」的信号，页面据此写盘；行内编辑缓冲 `NumberEdit` 由页面持有，整数的拖动余量放在 egui 临时存储里。
-- **枚举字段**：触发按钮是项目自己的 `Button`，用 Unity popup field 的 token：`menu.button_fill` 灰底（比文本框亮一档，和取色器的菜单按钮一致）、`menu.button_edge` 1 px 描边、左对齐当前变体名、右端 caret。点开的是项目自己的 `Popup::menu` + `MenuStyle`：`menu.background` 方角浮层、`menu.item_height` 22 px 行、`menu.highlight` 蓝色悬停/选中行、`menu.separator` 分隔线、`menu.min_width` 最小宽度；菜单用 egui 的标准锚定与 alternative align（屏幕底部放不下时翻到上方），不再由 widget 手算 `at_position`。当前项用蓝底表示，不再画额外的 ✓。菜单宽度取 `max(值框宽, menu.min_width)`。变体有载荷时，载荷字段排在枚举行下面，**从 menu button 的左边缘开始**：按钮这一列里再分一个较窄的标签列和值列，而不是回到整行的左标签列；用 `enum_block` 底色 + 上下 1 px `divider` 线围出整块。单字段 tuple 载荷没有 header，payload struct 的字段直接出现；具名载荷 struct 的 foldout header 仍按普通组画，嵌套字段从按钮再缩进一级。嵌套枚举继续并排。载荷里的 list 照常是表头 + element 块。
+- **枚举字段**：触发按钮是项目自己的 `Button`，用 Unity popup field 的 token：`menu.button_fill` 灰底（比文本框亮一档，和取色器的菜单按钮一致）、`menu.button_edge` 1 px 描边、左对齐当前变体名、右端 caret。点开的是项目自己的 `Popup::menu` + `MenuStyle`：`menu.background` 方角浮层、`menu.item_height` 22 px 行、`menu.highlight` 蓝色悬停/选中行、`menu.separator` 分隔线、`menu.min_width` 最小宽度；菜单用 egui 的标准锚定与 alternative align（屏幕底部放不下时翻到上方），不再由 widget 手算 `at_position`。当前项用蓝底表示，不再画额外的 ✓。菜单宽度取 `max(值框宽, menu.min_width)`。变体有载荷时，载荷字段排在枚举行下面，**从 menu button 的左边缘开始**：按钮这一列里再分一个较窄的标签列和值列，而不是回到整行的左标签列；不另加底色或边框，载荷行继续用所在元素/页面的斑马纹，靠对齐和它成为一体。单字段 tuple 载荷没有 header，payload struct 的字段直接出现；具名载荷 struct 的 foldout header 仍按普通组画，嵌套字段从按钮再缩进一级。嵌套枚举继续并排。载荷里的 list 照常是表头 + element 块。
 - **数字靠名称拖拽**：名称是 `FieldLabel`（Unity 的 scrub handle），悬停变左右箭头光标，按住左右拖改值。拖拽属于 `NumberField`：页面把本帧的名称手势交进去（`dragged_by(&FieldLabelResponse)`），速度、整数余量、范围截断都在 widget 里，页面只是把两个 widget 接起来。值框本身只处理点击进入行内编辑，悬停是文本光标；没有名称的框（列表的 size 框）默认自己就是手柄。光标用 egui 的 `Response::on_hover_cursor` 发布（名称是左右箭头，值框是文本光标）；在 macOS 上「发布」之后还要宿主每帧把光标写到 AppKit，因为 egui-winit 只在图标变化时通知窗口系统，指针停住时会被系统丢回箭头——见 `kairos_editor_app/src/cursor.rs`。
 - **选中文字用取色器同款蒙版**：数字编辑框与文本字段全选时不再铺实心 accent，而是 accent 的 62%（`from_rgba_unmultiplied(.., 160)`）+ 不透明 selection stroke，数字仍然可读——和取色器通道值一致。文本字段第一次获得焦点即全选，所以直接打字就是替换。
 - 名称列、Zebra 条带与两栏几何仍属于页面的行版面——那是 inspector 的排版，不是控件。
@@ -270,13 +288,15 @@ StyleFields::set_style_field(path, value)
 | `kairos_editor_component/src/panel.rs` | 改 | `Panel::{skin,set_skin_field,save_skin}`（默认无皮肤） |
 | `kairos_editor_component/src/panel/host.rs` | 改 | `skins`/`set_skin_field`/`save_skin` |
 | `kairos_editor_component/src/shared_style.rs` + `shared_style/{catalog,registry,color_picker}.rs` | 新增 | `SharedStyle`；`SharedStyleDef` / `StyleCatalog`；`SharedStyles` / `SharedSkin`；`ColorPickerSkin`（serde + `StyleFields` + `tokens()` 投影） |
-| `kairos_editor_component/src/frame.rs` | 改 | `Frame::skins` + `with_skins`；`Frame::shared` + `with_shared`；`toolbar_style()` / `color_picker_style()` |
+| `kairos_editor_component/src/frame.rs` | 改 | `Frame::skins` + `with_skins`；`Frame::shared` + `with_shared`；`toolbar_style()` / `color_picker_style()` / `field_style()` / `list_style()` |
 | `kairos_editor_component/src/panels/preferences.rs` | 新增/改 | 页面列表（面板页 + 固定 shared 页）、页、分组行、字段表到 field widget 的映射、保存边界、shared 页的 Reload、单测 |
 | `kairos_editor_component/src/panels/preferences/style.rs` | 新增/改 | `PreferencesPanelStyle`（自身也 derive，可编辑自己）+ 参考皮肤往返测试；不再投影 `ColorPickerStyle` |
 | `kairos_editor_widgets/src/color_picker.rs` | 新增 | 自有的 Unity 风格 LDR/HDR 颜色字段与取色器：色相环、SV 方块、通道滑杆、hex、Intensity、Swatches |
 | `kairos_editor_widgets/src/field/` | 新增 | 可复用值框 widget，一控件一文件：`style`（FieldStyle + menu-button token，菜单本身用共享 `MenuStyle`）/ `paint` / `edit`（行内编辑器与 62% 选中蒙版）/ `number`（Number trait + NumberField）/ `text` / `toggle` / `enum_field`（EnumField 可变借用枚举，strum 读变体；VariantMenu 给 style token；`Button` 触发 + `Popup::menu`）/ `label`（FieldLabel，数字的 scrub handle） |
 | `kairos_editor_component/src/shared_style/field.rs` | 新增/改 | `EditorFieldStyle`（`#[SharedStyle(EDITOR_FIELD = "editor_field")]`）+ `EditorFieldMenuStyle`（enum 的菜单按钮/浮层 token，作为 Field 页的 `menu` 组，投影到 `MenuStyle`）+ `tokens()` 投影 |
 | `Preferences/Styles/EditorField.ron` | 新增 | 字段皮肤参考文件（dark + light，含 `menu` 组），与代码默认值逐字段相等的往返测试钉住 |
+| `kairos_editor_component/src/shared_style/list.rs` | 新增 | `ListStyle`（`#[SharedStyle(LIST = "list")]`）：header/band/stripe/selection/handle/container/button/几何 token，`tokens(&FieldStyle)` 投影成运行期 `ListChromeStyle` |
+| `Preferences/Styles/List.ron` | 新增 | 列表皮肤参考文件（dark + light），与代码默认值逐字段相等的往返测试钉住 |
 | `kairos_color/src/linear.rs` | 新增 | `Color`（8 字节 linear f16×4，可超过 1）、`ColorUsage`/`ColorProperty`/`ColorSpace`、sRGB 传输函数与 round-trip 测试 |
 | `kairos_editor_component/src/panels/{about,console,profiler}.rs` + `*/style.rs` | 改 | 样式 derive；三个 `Panel` 方法（皮肤快照 / 写字段 / 存文件） |
 | `kairos_editor_component/src/panels.rs` | 改 | `PREFERENCES` 条目；面板数量 7 → 8 |
@@ -329,7 +349,7 @@ StyleFields::set_style_field(path, value)
 9b. `StyleCatalog::builtin()` 注册 Toolbar / Color Picker；`SharedStyles::skins()` 给出两页字段表；`ColorPicker.ron` 与 `ColorPickerSkin` 默认值逐字段相等；`tokens()` 保持 0.7 边框、13 px 标题和共享 traffic lights。
 9c. 所有面板关闭时 shared 页仍然存在且可编辑；shared 编辑发 `Action::SharedStyle(SetField)`/`Commit`；Reload 按钮发 `Reload`，reload 后 `revision` 让页面重新取字段表。
 10. foldout：每个嵌套 struct 是整行可点的组头；点 `icons` 只隐藏该组，点 `icons.textures` 只隐藏 Tint，动作列表为空。
-11. Zebra：叶子行按 `row_odd` / `row_even` 交替；组头用 `group_background`，不参与交替；enum 行与载荷行（有载荷时）整块用 `enum_block`，块第一行/最后一行画 1 px `divider` 线。
+11. Zebra：叶子行按 `row_odd` / `row_even` 交替；组头用 `group_background`，不参与交替；enum 行与载荷行（有载荷时）不另加底色或线框，继续按所在容器的斑马纹排列；元素块里则是 `band_fill` / `band_alt` 在自己的立体背景上交替。
 12. 对齐：不同宽度的 root 标签左边缘一致；组内标签按 `group_indent` 逐级缩进；值列左边缘不随深度改变；enum 的载荷行从 menu button 的左边缘开始（在按钮列内再分标签/值），不是回到整行左标签列；窄面板仍是两列且在窗口内。
 13. 选中：点字段名 → `label_active` 蓝色 + 值框 `accent` 外框；点页面空白 → 清空。
 14. 数字编辑：点数值框进入行内编辑，输入替换选中值，Enter 结束并额外发 `Commit`；Esc 还原。
@@ -365,7 +385,7 @@ StyleFields::set_style_field(path, value)
 9. **HDR 数据面**：`Color` / `ColorProperty` 已经端到端打通并有组件测试；`StyleValue::HdrColor` 是皮肤协议里的线性颜色 variant。现有面板皮肤都是 LDR，所以正常 Preferences 页面暂时看不到 HDR 行；它会在材质/发射色 token 接入后出现。
 10. **枚举载荷的边界**：具名载荷任意；单字段 tuple 载荷透明（没有 header，字段直接挂到 enum 路径）；多字段 tuple 没有稳定字段名，宏直接报错。载荷字段必须实现 `Default`，切过去时按 `Default` 重建。布局上，tuple/具名 enum 的**直接**载荷行从 menu button 列开始；具名 struct 的 foldout header 仍按普通组整行画，嵌套枚举的下一层载荷和载荷里的 list 仍用整行列表布局，没有继续嵌进按钮列。
 11. **枚举下拉没有键盘导航**：只能点；Up/Down/Enter 选择、type-ahead 都还没做。菜单开着时滚轮滚的是菜单自己的长列表（>10 项），不是页面。
-12. **嵌套枚举块共用一种底色**：外层枚举的载荷里再有带载荷的枚举时，内层块只靠上下 1 px 线分隔，没有第二种 `enum_block` 色；要更明显的层级再加一层底色 token。
+12. **嵌套枚举块不再有第二层底色或边框**：外层枚举的载荷里再有带载荷的枚举时，内层载荷只靠从 menu button 列对齐和斑马纹区分；要更明显的层级再加缩进或新的底色 token。
 13. **未知变体 id 是 no-op**：`StyleValue::Variant` 与类型的 `StyleEnum::with_variant` 对不上时不写、不报错，和错误 kind 的处理一致。手改 RON 里的变体名不会被自动纠正（serde 会在加载时报错）。
 
 ---

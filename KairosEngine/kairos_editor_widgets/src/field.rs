@@ -65,10 +65,10 @@ mod testing;
 pub use enum_field::{EnumField, VariantMenu, enum_item_id, enum_popup_id};
 pub use label::{FieldLabel, FieldLabelResponse};
 pub use list::{
-    ListBandIds, ListBandOutcome, ListChrome, ListChromeEdit, ListChromeIds, ListChromeState,
-    ListChromeStyle, ListField, ListHeaderOutcome, ListItem, ListItemOutcome, ListOutcome,
-    ListState, list_add_id, list_count_id, list_fold_id, list_handle_id, list_header_id,
-    list_item_id, list_remove_id,
+    ListBandIds, ListBandOutcome, ListChrome, ListChromeEdit, ListChromeIds, ListChromeOutcome,
+    ListChromeState, ListChromeStyle, ListField, ListFooterOutcome, ListHeaderOutcome, ListItem,
+    ListItemOutcome, ListOutcome, ListState, list_add_id, list_count_id, list_fold_id,
+    list_handle_id, list_header_id, list_item_id, list_remove_id,
 };
 pub use number::{Number, NumberEdit, NumberField};
 pub use style::FieldStyle;

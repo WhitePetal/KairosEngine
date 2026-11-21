@@ -7,7 +7,7 @@ use crate::text::TextStyle;
 
 pub(super) fn input() -> RawInput {
     RawInput {
-        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(240.0, 80.0))),
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(240.0, 200.0))),
         ..Default::default()
     }
 }

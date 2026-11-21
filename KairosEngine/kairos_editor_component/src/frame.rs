@@ -38,7 +38,7 @@ use kairos_editor_widgets::style::Style;
 use kairos_log::{Level, StackFrame};
 use kairos_profile::Profiler;
 
-use crate::shared_style::{ColorPickerSkin, EditorFieldStyle, SharedStyles};
+use crate::shared_style::{ColorPickerSkin, EditorFieldStyle, ListStyle, SharedStyles};
 use crate::toolbar::style::ToolBarStyle;
 
 /// One host-owned console entry, rendered by the Console panel.
@@ -162,6 +162,13 @@ impl<'a> Frame<'a> {
             .editor_field()
             .map(EditorFieldStyle::tokens)
             .unwrap_or_default()
+    }
+
+    /// The reorderable list's live skin. Lists read this instead of a panel's
+    /// style, so every list in the editor shares one skin.
+    pub fn list_style(&self) -> &ListStyle {
+        static FALLBACK: LazyLock<ListStyle> = LazyLock::new(ListStyle::dark);
+        self.shared.list_style().unwrap_or(&FALLBACK)
     }
 
     /// The color picker's runtime tokens, projected from the shared skin.

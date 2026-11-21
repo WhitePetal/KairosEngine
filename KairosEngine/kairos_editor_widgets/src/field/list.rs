@@ -15,7 +15,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
 use egui::{
-    Color32, CornerRadius, CursorIcon, Id, Rect, Response, Sense, Stroke, StrokeKind, Ui,
+    Color32, CornerRadius, CursorIcon, Id, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui,
     WidgetType, pos2, vec2,
 };
 
@@ -111,11 +111,33 @@ pub struct ListState {
     closed: BTreeSet<usize>,
     count_edit: Option<NumberEdit>,
     drag: Option<Drag>,
+    shifts: Vec<BandShift>,
+    /// Full block heights from the previous pass. A dragged block is hidden
+    /// without calling its row closure, so its body is reserved from here.
+    heights: Vec<f32>,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct Drag {
     from: usize,
+    /// Pointer offset from the band's top when the drag started: the ghost
+    /// keeps this grab point under the pointer.
+    grab: f32,
+    /// The preview insertion slot while the pointer is held. The vector is
+    /// not reordered until the release.
+    to: usize,
+}
+
+/// One element block sliding to a preview slot, or settling into its new slot
+/// after a drop. The typed list applies the offset to the band and the caller's
+/// row closure together.
+#[derive(Clone, Copy)]
+struct BandShift {
+    index: usize,
+    from: f32,
+    to: f32,
+    start: f64,
+    duration: f64,
 }
 
 impl ListState {
@@ -145,9 +167,25 @@ impl ListState {
             self.selected = None;
         }
         self.closed.retain(|index| *index < len);
+        self.shifts.retain(|shift| shift.index < len);
+        self.heights.truncate(len);
+        if self.heights.len() < len {
+            self.heights.resize(len, 0.0);
+        }
         if self.drag.is_some_and(|drag| drag.from >= len) {
             self.drag = None;
         }
+    }
+
+    fn shift(&self, index: usize, now: f64) -> f32 {
+        self.shifts
+            .iter()
+            .find(|shift| shift.index == index)
+            .map_or(0.0, |shift| {
+                let t = ((now - shift.start) / shift.duration).clamp(0.0, 1.0);
+                let eased = (t * t * (3.0 - 2.0 * t)) as f32;
+                shift.from + (shift.to - shift.from) * eased
+            })
     }
 }
 
@@ -169,19 +207,26 @@ pub struct ListItem {
 ///
 /// * a factory for new entries (used by add and by growing the count);
 /// * a row closure that draws one element's fields;
+/// * an optional [Self::item_label] callback that names the element bands;
 /// * the maximum length, if the list has a UI cap.
 ///
 /// The widget draws the header and the element bands and calls the row closure
 /// only for open elements. An element row returns [ListItemOutcome] so clicks,
 /// live edits and finished edits feed back into the list's selection and
-/// [ListOutcome].
+/// [ListOutcome]. While an element is dragged, its band and body keep their
+/// layout height but the closure is not called: the ghost carries the block and
+/// the other elements slide to their preview slots.
+type ItemLabel<'a, T> = Box<dyn Fn(&T, usize) -> String + 'a>;
+
 pub struct ListField<'a, T> {
     id: Id,
     items: &'a mut Vec<T>,
     style: &'a FieldStyle,
+    chrome: Option<ListChromeStyle>,
     label: &'a str,
     max: usize,
     make: Box<dyn FnMut() -> T + 'a>,
+    item_label: Option<ItemLabel<'a, T>>,
 }
 
 impl<'a, T> ListField<'a, T> {
@@ -195,15 +240,34 @@ impl<'a, T> ListField<'a, T> {
             id,
             items,
             style,
+            chrome: None,
             label: "",
             max: usize::MAX,
             make: Box::new(make),
+            item_label: None,
         }
+    }
+
+    /// Draw the chrome from a shared list skin instead of deriving it from
+    /// [FieldStyle]. Callers with a shell-owned `ListStyle` project it with its
+    /// `tokens(&FieldStyle)` method and pass the result here.
+    pub fn chrome(mut self, chrome: ListChromeStyle) -> Self {
+        self.chrome = Some(chrome);
+        self
     }
 
     /// Accessibility name of the list, drawn on its header band.
     pub fn label(mut self, label: &'a str) -> Self {
         self.label = label;
+        self
+    }
+
+    /// Name each element's header band. The default is `Element {index}`.
+    ///
+    /// The callback sees the element and its current index, so a caller can
+    /// show a name from the element itself and keep the index for reordering.
+    pub fn item_label(mut self, label: impl Fn(&T, usize) -> String + 'a) -> Self {
+        self.item_label = Some(Box::new(label));
         self
     }
 
@@ -228,11 +292,16 @@ impl<'a, T> ListField<'a, T> {
             id,
             items,
             style,
+            chrome,
             label,
             max,
             mut make,
+            item_label,
         } = self;
-        let pointer_down = ui.input(|input| input.pointer.primary_down());
+        let chrome = chrome.unwrap_or_else(|| ListChromeStyle::from_field(style));
+        let row_width = ui.available_width().max(1.0);
+        let left = ui.cursor().left();
+        let now = ui.input(|input| input.time);
         state.normalize(items.len());
 
         let mut pending = None;
@@ -241,6 +310,7 @@ impl<'a, T> ListField<'a, T> {
             ui,
             id,
             style,
+            &chrome,
             label,
             items.len(),
             max,
@@ -250,13 +320,38 @@ impl<'a, T> ListField<'a, T> {
         );
 
         let mut changed = false;
-        let mut bands: Vec<(usize, Rect)> = Vec::new();
+        // (index, band rect, slide offset, block bottom in the normal layout)
+        let mut bands: Vec<(usize, Rect, f32, f32)> = Vec::new();
+        let mut heights: Vec<f32> = Vec::with_capacity(items.len());
+        let drag_from = state.drag.map(|drag| drag.from);
+        let container_top = ui.cursor().top();
 
         if !state.collapsed {
             for (index, item) in items.iter_mut().enumerate() {
+                let shift = state.shift(index, now);
+                if shift != 0.0 {
+                    ui.add_space(shift);
+                }
                 let selected = state.selected == Some(index);
-                let band = draw_item_band(ui, id, index, style, selected, state.is_open(index));
+                let item_name = item_label
+                    .as_ref()
+                    .map_or_else(|| format!("Element {index}"), |label| label(item, index));
+                let hidden = drag_from == Some(index);
+                let band = draw_item_band(
+                    ui,
+                    id,
+                    index,
+                    &chrome,
+                    &item_name,
+                    selected,
+                    state.is_open(index),
+                    state.drag.is_some(),
+                    hidden,
+                );
 
+                if band.pressed {
+                    state.selected = Some(index);
+                }
                 if band.fold_clicked {
                     if state.closed.contains(&index) {
                         state.closed.remove(&index);
@@ -268,13 +363,45 @@ impl<'a, T> ListField<'a, T> {
                     state.selected = Some(index);
                 }
                 if band.drag_started {
-                    state.drag = Some(Drag { from: index });
+                    state.selected = Some(index);
+                    // A new drag starts from a still list: do not target slots
+                    // that are still sliding from the previous drop.
+                    state.shifts.clear();
+                    state.drag = Some(Drag {
+                        from: index,
+                        grab: band.grab,
+                        to: index,
+                    });
                 }
-                bands.push((index, band.rect));
 
-                if state.is_open(index) {
+                if hidden {
+                    // The dragged block is laid out but not drawn; reserve
+                    // the body height measured on the previous pass so the
+                    // neighbours' preview slots keep their real sizes.
+                    if state.is_open(index) {
+                        let full = state
+                            .heights
+                            .get(index)
+                            .copied()
+                            .unwrap_or(chrome.row_height)
+                            .max(chrome.row_height);
+                        // The band allocation already paid egui's item spacing;
+                        // reserve the rest of the real block height.
+                        let spacing = ui.spacing().item_spacing.y;
+                        let body = (full - chrome.row_height - spacing).max(0.0);
+                        if body > 0.0 {
+                            ui.add_space(body);
+                        }
+                    }
+                } else if state.is_open(index) {
                     let item_id = list_item_id(id, index);
                     let selected = state.selected == Some(index);
+                    // The body sits on the element's raised band, so the
+                    // background is reserved before the caller's rows paint
+                    // over it: a placeholder shape is filled once the body
+                    // height is known.
+                    let body_top = ui.cursor().top();
+                    let body_bg = ui.painter().add(egui::Shape::Noop);
                     let outcome = ui
                         .indent(item_id.with("body"), |ui| {
                             row(
@@ -288,6 +415,25 @@ impl<'a, T> ListField<'a, T> {
                             )
                         })
                         .inner;
+                    let body_bottom = ui.cursor().top();
+                    if body_bottom > body_top + 0.5 {
+                        let body = Rect::from_min_max(
+                            pos2(left, body_top),
+                            pos2(left + row_width, body_bottom),
+                        );
+                        ui.painter().set(
+                            body_bg,
+                            egui::Shape::rect_filled(body, CornerRadius::ZERO, chrome.band_fill),
+                        );
+                        ui.painter().rect_filled(
+                            Rect::from_min_size(
+                                pos2(body.left(), body.bottom() - 1.0),
+                                vec2(body.width(), 1.0),
+                            ),
+                            CornerRadius::ZERO,
+                            chrome.container_border,
+                        );
+                    }
                     if outcome.clicked {
                         state.selected = Some(index);
                     }
@@ -298,50 +444,158 @@ impl<'a, T> ListField<'a, T> {
                         finished = true;
                     }
                 }
+                if shift != 0.0 {
+                    ui.add_space(-shift);
+                }
+                // After the offset is removed this is the block's normal
+                // layout bottom, which is what the drop target tests against.
+                let bottom = ui.cursor().top();
+                heights.push((bottom - (band.rect.top() - shift)).max(1.0));
+                bands.push((index, band.rect, shift, bottom));
             }
+        }
+        state.heights = heights;
+
+        if !state.collapsed {
+            // The container closes at the last row; the add/remove pair hangs
+            // below it, outside the frame.
+            let bottom = ui.cursor().top();
+            if bottom > container_top {
+                paint_container(
+                    ui,
+                    &chrome,
+                    Rect::from_min_max(pos2(left, container_top), pos2(left + row_width, bottom)),
+                );
+            }
+            draw_footer(ui, id, &chrome, items.len(), max, state, &mut pending);
         }
 
         if let Some(drag) = state.drag {
             let released = ui.input(|input| input.pointer.any_released());
-            if !pointer_down && !released {
+            let down = ui.input(|input| input.pointer.primary_down());
+            if !down && !released {
                 // The button came up without a release event (the window lost
-                // focus): there is no drop to apply.
+                // focus): there is no drag left to resolve.
                 state.drag = None;
             } else if state.collapsed || bands.is_empty() {
                 state.drag = None;
             } else if let Some(pointer) = ui.ctx().pointer_interact_pos() {
-                let slot = bands
+                let count = bands.len();
+                // Normal-layout tops and full block heights: the slides are
+                // applied to these, not to the animated positions.
+                let tops: Vec<f32> = bands
                     .iter()
-                    .take_while(|(_, rect)| pointer.y > rect.center().y)
-                    .count();
-                let first = bands[0].1;
-                let y = if slot == 0 {
-                    first.top()
-                } else {
-                    bands[slot - 1].1.bottom()
-                };
-                ui.painter().rect_filled(
-                    Rect::from_min_size(
-                        pos2(first.left() + 2.0, y - 1.0),
-                        vec2(first.width() - 4.0, 2.0),
-                    ),
-                    CornerRadius::ZERO,
-                    style.accent,
-                );
+                    .map(|(_, rect, shift, _)| rect.top() - shift)
+                    .collect();
+                let block_heights: Vec<f32> = bands
+                    .iter()
+                    .map(|(_, rect, shift, bottom)| (bottom - (rect.top() - shift)).max(1.0))
+                    .collect();
+                // The slot under the pointer, counting the other blocks whose
+                // current band centre is above it.
+                let mut to = 0;
+                for (index, (_, rect, _, _)) in bands.iter().enumerate() {
+                    if index == drag.from {
+                        continue;
+                    }
+                    if pointer.y > rect.center().y {
+                        to += 1;
+                    }
+                }
+                let to = to.min(count - 1);
+                let min_top = tops[0];
+                let max_top =
+                    (tops[count - 1] + block_heights[count - 1] - chrome.row_height).max(min_top);
+                let ghost_top = (pointer.y - drag.grab).clamp(min_top, max_top);
 
                 if released {
-                    let to = if slot > drag.from { slot - 1 } else { slot };
-                    if to != drag.from && to < items.len() && pending.is_none() {
+                    // Blocks still sliding continue from where they are; the
+                    // residual offsets are keyed by the slot they land in.
+                    let preview = preview_tops(count, drag.from, to, &tops, &block_heights);
+                    let starts: Vec<f32> = (0..count)
+                        .map(|index| {
+                            if index == drag.from {
+                                preview[index]
+                            } else {
+                                bands[index].1.top()
+                            }
+                        })
+                        .collect();
+                    state.shifts =
+                        drop_shifts(count, drag.from, to, &tops, &block_heights, &starts)
+                            .into_iter()
+                            .map(|(index, offset)| BandShift {
+                                index,
+                                from: offset,
+                                to: 0.0,
+                                start: now,
+                                duration: 0.12,
+                            })
+                            .collect();
+                    if to != drag.from && pending.is_none() {
                         pending = Some(Edit::Move {
                             from: drag.from,
                             to,
                         });
                     }
                     state.drag = None;
+                    finished = true;
+                } else {
+                    // The gap preview: the held block is laid out but not
+                    // drawn, and every other block slides to its preview slot.
+                    if to != drag.to {
+                        let preview = preview_tops(count, drag.from, to, &tops, &block_heights);
+                        let mut shifts = Vec::new();
+                        for (index, (_, rect, shift, _)) in bands.iter().enumerate() {
+                            if index == drag.from {
+                                continue;
+                            }
+                            // The layout is still at the current top; animate
+                            // the offset from where it is now to the preview
+                            // displacement.
+                            let from = *shift;
+                            let to_offset = preview[index] - (rect.top() - shift);
+                            if (to_offset - from).abs() > 0.5 {
+                                shifts.push(BandShift {
+                                    index,
+                                    from,
+                                    to: to_offset,
+                                    start: now,
+                                    duration: 0.16,
+                                });
+                            }
+                        }
+                        state.shifts = shifts;
+                        if let Some(drag) = state.drag.as_mut() {
+                            drag.to = to;
+                        }
+                    }
+                    let label = items
+                        .get(drag.from)
+                        .map(|item| {
+                            item_label.as_ref().map_or_else(
+                                || format!("Element {}", drag.from),
+                                |label| label(item, drag.from),
+                            )
+                        })
+                        .unwrap_or_default();
+                    paint_element_ghost(
+                        ui,
+                        &chrome,
+                        id,
+                        Rect::from_min_size(
+                            pos2(left, ghost_top),
+                            vec2(bands[drag.from].1.width(), chrome.row_height),
+                        ),
+                        &label,
+                        0,
+                        state.is_open(drag.from),
+                        true,
+                    );
+                    ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
                 }
-            } else if !pointer_down {
-                // The pointer left the window without a release: there is no
-                // slot to drop on.
+            } else if !down {
+                // The pointer left the window without a release.
                 state.drag = None;
             }
         }
@@ -350,7 +604,9 @@ impl<'a, T> ListField<'a, T> {
             && apply_edit(items, &mut make, state, edit, max)
         {
             changed = true;
-            finished = true;
+            if !matches!(edit, Edit::Move { .. }) {
+                finished = true;
+            }
         }
 
         if changed {
@@ -376,7 +632,10 @@ struct BandOutcome {
     rect: Rect,
     fold_clicked: bool,
     select_clicked: bool,
+    pressed: bool,
     drag_started: bool,
+    /// Pointer offset from the band top at the press, used by the drag ghost.
+    grab: f32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -384,6 +643,7 @@ fn draw_header(
     ui: &mut Ui,
     id: Id,
     style: &FieldStyle,
+    chrome: &ListChromeStyle,
     label: &str,
     len: usize,
     max: usize,
@@ -392,65 +652,51 @@ fn draw_header(
     finished: &mut bool,
 ) -> Response {
     let width = ui.available_width().max(1.0);
-    let height = style.height.max(18.0);
-
-    let (band, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+    let (band, _) = ui.allocate_exact_size(vec2(width, chrome.group_height), Sense::hover());
     let hovered = ui.rect_contains_pointer(band);
     ui.painter().rect_filled(
         band,
         CornerRadius::ZERO,
         if hovered {
-            style.hover_fill
+            chrome.header_hover
         } else {
-            style.fill
+            chrome.header_fill
         },
     );
+
+    let title = if label.is_empty() { "List" } else { label };
+    let count = Rect::from_min_size(
+        pos2(
+            band.right() - chrome.count_width,
+            band.center().y - style.height * 0.5,
+        ),
+        vec2(chrome.count_width, style.height),
+    );
+    let label_rect =
+        Rect::from_min_max(band.min, pos2(count.left().max(band.left()), band.bottom()));
     let response = ui
-        .interact(band, list_header_id(id), Sense::click())
+        .interact(label_rect, list_header_id(id), Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand);
     response.widget_info(|| {
-        egui::WidgetInfo::selected(WidgetType::SelectableLabel, true, !state.collapsed, label)
+        egui::WidgetInfo::selected(WidgetType::SelectableLabel, true, !state.collapsed, title)
     });
     paint_arrow(
         ui.painter(),
-        pos2(band.left() + 8.0, band.center().y),
+        pos2(band.left() + chrome.row_inset + 4.0, band.center().y),
         !state.collapsed,
-        style.label,
+        chrome.header_text.text_color(),
     );
-    let title = if label.is_empty() { "List" } else { label };
-    paint_text(
+    paint_text_with(
         ui,
         band,
-        style,
+        &chrome.header_text,
         title,
-        band.left() + 18.0,
-        style.label_color(false),
+        band.left() + chrome.row_inset + 16.0,
+        chrome.header_text.text_color(),
     );
     if response.clicked() {
         state.collapsed = !state.collapsed;
     }
-
-    let (tools, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
-    ui.painter()
-        .rect_filled(tools, CornerRadius::ZERO, style.fill);
-
-    let button_width = 16.0;
-    let button_height = (height - 4.0).max(12.0);
-    let buttons = Rect::from_min_size(
-        pos2(
-            tools.right() - 4.0 - button_width * 2.0,
-            tools.center().y - button_height * 0.5,
-        ),
-        vec2(button_width * 2.0, button_height),
-    );
-    let count_width = 44.0;
-    let count = Rect::from_min_size(
-        pos2(
-            buttons.left() - 4.0 - count_width,
-            tools.center().y - height * 0.5,
-        ),
-        vec2(count_width, height),
-    );
 
     let mut len_value = len;
     let outcome = NumberField::new(list_count_id(id), &mut len_value, style)
@@ -463,11 +709,30 @@ fn draw_header(
     if outcome.finished {
         *finished = true;
     }
+    response
+}
 
-    let add_rect = Rect::from_min_size(buttons.min, vec2(button_width, button_height));
+fn draw_footer(
+    ui: &mut Ui,
+    id: Id,
+    chrome: &ListChromeStyle,
+    len: usize,
+    max: usize,
+    state: &ListState,
+    pending: &mut Option<Edit>,
+) {
+    let width = ui.available_width().max(1.0);
+    let (rect, _) = ui.allocate_exact_size(vec2(width, chrome.button_height + 2.0), Sense::hover());
+    // The pair is outside the container: it hangs flush under the block's
+    // bottom-right corner, on the page background, not in a footer band.
+    let group = Rect::from_min_size(
+        pos2(rect.right() - 2.0 - chrome.button_cell * 2.0, rect.top()),
+        vec2(chrome.button_cell * 2.0, chrome.button_height),
+    );
+    let add_rect = Rect::from_min_size(group.min, vec2(chrome.button_cell, chrome.button_height));
     let remove_rect = Rect::from_min_size(
-        pos2(buttons.left() + button_width, buttons.top()),
-        vec2(button_width, button_height),
+        pos2(group.left() + chrome.button_cell, group.top()),
+        vec2(chrome.button_cell, chrome.button_height),
     );
     let can_add = len < max;
     let can_remove = len > 0;
@@ -493,113 +758,152 @@ fn draw_header(
     );
     labelled_widget_info(&add, WidgetType::Button, "Add list entry", None);
     labelled_widget_info(&remove, WidgetType::Button, "Remove list entry", None);
-    paint_button(ui, add_rect, style, add.hovered(), can_add);
-    paint_button(ui, remove_rect, style, remove.hovered(), can_remove);
-    paint_plus(ui, add_rect.center(), style, can_add);
-    paint_minus(ui, remove_rect.center(), style, can_remove);
+    paint_footer_group(
+        ui,
+        chrome,
+        group,
+        add_rect,
+        remove_rect,
+        add.hovered() && can_add,
+        remove.hovered() && can_remove,
+    );
+    paint_plus_with(ui, add_rect.center(), chrome.button_text, can_add);
+    paint_minus_with(ui, remove_rect.center(), chrome.button_text, can_remove);
 
-    if add.clicked() && can_add {
+    if add.clicked() && can_add && pending.is_none() {
         *pending = Some(Edit::Insert { index: len });
     }
-    if remove.clicked() && can_remove {
+    if remove.clicked() && can_remove && pending.is_none() {
         *pending = Some(Edit::Remove {
             index: state.selected.unwrap_or(len - 1).min(len - 1),
         });
     }
-
-    response
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_item_band(
     ui: &mut Ui,
     id: Id,
     index: usize,
-    style: &FieldStyle,
+    chrome: &ListChromeStyle,
+    label: &str,
     selected: bool,
     open: bool,
+    drag_active: bool,
+    hidden: bool,
 ) -> BandOutcome {
     let width = ui.available_width().max(1.0);
-    let height = style.height.max(18.0);
-    let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
-    ui.painter().rect_filled(
-        rect,
-        CornerRadius::ZERO,
-        if selected {
-            style.hover_fill
-        } else {
-            style.fill
-        },
-    );
+    let (rect, _) = ui.allocate_exact_size(vec2(width, chrome.row_height), Sense::hover());
+    if hidden {
+        // The ghost carries this band; keep its slot, paint and hit-test
+        // nothing.
+        return BandOutcome {
+            rect,
+            fold_clicked: false,
+            select_clicked: false,
+            pressed: false,
+            drag_started: false,
+            grab: 0.0,
+        };
+    }
+    let x0 = rect.left() + chrome.row_inset;
+    let content_left = x0 + chrome.gutter_width + 4.0;
+    let label_x = content_left + 16.0;
+    let handle_x = rect.left() + 2.0;
 
-    let handle_rect = Rect::from_min_size(rect.min, vec2(16.0, rect.height()));
-    let caret_rect = Rect::from_min_size(
-        pos2(rect.left() + 16.0, rect.top()),
-        vec2(16.0, rect.height()),
+    let handle_rect = Rect::from_min_size(
+        pos2(handle_x, rect.top()),
+        vec2(chrome.gutter_width, rect.height()),
     );
-    let label_rect = Rect::from_min_max(pos2(rect.left() + 32.0, rect.top()), rect.right_bottom());
+    let caret_rect = Rect::from_min_size(pos2(content_left, rect.top()), vec2(16.0, rect.height()));
+    let label_rect = Rect::from_min_max(pos2(label_x, rect.top()), rect.right_bottom());
 
     let handle = ui
-        .interact(handle_rect, list_handle_id(id, index), Sense::drag())
+        .interact(
+            handle_rect,
+            list_handle_id(id, index),
+            Sense::click_and_drag(),
+        )
         .on_hover_cursor(CursorIcon::Grab);
     let fold = ui
         .interact(caret_rect, list_fold_id(id, index), Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand);
     let select = ui.interact(label_rect, list_item_id(id, index), Sense::click());
-    labelled_widget_info(
-        &select,
-        WidgetType::SelectableLabel,
-        &format!("Element {index}"),
-        Some(selected),
+
+    // The ghost keeps the press point under the pointer, not the band's
+    // centre: grabbing the grip's top edge must not make the row jump.
+    let grab = ui
+        .input(|input| input.pointer.press_origin())
+        .map_or(rect.height() * 0.5, |origin| {
+            (origin.y - rect.top()).clamp(0.0, rect.height())
+        });
+
+    // Select on mouse-down, but never through another row's handle once a
+    // drag is under way: the held row keeps the pointer.
+    let pressed = (handle.is_pointer_button_down_on() || handle.clicked()) && !drag_active;
+    let drag_started = handle.drag_started();
+    let active = selected || pressed || handle.dragged() || drag_started;
+    let fill = if active {
+        chrome.selection
+    } else if !drag_active && ui.rect_contains_pointer(rect) {
+        chrome.band_hover
+    } else {
+        chrome.band_fill
+    };
+    let painter = ui.painter();
+    painter.rect_filled(rect, CornerRadius::ZERO, fill);
+    // The band is the block's raised top: a light top edge and a dark bottom
+    // edge separate it from the element body and from the block above.
+    painter.rect_filled(
+        Rect::from_min_size(rect.min, vec2(rect.width(), 1.0)),
+        CornerRadius::ZERO,
+        lift(fill, 0x18),
+    );
+    painter.rect_filled(
+        Rect::from_min_size(
+            pos2(rect.left(), rect.bottom() - 1.0),
+            vec2(rect.width(), 1.0),
+        ),
+        CornerRadius::ZERO,
+        chrome.container_border,
     );
 
-    let ink = if handle.hovered() || selected {
-        style.label
+    labelled_widget_info(&select, WidgetType::SelectableLabel, label, Some(active));
+
+    let ink = if active {
+        chrome.band_text_selected.text_color()
+    } else if handle.hovered() {
+        chrome.band_text.text_color()
     } else {
-        style.edge
+        chrome.handle
     };
-    for offset in [-2.0, 2.0] {
-        ui.painter().rect_filled(
-            Rect::from_min_size(
-                pos2(
-                    handle_rect.center().x - 5.0,
-                    handle_rect.center().y + offset - 0.5,
-                ),
-                vec2(10.0, 1.0),
-            ),
-            CornerRadius::ZERO,
-            ink,
-        );
-    }
-    paint_arrow(
-        ui.painter(),
-        pos2(caret_rect.center().x, caret_rect.center().y),
-        open,
-        style.label,
-    );
-    paint_text(
+    let text_style = if active {
+        &chrome.band_text_selected
+    } else {
+        &chrome.band_text
+    };
+    paint_element_ink(
         ui,
-        label_rect,
-        style,
-        &format!("Element {index}"),
-        label_rect.left() + 4.0,
-        style.label_color(selected),
+        painter,
+        chrome,
+        rect,
+        label,
+        label_x,
+        content_left + 4.0,
+        open,
+        ink,
+        text_style,
+        text_style.text_color(),
     );
 
     BandOutcome {
         rect,
         fold_clicked: fold.clicked(),
         select_clicked: select.clicked(),
-        drag_started: handle.drag_started(),
+        pressed,
+        drag_started,
+        grab,
     }
-}
-
-fn paint_text(ui: &Ui, rect: Rect, style: &FieldStyle, text: &str, left: f32, color: Color32) {
-    let galley = style.text.layout(ui, text);
-    ui.painter().with_clip_rect(rect).galley(
-        pos2(left, rect.center().y - galley.size().y * 0.5),
-        galley,
-        color,
-    );
 }
 
 fn paint_arrow(painter: &egui::Painter, center: egui::Pos2, open: bool, color: Color32) {
@@ -619,55 +923,6 @@ fn paint_arrow(painter: &egui::Painter, center: egui::Pos2, open: bool, color: C
     painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
 }
 
-fn paint_button(ui: &Ui, rect: Rect, style: &FieldStyle, hovered: bool, enabled: bool) {
-    let fill = if hovered && enabled {
-        style.hover_fill
-    } else {
-        style.fill
-    };
-    ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
-    if style.border_width > 0.0 {
-        ui.painter().rect_stroke(
-            rect,
-            CornerRadius::ZERO,
-            Stroke::new(style.border_width, style.edge),
-            StrokeKind::Inside,
-        );
-    }
-}
-
-fn paint_plus(ui: &Ui, center: egui::Pos2, style: &FieldStyle, enabled: bool) {
-    let color = if enabled { style.label } else { style.edge };
-    let stroke = Stroke::new(1.0, color);
-    let half = 4.0;
-    ui.painter().line_segment(
-        [
-            pos2(center.x - half, center.y),
-            pos2(center.x + half, center.y),
-        ],
-        stroke,
-    );
-    ui.painter().line_segment(
-        [
-            pos2(center.x, center.y - half),
-            pos2(center.x, center.y + half),
-        ],
-        stroke,
-    );
-}
-
-fn paint_minus(ui: &Ui, center: egui::Pos2, style: &FieldStyle, enabled: bool) {
-    let color = if enabled { style.label } else { style.edge };
-    let half = 4.0;
-    ui.painter().line_segment(
-        [
-            pos2(center.x - half, center.y),
-            pos2(center.x + half, center.y),
-        ],
-        Stroke::new(1.0, color),
-    );
-}
-
 fn apply_edit<T>(
     items: &mut Vec<T>,
     make: &mut dyn FnMut() -> T,
@@ -675,6 +930,9 @@ fn apply_edit<T>(
     edit: Edit,
     max: usize,
 ) -> bool {
+    if !matches!(edit, Edit::Move { .. }) {
+        state.shifts.clear();
+    }
     match edit {
         Edit::Insert { index } => {
             if items.len() >= max {
@@ -775,14 +1033,21 @@ pub struct ListChromeStyle {
     /// Header band at rest and under the pointer.
     pub header_fill: Color32,
     pub header_hover: Color32,
+    /// Element band at rest and under the pointer.
+    pub band_fill: Color32,
+    pub band_hover: Color32,
+    /// The second grey of an element body: its field rows stripe between
+    /// [Self::band_fill] and this, on the raised band background.
+    pub band_alt: Color32,
     /// Selected element band.
     pub selection: Color32,
-    /// Divider between an element's gutter and its fields.
-    pub divider: Color32,
     /// Drag-handle ink at rest.
     pub handle: Color32,
-    /// Insertion line while dragging.
-    pub accent: Color32,
+    /// Dark rules: the list frame and the band/block bottom edges.
+    /// `container_bevel` outlines the floating drag ghost; a band's own top
+    /// edge is a lift of its fill, so a selected blue band gets a blue edge.
+    pub container_border: Color32,
+    pub container_bevel: Color32,
     pub row_height: f32,
     pub group_height: f32,
     pub group_indent: f32,
@@ -796,7 +1061,62 @@ pub struct ListChromeStyle {
     pub button_border: Color32,
     pub button_border_width: f32,
     pub button_text: Color32,
-    pub button_corner_radius: u8,
+}
+
+impl ListChromeStyle {
+    /// The chrome a bare [ListField] paints from its field tokens.
+    ///
+    /// The field style owns the value box; the list greys are derived from it
+    /// so the typed widget inherits the caller's theme. A page with a richer
+    /// skin (Preferences) builds the same struct from its own tokens.
+    pub fn from_field(field: &FieldStyle) -> Self {
+        let band_fill = lift(field.fill, 0x1E);
+        let row_height = (field.height + 4.0).max(20.0);
+        Self {
+            field: field.clone(),
+            header_text: field.text.clone().color(field.label),
+            band_text: field.text.clone().color(field.label),
+            band_text_selected: field.text.clone().color(field.label_active),
+            header_fill: field.fill,
+            header_hover: field.hover_fill,
+            band_fill,
+            band_hover: lift(field.fill, 0x26),
+            band_alt: lift(band_fill, 0x07),
+            selection: shade(field.accent, 0.62),
+            handle: field.edge_hover,
+            container_border: field.edge,
+            container_bevel: lift(field.fill, 0x28),
+            row_height,
+            group_height: row_height,
+            group_indent: 16.0,
+            row_inset: 4.0,
+            gutter_width: 20.0,
+            button_cell: 22.0,
+            button_height: 16.0,
+            count_width: 48.0,
+            button_fill: band_fill,
+            button_hover: lift(field.fill, 0x26),
+            button_border: field.edge,
+            button_border_width: field.border_width.max(1.0),
+            button_text: field.text.text_color(),
+        }
+    }
+}
+
+fn lift(color: Color32, by: u8) -> Color32 {
+    Color32::from_rgb(
+        color.r().saturating_add(by),
+        color.g().saturating_add(by),
+        color.b().saturating_add(by),
+    )
+}
+
+fn shade(color: Color32, factor: f32) -> Color32 {
+    Color32::from_rgb(
+        (color.r() as f32 * factor).round() as u8,
+        (color.g() as f32 * factor).round() as u8,
+        (color.b() as f32 * factor).round() as u8,
+    )
 }
 
 /// Ids a style-token list header draws. They belong to the caller because the
@@ -848,6 +1168,28 @@ pub struct ListBandOutcome {
     pub response: Response,
     pub selected: bool,
     pub folded: Option<bool>,
+    /// The pointer went down on this band's handle: Unity selects the element
+    /// on mouse-down, before it has moved far enough to become a drag.
+    pub pressed: bool,
+    /// The drag gesture started on this band this pass. The page selects the
+    /// element so its band turns blue while its ghost follows the pointer.
+    pub drag_started: bool,
+}
+
+/// What a style-token list footer did this pass.
+#[derive(Debug, Default)]
+pub struct ListFooterOutcome {
+    pub clicked: bool,
+    pub edit: Option<ListChromeEdit>,
+}
+
+/// What [ListChrome::finish] resolved after every band was laid out.
+#[derive(Debug, Default)]
+pub struct ListChromeOutcome {
+    /// A reorder to send to the owner, emitted once when the drag is released.
+    pub edit: Option<ListChromeEdit>,
+    /// The drag gesture ended this pass.
+    pub finished: bool,
 }
 
 /// Cross-frame memory for style-token list chrome.
@@ -860,19 +1202,48 @@ pub struct ListChromeState {
     count_list: Option<Id>,
     drag: Option<ChromeDrag>,
     bands: Vec<ChromeBand>,
+    /// Container tops recorded by [ListChrome::header], closed by
+    /// [ListChrome::footer]. One entry per open list, including empty ones.
+    containers: Vec<(Id, f32)>,
+    /// Short slides still settling after a drop.
+    shifts: Vec<ChromeShift>,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct ChromeDrag {
     list: Id,
     from: usize,
+    /// Pointer offset from the band's top when the drag started.
+    grab: f32,
+    /// The preview insertion index while the pointer is held. The data order
+    /// does not change until release; this only drives the neighbours' slide.
+    to: usize,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct ChromeBand {
     list: Id,
     index: usize,
     rect: Rect,
+    /// The layout offset the page applied before this band, so drag targeting
+    /// can recover its unshifted slot.
+    shift: f32,
+    /// The block's normal-layout bottom, recorded when the next band or the
+    /// footer closes it.
+    bottom: Option<f32>,
+}
+
+/// A short vertical slide applied to one element block for a preview step or
+/// after a drop. The band and its rows are painted at the recorded offset from
+/// their new layout slot, then the offset eases to zero.
+#[derive(Clone, Copy, Debug)]
+struct ChromeShift {
+    list: Id,
+    index: usize,
+    from: f32,
+    to: f32,
+    start: f64,
+    duration: f64,
 }
 
 impl ListChromeState {
@@ -880,11 +1251,58 @@ impl ListChromeState {
         *self = Self::default();
     }
 
-    /// Drop a reorder that no longer has a valid list, keeping the count
-    /// editor. A structural refresh uses this: the rows changed, but the
-    /// in-flight count text still belongs to the same list path.
-    pub fn cancel_drag(&mut self) {
-        self.drag = None;
+    /// The list whose element is being dragged, if any.
+    pub fn drag_list(&self) -> Option<Id> {
+        self.drag.map(|drag| drag.list)
+    }
+
+    /// The data index of the element being dragged in `list`, if it is the
+    /// active drag. The caller hides that element's block while the ghost
+    /// carries it.
+    pub fn drag_index(&self, list: Id) -> Option<usize> {
+        self.drag
+            .filter(|drag| drag.list == list)
+            .map(|drag| drag.from)
+    }
+
+    /// Where the dragged block's normal top sits under the pointer: the
+    /// visual translation a caller applies to the whole block.
+    pub fn drag_offset(&self, list: Id, block_top: f32, pointer: Pos2) -> Option<f32> {
+        self.drag
+            .filter(|drag| drag.list == list)
+            .map(|drag| pointer.y - drag.grab - block_top)
+    }
+
+    /// Drop any in-flight drop slides. A structural edit (insert, remove,
+    /// resize) changes the indices they refer to.
+    pub fn clear_shifts(&mut self) {
+        self.shifts.clear();
+    }
+
+    /// Record the top of a list's container. The page calls this after the
+    /// header and its optional gap; [ListChrome::footer] closes it at the
+    /// cursor once the list's last row is laid out.
+    pub fn open(&mut self, list: Id, top: f32) {
+        self.containers.retain(|(open, _)| *open != list);
+        self.containers.push((list, top));
+    }
+
+    fn take_container(&mut self, list: Id) -> Option<f32> {
+        let index = self.containers.iter().position(|(open, _)| *open == list)?;
+        Some(self.containers.remove(index).1)
+    }
+
+    /// Vertical paint offset for one element block, eased from `from` to `to`
+    /// after a preview step or a drop.
+    pub fn shift(&self, list: Id, index: usize, now: f64) -> f32 {
+        self.shifts
+            .iter()
+            .find(|shift| shift.list == list && shift.index == index)
+            .map_or(0.0, |shift| {
+                let t = ((now - shift.start) / shift.duration).clamp(0.0, 1.0);
+                let eased = (t * t * (3.0 - 2.0 * t)) as f32;
+                shift.from + (shift.to - shift.from) * eased
+            })
     }
 }
 
@@ -898,9 +1316,18 @@ impl ListChrome {
     /// list on a page.
     pub fn begin(state: &mut ListChromeState) {
         state.bands.clear();
+        state.containers.clear();
     }
 
-    /// Draw the two-row header and its add/remove/count controls.
+    /// Record the top of one list's container, after its header and gap. The
+    /// matching [ListChrome::footer] closes the frame at the cursor.
+    pub fn open(state: &mut ListChromeState, list: Id, top: f32) {
+        state.open(list, top);
+    }
+
+    /// Draw the header band: foldout, name, and the inline count box on the
+    /// right. The add/remove pair belongs to the footer, at the bottom-right of
+    /// the list container.
     #[allow(clippy::too_many_arguments)]
     pub fn header(
         ui: &mut Ui,
@@ -910,7 +1337,6 @@ impl ListChrome {
         ids: ListChromeIds,
         label: &str,
         len: usize,
-        selected: Option<usize>,
         folded: bool,
         depth: usize,
         row_width: f32,
@@ -927,10 +1353,7 @@ impl ListChrome {
                 style.header_fill
             },
         );
-        let response = ui
-            .interact(band, ids.header, Sense::click())
-            .on_hover_cursor(CursorIcon::PointingHand);
-        labelled_widget_info(&response, WidgetType::SelectableLabel, label, Some(!folded));
+
         let arrow = pos2(
             band.left() + style.row_inset + depth as f32 * style.group_indent + 4.0,
             band.center().y,
@@ -946,23 +1369,22 @@ impl ListChrome {
             style.header_text.text_color(),
         );
 
-        let (tools, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
-        ui.painter()
-            .rect_filled(tools, CornerRadius::ZERO, style.header_fill);
-        let buttons = Rect::from_min_size(
-            pos2(
-                tools.right() - style.row_inset - style.button_cell * 2.0,
-                tools.center().y - style.button_height * 0.5,
-            ),
-            vec2(style.button_cell * 2.0, style.button_height),
-        );
+        // The count is a field box in the header row, flush with the list
+        // container's right edge. The rest of the row folds the list; the box
+        // owns its own clicks.
         let count = Rect::from_min_size(
             pos2(
-                buttons.left() - 4.0 - style.count_width,
-                tools.center().y - style.field.height * 0.5,
+                band.right() - style.count_width,
+                band.center().y - style.field.height * 0.5,
             ),
             vec2(style.count_width, style.field.height),
         );
+        let label_rect =
+            Rect::from_min_max(band.min, pos2(count.left().max(band.left()), band.bottom()));
+        let response = ui
+            .interact(label_rect, ids.header, Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        labelled_widget_info(&response, WidgetType::SelectableLabel, label, Some(!folded));
 
         let mut len_value = len;
         let mut edit = if state.count_list == Some(list) {
@@ -988,10 +1410,203 @@ impl ListChrome {
             state.count_list = None;
         }
 
-        let add_rect =
-            Rect::from_min_size(buttons.min, vec2(style.button_cell, style.button_height));
+        let clicked = response.clicked() || count_outcome.clicked();
+        let folded = response.clicked().then_some(!folded);
+        ListHeaderOutcome {
+            response,
+            clicked,
+            folded,
+            edit: edit_out,
+            finished: count_outcome.finished,
+        }
+    }
+
+    /// Draw one element band: the drag handle at the far left, the fold caret,
+    /// the selection label, and the hover or selection band behind them.
+    #[allow(clippy::too_many_arguments)]
+    pub fn band(
+        ui: &mut Ui,
+        state: &mut ListChromeState,
+        style: &ListChromeStyle,
+        list: Id,
+        ids: ListBandIds,
+        index: usize,
+        label: &str,
+        // The layout offset the caller applied before this band's row.
+        offset: f32,
+        depth: usize,
+        row_width: f32,
+        row_fill: Color32,
+        selected: bool,
+        folded: bool,
+    ) -> ListBandOutcome {
+        let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
+        let x0 = rect.left() + style.row_inset + depth as f32 * style.group_indent;
+        let content_left = x0 + style.gutter_width + 4.0;
+        let label_x = content_left + 16.0;
+        // The grip is the container's first cell, not something indented with
+        // the fold caret: it stays at the far left at every nesting depth.
+        let handle_x = rect.left() + 2.0;
+        let handle = Rect::from_min_size(
+            pos2(handle_x, rect.top()),
+            vec2(style.gutter_width, rect.height()),
+        );
+        let caret_rect =
+            Rect::from_min_size(pos2(content_left, rect.top()), vec2(16.0, rect.height()));
+        let label_rect =
+            Rect::from_min_max(pos2(label_x, rect.top()), pos2(rect.right(), rect.bottom()));
+
+        // This band's top closes the block above it, which is the only point
+        // where the page knows how tall that block's body turned out. `rect`
+        // is this band's shifted layout top; its normal-layout top is where
+        // the block above really ends.
+        if let Some(previous) = state.bands.iter_mut().rev().find(|band| band.list == list)
+            && previous.bottom.is_none()
+        {
+            previous.bottom = Some(rect.top() - offset);
+        }
+
+        let grip = ui
+            .interact(handle, ids.handle, Sense::click_and_drag())
+            .on_hover_cursor(CursorIcon::Grab);
+        let caret = ui
+            .interact(caret_rect, ids.fold, Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        let select = ui.interact(label_rect, ids.select, Sense::click());
+
+        // The ghost keeps the press point under the pointer, so grabbing the
+        // grip near its edge does not make the row jump when it lifts.
+        let grab = ui
+            .input(|input| input.pointer.press_origin())
+            .map_or(rect.height() * 0.5, |origin| {
+                (origin.y - rect.top()).clamp(0.0, rect.height())
+            });
+
+        // Select on mouse-down, and keep it on a click release. Only while no
+        // row is already being dragged: a second row's handle must not steal
+        // the selection from the element under the pointer.
+        let pressed = (grip.is_pointer_button_down_on() || grip.clicked()) && state.drag.is_none();
+        if grip.drag_started() {
+            // A new drag starts from a still list: do not target slots that
+            // are still sliding from the previous drop.
+            state.shifts.clear();
+            state.drag = Some(ChromeDrag {
+                list,
+                from: index,
+                grab,
+                to: index,
+            });
+        }
+        let dragging = state
+            .drag
+            .is_some_and(|drag| drag.list == list && drag.from == index);
+        let active = selected || dragging || grip.drag_started() || pressed;
+        // While a drag is held, the band under the pointer is the ghost's
+        // target, not a hovered row.
+        let hovered = state.drag.is_none() && ui.rect_contains_pointer(rect);
+        let fill = if active {
+            style.selection
+        } else if hovered {
+            style.band_hover
+        } else {
+            row_fill
+        };
+        let painter = ui.painter();
+        painter.rect_filled(rect, CornerRadius::ZERO, fill);
+        // The band is the top of a raised block: a light top edge and a dark
+        // bottom edge against the body's first stripe.
+        painter.rect_filled(
+            Rect::from_min_size(rect.min, vec2(rect.width(), 1.0)),
+            CornerRadius::ZERO,
+            lift(fill, 0x18),
+        );
+        painter.rect_filled(
+            Rect::from_min_size(
+                pos2(rect.left(), rect.bottom() - 1.0),
+                vec2(rect.width(), 1.0),
+            ),
+            CornerRadius::ZERO,
+            style.container_border,
+        );
+
+        labelled_widget_info(&select, WidgetType::SelectableLabel, label, Some(active));
+
+        let ink = if active {
+            style.band_text_selected.text_color()
+        } else if grip.hovered() {
+            style.band_text.text_color()
+        } else {
+            style.handle
+        };
+        let text_style = if active {
+            &style.band_text_selected
+        } else {
+            &style.band_text
+        };
+        paint_element_ink(
+            ui,
+            painter,
+            style,
+            rect,
+            label,
+            label_x,
+            content_left + 4.0,
+            !folded,
+            ink,
+            text_style,
+            text_style.text_color(),
+        );
+
+        state.bands.push(ChromeBand {
+            list,
+            index,
+            rect,
+            shift: offset,
+            bottom: None,
+        });
+        let selected = select.clicked();
+        let folded = caret.clicked().then_some(!folded);
+        ListBandOutcome {
+            response: select,
+            selected,
+            folded,
+            pressed,
+            drag_started: grip.drag_started(),
+        }
+    }
+
+    /// Draw the add/remove pair at the bottom-right of the list block and close
+    /// the container frame opened for this list.
+    #[allow(clippy::too_many_arguments)]
+    pub fn footer(
+        ui: &mut Ui,
+        state: &mut ListChromeState,
+        style: &ListChromeStyle,
+        list: Id,
+        ids: ListChromeIds,
+        len: usize,
+        selected: Option<usize>,
+        row_width: f32,
+        max: usize,
+    ) -> ListFooterOutcome {
+        let (rect, _) =
+            ui.allocate_exact_size(vec2(row_width, style.button_height + 2.0), Sense::hover());
+        let container_top = state.take_container(list);
+        if let Some(last) = state.bands.iter_mut().rev().find(|band| band.list == list)
+            && last.bottom.is_none()
+        {
+            last.bottom = Some(rect.top());
+        }
+
+        // The pair hangs outside the container, flush under its bottom-right
+        // corner: no footer band, no fill, and the frame ends above it.
+        let group = Rect::from_min_size(
+            pos2(rect.right() - 2.0 - style.button_cell * 2.0, rect.top()),
+            vec2(style.button_cell * 2.0, style.button_height),
+        );
+        let add_rect = Rect::from_min_size(group.min, vec2(style.button_cell, style.button_height));
         let remove_rect = Rect::from_min_size(
-            pos2(buttons.left() + style.button_cell, buttons.top()),
+            pos2(group.left() + style.button_cell, group.top()),
             vec2(style.button_cell, style.button_height),
         );
         let can_add = len < max;
@@ -1018,222 +1633,423 @@ impl ListChrome {
         );
         labelled_widget_info(&add, WidgetType::Button, "Add list entry", None);
         labelled_widget_info(&remove, WidgetType::Button, "Remove list entry", None);
-        paint_chrome_button(ui, add_rect, style, add.hovered(), can_add);
-        paint_chrome_button(ui, remove_rect, style, remove.hovered(), can_remove);
+        paint_footer_group(
+            ui,
+            style,
+            group,
+            add_rect,
+            remove_rect,
+            add.hovered() && can_add,
+            remove.hovered() && can_remove,
+        );
         paint_plus_with(ui, add_rect.center(), style.button_text, can_add);
         paint_minus_with(ui, remove_rect.center(), style.button_text, can_remove);
 
+        let mut edit = None;
         if add.clicked() && can_add {
-            edit_out = Some(ListChromeEdit::Insert { list, index: len });
+            edit = Some(ListChromeEdit::Insert { list, index: len });
         }
         if remove.clicked() && can_remove {
-            edit_out = Some(ListChromeEdit::Remove {
+            edit = Some(ListChromeEdit::Remove {
                 list,
                 index: selected.unwrap_or(len - 1).min(len - 1),
             });
         }
-
-        let clicked =
-            response.clicked() || count_outcome.clicked() || add.clicked() || remove.clicked();
-        let folded = response.clicked().then_some(!folded);
-        ListHeaderOutcome {
-            response,
-            clicked,
-            folded,
-            edit: edit_out,
-            finished: count_outcome.finished,
-        }
-    }
-
-    /// Draw one element band: drag handle, fold caret and selection label.
-    #[allow(clippy::too_many_arguments)]
-    pub fn band(
-        ui: &mut Ui,
-        state: &mut ListChromeState,
-        style: &ListChromeStyle,
-        list: Id,
-        ids: ListBandIds,
-        index: usize,
-        depth: usize,
-        row_width: f32,
-        row_fill: Color32,
-        selected: bool,
-        folded: bool,
-    ) -> ListBandOutcome {
-        let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
-        ui.painter().rect_filled(
-            rect,
-            CornerRadius::ZERO,
-            if selected { style.selection } else { row_fill },
-        );
-
-        let x0 = rect.left() + style.row_inset + depth as f32 * style.group_indent;
-        let divider_x = x0 + style.gutter_width;
-        let content_left = divider_x + 4.0;
-        let label_x = content_left + 16.0;
-        ui.painter().rect_filled(
-            Rect::from_min_size(pos2(divider_x, rect.top()), vec2(1.0, rect.height())),
-            CornerRadius::ZERO,
-            style.divider,
-        );
-
-        let handle = Rect::from_center_size(
-            pos2(x0 + style.gutter_width * 0.5, rect.center().y),
-            vec2(style.gutter_width, rect.height()),
-        );
-        let drag = ui
-            .interact(handle, ids.handle, Sense::drag())
-            .on_hover_cursor(CursorIcon::Grab);
-        let ink = if drag.hovered() || selected {
-            style.band_text_selected.text_color()
-        } else {
-            style.handle
-        };
-        for offset in [-2.0, 2.0] {
-            ui.painter().rect_filled(
-                Rect::from_min_size(
-                    pos2(handle.center().x - 5.0, handle.center().y + offset - 0.5),
-                    vec2(10.0, 1.0),
+        if let Some(top) = container_top {
+            paint_container(
+                ui,
+                style,
+                Rect::from_min_max(
+                    pos2(rect.left(), top.min(rect.top())),
+                    pos2(rect.right(), rect.top()),
                 ),
-                CornerRadius::ZERO,
-                ink,
             );
         }
-        if drag.drag_started() {
-            state.drag = Some(ChromeDrag { list, from: index });
-        }
-        state.bands.push(ChromeBand { list, index, rect });
-
-        let caret_rect =
-            Rect::from_min_size(pos2(content_left, rect.top()), vec2(16.0, rect.height()));
-        let caret = ui
-            .interact(caret_rect, ids.fold, Sense::click())
-            .on_hover_cursor(CursorIcon::PointingHand);
-        paint_arrow(
-            ui.painter(),
-            pos2(content_left + 4.0, rect.center().y),
-            !folded,
-            style.band_text.text_color(),
-        );
-
-        let label_rect =
-            Rect::from_min_max(pos2(label_x, rect.top()), pos2(rect.right(), rect.bottom()));
-        let select = ui.interact(label_rect, ids.select, Sense::click());
-        labelled_widget_info(
-            &select,
-            WidgetType::SelectableLabel,
-            &format!("Element {index}"),
-            Some(selected),
-        );
-        let text_style = if selected {
-            &style.band_text_selected
-        } else {
-            &style.band_text
-        };
-        paint_text_with(
-            ui,
-            label_rect,
-            text_style,
-            &format!("Element {index}"),
-            label_x,
-            text_style.text_color(),
-        );
-
-        let selected = select.clicked();
-        let folded = caret.clicked().then_some(!folded);
-        ListBandOutcome {
-            response: select,
-            selected,
-            folded,
+        ListFooterOutcome {
+            clicked: add.clicked() || remove.clicked(),
+            edit,
         }
     }
 
-    /// Resolve the active reorder gesture after every band is laid out. It
-    /// paints the insertion line and returns the move to send to the owner.
-    pub fn finish(
-        ui: &mut Ui,
-        state: &mut ListChromeState,
-        style: &ListChromeStyle,
-    ) -> Option<ListChromeEdit> {
-        let drag = state.drag?;
+    /// Resolve the active drag after every band is laid out.
+    ///
+    /// While the pointer is down nothing is reordered: the caller draws the
+    /// held block on a floating layer, and the other blocks slide to their
+    /// preview slots so a gap opens under the pointer. The move is emitted
+    /// once, on release; blocks that are still mid-slide continue from where
+    /// they are.
+    pub fn finish(ui: &mut Ui, state: &mut ListChromeState) -> ListChromeOutcome {
+        let now = ui.input(|input| input.time);
+        let Some(drag) = state.drag else {
+            return ListChromeOutcome::default();
+        };
         let mut bands: Vec<&ChromeBand> = state
             .bands
             .iter()
             .filter(|band| band.list == drag.list)
             .collect();
         bands.sort_by_key(|band| band.index);
-        let Some(first) = bands.first().copied() else {
-            state.drag = None;
-            return None;
-        };
+
         let released = ui.input(|input| input.pointer.any_released());
-        if !ui.input(|input| input.pointer.primary_down()) && !released {
+        let down = ui.input(|input| input.pointer.primary_down());
+        if bands.is_empty() || (!down && !released) {
             state.drag = None;
-            return None;
+            return ListChromeOutcome {
+                edit: None,
+                finished: true,
+            };
         }
         let Some(pointer) = ui.ctx().pointer_interact_pos() else {
-            if !ui.input(|input| input.pointer.primary_down()) {
+            if !down {
                 state.drag = None;
+                return ListChromeOutcome {
+                    edit: None,
+                    finished: true,
+                };
             }
-            return None;
+            return ListChromeOutcome::default();
         };
-        let slot = bands
+
+        let count = bands.len();
+        // Normal-layout tops and heights: the page offsets each block from
+        // these by its slide, so the drop math is free of the animation.
+        let tops: Vec<f32> = bands
             .iter()
-            .take_while(|band| pointer.y > band.rect.center().y)
-            .count();
-        let y = if slot == 0 {
-            first.rect.top()
-        } else {
-            bands[slot - 1].rect.bottom()
-        };
-        let left = first.rect.left() + style.row_inset;
-        let right = first.rect.right() - style.row_inset;
-        ui.painter().rect_filled(
-            Rect::from_min_size(pos2(left, y - 1.0), vec2(right - left, 2.0)),
-            CornerRadius::ZERO,
-            style.accent,
-        );
+            .map(|band| band.rect.top() - band.shift)
+            .collect();
+        let heights: Vec<f32> = bands
+            .iter()
+            .map(|band| {
+                (band.bottom.unwrap_or(band.rect.bottom()) - (band.rect.top() - band.shift))
+                    .max(1.0)
+            })
+            .collect();
+        // The slot the pointer is over: count the other blocks whose current
+        // (animated) centre is above it. Excluding the held block keeps the
+        // count stable after the neighbours start to slide.
+        let to = preview_index(&bands, drag.from, pointer.y);
 
         if released {
-            let to = if slot > drag.from { slot - 1 } else { slot };
-            state.drag = None;
-            if to != drag.from && to < bands.len() {
-                return Some(ListChromeEdit::Move {
+            let mut edit = None;
+            // After the owner applies the move each block is at the slot
+            // `drop_shifts` returns; start it where it is on screen now so a
+            // release in the middle of a slide does not snap.
+            let preview = preview_tops(count, drag.from, to, &tops, &heights);
+            let starts: Vec<f32> = (0..count)
+                .map(|index| {
+                    if index == drag.from {
+                        preview[index]
+                    } else {
+                        bands[index].rect.top()
+                    }
+                })
+                .collect();
+            state.shifts = drop_shifts(count, drag.from, to, &tops, &heights, &starts)
+                .into_iter()
+                .map(|(index, offset)| ChromeShift {
+                    list: drag.list,
+                    index,
+                    from: offset,
+                    to: 0.0,
+                    start: now,
+                    duration: 0.12,
+                })
+                .collect();
+            if to != drag.from {
+                edit = Some(ListChromeEdit::Move {
                     list: drag.list,
                     from: drag.from,
                     to,
                 });
             }
+            state.drag = None;
+            return ListChromeOutcome {
+                edit,
+                finished: true,
+            };
         }
-        None
+
+        // The pointer crossed into another slot: slide every other block to
+        // its preview position. The held block itself is hidden by the page,
+        // so the gap follows the pointer while it is held.
+        if to != drag.to {
+            let preview = preview_tops(count, drag.from, to, &tops, &heights);
+            let mut shifts = Vec::new();
+            for (index, band) in bands.iter().enumerate() {
+                if index == drag.from {
+                    continue;
+                }
+                // The layout is still at the current top; animate the
+                // offset from where it is now to the preview displacement.
+                let from = band.shift;
+                let to_offset = preview[index] - (band.rect.top() - band.shift);
+                if (to_offset - from).abs() > 0.5 {
+                    shifts.push(ChromeShift {
+                        list: drag.list,
+                        index,
+                        from,
+                        to: to_offset,
+                        start: now,
+                        duration: 0.16,
+                    });
+                }
+            }
+            state.shifts = shifts;
+            if let Some(drag) = state.drag.as_mut() {
+                drag.to = to;
+            }
+        }
+
+        // The caller draws the dragged block itself on a floating layer;
+        // finish only resolves the preview slot and the slides.
+        ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+        ListChromeOutcome::default()
     }
 }
 
+/// The frame around the element bands: one dark outline.
+/// The raised bevel belongs to each element block now, not to the list well:
+/// painting it here as well would double the edge along the first and last
+/// rows.
+fn paint_container(ui: &Ui, style: &ListChromeStyle, rect: Rect) {
+    if rect.height() < 1.0 {
+        return;
+    }
+    ui.painter().rect_stroke(
+        rect,
+        CornerRadius::ZERO,
+        Stroke::new(1.0, style.container_border),
+        StrokeKind::Inside,
+    );
+}
+
+/// The drag handle ink: two short bars in the container's left cell.
+fn paint_handle(painter: &egui::Painter, rect: Rect, ink: Color32) {
+    for offset in [-2.0, 2.0] {
+        painter.rect_filled(
+            Rect::from_min_size(
+                pos2(rect.left() + 7.0, rect.center().y + offset - 0.5),
+                vec2(10.0, 1.0),
+            ),
+            CornerRadius::ZERO,
+            ink,
+        );
+    }
+}
+
+/// Handle, caret and label of one element band. Both the live band and its
+/// floating drag ghost paint through this, so they cannot drift apart.
+#[allow(clippy::too_many_arguments)]
+fn paint_element_ink(
+    ui: &Ui,
+    painter: &egui::Painter,
+    chrome: &ListChromeStyle,
+    rect: Rect,
+    label: &str,
+    label_x: f32,
+    caret_x: f32,
+    open: bool,
+    handle_ink: Color32,
+    text_style: &TextStyle,
+    text_ink: Color32,
+) {
+    let handle = Rect::from_min_size(
+        pos2(rect.left() + 2.0, rect.top()),
+        vec2(chrome.gutter_width, rect.height()),
+    );
+    paint_handle(painter, handle, handle_ink);
+    paint_arrow(painter, pos2(caret_x, rect.center().y), open, text_ink);
+    paint_text_on(ui, painter, rect, text_style, label, label_x, text_ink);
+}
+
+/// The band that follows the pointer during a drag. It lives on the tooltip
+/// layer so the scroll area's clip cannot cut it off, and carries a drop
+/// shadow so it reads as lifted above the list.
+#[allow(clippy::too_many_arguments)]
+fn paint_element_ghost(
+    ui: &Ui,
+    chrome: &ListChromeStyle,
+    list: Id,
+    rect: Rect,
+    label: &str,
+    depth: usize,
+    open: bool,
+    selected: bool,
+) {
+    let painter = ui
+        .ctx()
+        .layer_painter(egui::LayerId::new(
+            egui::Order::Tooltip,
+            Id::new(("kairos.list.ghost", list)),
+        ))
+        // The tooltip layer ignores the parent's clip. Clip the band to itself
+        // (plus its drop shadow), not to the scroll viewport: an element that
+        // was only half visible must still drag whole.
+        .with_clip_rect(rect.expand(8.0));
+    let shadow = Rect::from_min_size(rect.min + vec2(3.0, 4.0), rect.size());
+    painter.rect_filled(shadow, CornerRadius::ZERO, Color32::from_black_alpha(80));
+    let fill = if selected {
+        chrome.selection
+    } else {
+        chrome.band_fill
+    };
+    painter.rect_filled(rect, CornerRadius::ZERO, fill);
+    painter.rect_filled(
+        Rect::from_min_size(rect.min, vec2(rect.width(), 1.0)),
+        CornerRadius::ZERO,
+        lift(fill, 0x20),
+    );
+    painter.rect_stroke(
+        rect,
+        CornerRadius::ZERO,
+        Stroke::new(1.0, chrome.container_bevel),
+        StrokeKind::Inside,
+    );
+    let content_left = rect.left()
+        + chrome.row_inset
+        + depth as f32 * chrome.group_indent
+        + chrome.gutter_width
+        + 4.0;
+    let text_style = if selected {
+        &chrome.band_text_selected
+    } else {
+        &chrome.band_text
+    };
+    let ink = text_style.text_color();
+    paint_element_ink(
+        ui,
+        &painter,
+        chrome,
+        rect,
+        label,
+        content_left + 16.0,
+        content_left + 4.0,
+        open,
+        ink,
+        text_style,
+        ink,
+    );
+}
+
+/// Where every block starts after a drop, and how far it has to slide to get
+/// there. `tops` and `heights` describe the blocks in their old order;
+/// `starts` is the screen top each block begins at (the gap position for the
+/// dragged one, its current animated top for the rest). The result is keyed by
+/// the slot the block occupies in the new order.
+fn drop_shifts(
+    count: usize,
+    from: usize,
+    to: usize,
+    tops: &[f32],
+    heights: &[f32],
+    starts: &[f32],
+) -> Vec<(usize, f32)> {
+    if count == 0 || from >= count || to >= count {
+        return Vec::new();
+    }
+    let mut order: Vec<usize> = (0..count).collect();
+    let moved = order.remove(from);
+    order.insert(to, moved);
+    let mut new_tops = vec![0.0; count];
+    let mut y = tops[0];
+    for (slot, index) in order.iter().enumerate() {
+        new_tops[slot] = y;
+        y += heights[*index];
+    }
+    let mut shifts = Vec::new();
+    for (index, start) in starts.iter().enumerate() {
+        let slot = move_index(index, from, to);
+        let offset = start - new_tops[slot];
+        if offset.abs() > 0.5 {
+            shifts.push((slot, offset));
+        }
+    }
+    shifts
+}
+/// The insertion index the pointer is over while an element is held. Count
+/// the other blocks whose current (animated) centre is above the pointer; the
+/// held block is excluded, so its own old slot does not bias the count.
+fn preview_index(bands: &[&ChromeBand], from: usize, pointer_y: f32) -> usize {
+    let mut to = 0;
+    for band in bands {
+        if band.index == from {
+            continue;
+        }
+        if pointer_y > band.rect.center().y {
+            to += 1;
+        }
+    }
+    to.min(bands.len().saturating_sub(1))
+}
+
+/// The top each block would occupy with the held block removed from its old
+/// slot and inserted at `to`, keyed by the block's current data index. The
+/// held block's entry is its future slot (the gap).
+fn preview_tops(count: usize, from: usize, to: usize, tops: &[f32], heights: &[f32]) -> Vec<f32> {
+    if count == 0 || from >= count || to >= count {
+        return Vec::new();
+    }
+    let mut order: Vec<usize> = (0..count).collect();
+    let moved = order.remove(from);
+    order.insert(to, moved);
+    let mut result = vec![0.0; count];
+    let mut y = tops[0];
+    for index in order {
+        result[index] = y;
+        y += heights[index];
+    }
+    result
+}
+
+/// The joined add/remove pair at the bottom-right of a list: one outline with
+/// a divider, and the hover fill inside the cell under the pointer.
+fn paint_footer_group(
+    ui: &Ui,
+    style: &ListChromeStyle,
+    group: Rect,
+    add: Rect,
+    remove: Rect,
+    add_hovered: bool,
+    remove_hovered: bool,
+) {
+    let painter = ui.painter();
+    painter.rect_filled(group, CornerRadius::ZERO, style.button_fill);
+    if add_hovered {
+        painter.rect_filled(add.shrink(1.0), CornerRadius::ZERO, style.button_hover);
+    }
+    if remove_hovered {
+        painter.rect_filled(remove.shrink(1.0), CornerRadius::ZERO, style.button_hover);
+    }
+    let stroke = Stroke::new(style.button_border_width.max(1.0), style.button_border);
+    painter.rect_stroke(group, CornerRadius::ZERO, stroke, StrokeKind::Inside);
+    painter.line_segment(
+        [
+            pos2(group.center().x, group.top() + 1.0),
+            pos2(group.center().x, group.bottom() - 1.0),
+        ],
+        Stroke::new(1.0, style.button_border),
+    );
+}
+
 fn paint_text_with(ui: &Ui, rect: Rect, style: &TextStyle, text: &str, left: f32, color: Color32) {
+    paint_text_on(ui, ui.painter(), rect, style, text, left, color);
+}
+
+fn paint_text_on(
+    ui: &Ui,
+    painter: &egui::Painter,
+    rect: Rect,
+    style: &TextStyle,
+    text: &str,
+    left: f32,
+    color: Color32,
+) {
     let galley = style.layout(ui, text);
-    ui.painter().with_clip_rect(rect).galley(
+    painter.with_clip_rect(rect).galley(
         pos2(left, rect.center().y - galley.size().y * 0.5),
         galley,
         color,
     );
-}
-
-fn paint_chrome_button(ui: &Ui, rect: Rect, style: &ListChromeStyle, hovered: bool, enabled: bool) {
-    let fill = if hovered && enabled {
-        style.button_hover
-    } else {
-        style.button_fill
-    };
-    ui.painter()
-        .rect_filled(rect, CornerRadius::same(style.button_corner_radius), fill);
-    if style.button_border_width > 0.0 {
-        ui.painter().rect_stroke(
-            rect,
-            CornerRadius::same(style.button_corner_radius),
-            Stroke::new(style.button_border_width, style.button_border),
-            StrokeKind::Inside,
-        );
-    }
 }
 
 fn paint_plus_with(ui: &Ui, center: egui::Pos2, color: Color32, enabled: bool) {
@@ -1408,6 +2224,103 @@ mod tests {
         assert_eq!(values(&items), vec![0]);
     }
 
+    /// Unity's list shape: count in the header row, drag handle at the far
+    /// left of a band, and the add/remove pair under the rows.
+    #[test]
+    fn the_list_chrome_matches_unitys_shape() {
+        let ctx = Context::default();
+        let style = style();
+        let id = Id::new("kairos-list-chrome");
+        let mut items = vec![Item { value: 0 }, Item { value: 1 }];
+        let mut state = ListState::default();
+
+        let mut draw = |ui: &mut Ui| {
+            ListField::new(id, &mut items, &style, Item::default).show(
+                ui,
+                &mut state,
+                |_, _, _| ListItemOutcome::default(),
+            );
+        };
+        let _ = ctx.run_ui(input(), &mut draw);
+
+        let header = ctx.read_response(list_header_id(id)).unwrap().rect;
+        let count = ctx.read_response(list_count_id(id)).unwrap().rect;
+        assert!(
+            approx(header.center().y, count.center().y),
+            "the count box shares the header row: header {header:?}, count {count:?}"
+        );
+        assert!(
+            count.left() > header.left(),
+            "the count box is at the far right: {count:?}"
+        );
+
+        let add = ctx.read_response(list_add_id(id)).unwrap().rect;
+        let remove = ctx.read_response(list_remove_id(id)).unwrap().rect;
+        let last = ctx.read_response(list_item_id(id, 1)).unwrap().rect;
+        assert!(
+            add.top() >= last.bottom(),
+            "the add pair is under the rows, not in the header: add {add:?}, last {last:?}"
+        );
+        assert!(
+            approx(add.center().y, remove.center().y) && remove.left() >= add.right(),
+            "the pair is two joined cells: add {add:?}, remove {remove:?}"
+        );
+
+        let handle = ctx.read_response(list_handle_id(id, 0)).unwrap().rect;
+        let band = ctx.read_response(list_item_id(id, 0)).unwrap().rect;
+        assert!(
+            handle.right() <= band.left(),
+            "the drag handle is the leftmost cell: handle {handle:?}, band {band:?}"
+        );
+
+        let _ = draw;
+    }
+
+    fn approx(a: f32, b: f32) -> bool {
+        (a - b).abs() < 0.5
+    }
+
+    fn painted_text(output: &egui::FullOutput) -> Vec<String> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(text) => out.push(text.galley.text().to_owned()),
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        for clipped in &output.shapes {
+            walk(&clipped.shape, &mut out);
+        }
+        out
+    }
+
+    /// The caller can name the bands from the element itself; the default is
+    /// the index-based `Element N`.
+    #[test]
+    fn the_item_label_callback_names_each_band() {
+        let ctx = Context::default();
+        let style = style();
+        let id = Id::new("kairos-list-item-label");
+        let mut items = vec![Item { value: 4 }, Item { value: 5 }];
+        let mut state = ListState::default();
+
+        let mut draw = |ui: &mut Ui| {
+            ListField::new(id, &mut items, &style, Item::default)
+                .item_label(|item, index| format!("Bone {index}: {}", item.value))
+                .show(ui, &mut state, |_, _, _| ListItemOutcome::default());
+        };
+        let output = ctx.run_ui(input(), &mut draw);
+        let text = painted_text(&output);
+        assert!(text.iter().any(|run| run == "Bone 0: 4"), "{text:?}");
+        assert!(text.iter().any(|run| run == "Bone 1: 5"), "{text:?}");
+        let _ = draw;
+    }
+
     #[test]
     fn dragging_a_handle_moves_the_entry_and_selection_with_it() {
         let ctx = Context::default();
@@ -1453,6 +2366,102 @@ mod tests {
         assert_eq!(
             state.selected(),
             Some(2),
+            "selection follows the moved entry"
+        );
+    }
+
+    /// The drop animation is keyed by the slot a block lands in, not by the
+    /// index it came from: otherwise a move would animate the two blocks into
+    /// each other's destinations.
+    #[test]
+    fn a_drop_targets_the_slot_each_block_lands_in() {
+        // Two blocks, tall (100) then short (20). Drag the short one above the
+        // tall one; its ghost was released at y = 50.
+        assert_eq!(
+            drop_shifts(2, 1, 0, &[0.0, 100.0], &[100.0, 20.0], &[0.0, 50.0]),
+            vec![(1, -20.0), (0, 50.0)],
+            "the tall block slides down into slot 1; the dragged one starts at the ghost"
+        );
+
+        // Drag the tall first block below the short one; the ghost was released
+        // at the tall block's top (100).
+        assert_eq!(
+            drop_shifts(2, 0, 1, &[0.0, 100.0], &[100.0, 20.0], &[100.0, 100.0]),
+            vec![(1, 80.0), (0, 100.0)],
+            "the tall block lands in slot 1 from the ghost; the short one rises to slot 0"
+        );
+    }
+
+    /// Holding a drag previews the result: the vector is untouched, the held
+    /// band is hidden and the neighbour slides up into the gap.
+    #[test]
+    fn holding_a_drag_opens_a_gap_before_the_release() {
+        let ctx = Context::default();
+        let style = style();
+        let id = Id::new("kairos-list-gap");
+        let items = RefCell::new(vec![
+            Item { value: 0 },
+            Item { value: 1 },
+            Item { value: 2 },
+        ]);
+        let mut state = ListState::default();
+
+        let mut draw = |ui: &mut Ui| {
+            let mut items = items.borrow_mut();
+            ListField::new(id, &mut items, &style, Item::default).show(
+                ui,
+                &mut state,
+                |_, _, _| ListItemOutcome::default(),
+            );
+        };
+        let _ = ctx.run_ui(input(), &mut draw);
+        let start = ctx
+            .read_response(list_handle_id(id, 0))
+            .unwrap()
+            .rect
+            .center();
+        let before = ctx.read_response(list_item_id(id, 1)).unwrap().rect.top();
+
+        let mut hover = input();
+        hover.events = vec![Event::PointerMoved(start)];
+        let _ = ctx.run_ui(hover, &mut draw);
+        let mut press = input();
+        press.events = vec![button(start, true)];
+        let _ = ctx.run_ui(press, &mut draw);
+        let target = ctx
+            .read_response(list_item_id(id, 1))
+            .unwrap()
+            .rect
+            .bottom()
+            - 2.0;
+        let mut moved = input();
+        moved.events = vec![Event::PointerMoved(pos2(start.x, target))];
+        let _ = ctx.run_ui(moved, &mut draw);
+
+        assert_eq!(
+            values(&items.borrow()),
+            vec![0, 1, 2],
+            "the vector is not reordered while the pointer is held"
+        );
+
+        // The shift is applied on the pass after the target changes;
+        // read_response is one pass behind, so run two still frames.
+        let _ = ctx.run_ui(input(), &mut draw);
+        let _ = ctx.run_ui(input(), &mut draw);
+        let after = ctx.read_response(list_item_id(id, 1)).unwrap().rect.top();
+        assert!(
+            after < before,
+            "the neighbour slides up into the preview slot: {before} -> {after}"
+        );
+
+        let mut release = input();
+        release.events = vec![button(pos2(start.x, target), false)];
+        let _ = ctx.run_ui(release, &mut draw);
+        let _ = draw;
+        assert_eq!(values(&items.borrow()), vec![1, 0, 2]);
+        assert_eq!(
+            state.selected(),
+            Some(1),
             "selection follows the moved entry"
         );
     }

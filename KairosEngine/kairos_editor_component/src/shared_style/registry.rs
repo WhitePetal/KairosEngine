@@ -16,7 +16,7 @@ use crate::toolbar::style::ToolBarStyle;
 
 use super::catalog::{SharedStyleDef, StyleCatalog};
 use super::color_picker::ColorPickerSkin;
-use super::{COLOR_PICKER, EDITOR_FIELD, EditorFieldStyle, SharedStyle, TOOLBAR};
+use super::{COLOR_PICKER, EDITOR_FIELD, EditorFieldStyle, LIST, ListStyle, SharedStyle, TOOLBAR};
 
 /// One shared style as the Preferences panel sees it.
 #[derive(Clone, Debug, PartialEq)]
@@ -111,6 +111,12 @@ impl SharedStyles {
         self.get(EDITOR_FIELD)
     }
 
+    /// The reorderable list's live skin; `None` when it is not registered (a
+    /// test catalog without it).
+    pub fn list_style(&self) -> Option<&ListStyle> {
+        self.get(LIST)
+    }
+
     pub fn color_picker_style(&self) -> Option<ColorPickerStyle> {
         self.color_picker().map(ColorPickerSkin::tokens)
     }
@@ -188,7 +194,7 @@ mod tests {
     use kairos_editor_core::ListEdit;
 
     use super::*;
-    use crate::shared_style::{COLOR_PICKER, EDITOR_FIELD, EditorFonts, FONTS, TOOLBAR};
+    use crate::shared_style::{COLOR_PICKER, EDITOR_FIELD, EditorFonts, FONTS, LIST, TOOLBAR};
 
     #[test]
     fn the_registry_exposes_a_page_for_every_shared_style() {
@@ -198,11 +204,13 @@ mod tests {
         assert!(skins.iter().any(|skin| skin.id == TOOLBAR));
         assert!(skins.iter().any(|skin| skin.id == COLOR_PICKER));
         assert!(skins.iter().any(|skin| skin.id == EDITOR_FIELD));
+        assert!(skins.iter().any(|skin| skin.id == LIST));
         assert!(skins.iter().any(|skin| skin.id == FONTS));
         assert!(shared.toolbar().is_some());
         assert!(shared.get::<EditorFonts>(FONTS).is_some());
         assert!(shared.color_picker().is_some());
         assert!(shared.color_picker_style().is_some());
+        assert!(shared.list_style().is_some());
         assert!(
             skins
                 .iter()
