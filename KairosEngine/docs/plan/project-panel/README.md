@@ -296,19 +296,17 @@ pub struct EditorApp {
     inbox: VecDeque<Action>,
 }
 
-fn ui(&mut self, engine: &Engine, ui: &mut egui::Ui) {
-    // 1. 先把上一帧到现在的 host 事件落到状态树（最多 8 轮，防自激）
-    for _ in 0..8 {
-        if self.inbox.is_empty() { break; }
-        let batch: Vec<Action> = self.inbox.drain(..).collect();
-        for action in batch {
-            let effects = reduce(&mut self.state, action);
-            self.pending_effects.extend(effects);
-        }
-    }
-    // 2. 再 sync（执行 effect）/ 画 / pump（UI 的 action）
-}
+// app/src/host.rs::render —— 一个引擎帧一次，在 egui pass 之外
+self.app.begin_frame(&self.egui_ctx);
+//   1. ProjectService::poll() → inbox（上一帧以来完成的宿主工作）
+//   2. inbox 排空 → reduce → pending_effects
+//   3. 实例/tab 对账（PanelHost::sync + dock）
+//   4. 执行 pending_effects；产出的 action 进 inbox，**下一帧**才被 apply
+let out = self.egui_ctx.run_ui(raw_input, |ui| self.app.ui(engine, ui)); // 只画
+// committed pass 的 UI action 在 ui() 内 pump（effect 下一帧执行）
 ```
+
+M0 落地时把宿主阶段从 `ui()` 里挪到了 `begin_frame`，并由 host 层在 `run_ui` 之前调用一次：egui 一帧可能跑多遍 pass（还可能丢弃），宿主工作不能跟着 pass 的次数走。
 
 副作用执行器拿到服务：
 
@@ -330,7 +328,7 @@ impl<'a> EffectExecutor<'a> {
 }
 ```
 
-**规则**：effect 可以**产生** action（例如 `Scan` 启动后立刻回一个 `ScanStarted`），但绝不修改 `EditorState`。这与现有 `Effect::Style` 的「执行器只动宿主资源」一致。
+**规则**：effect 可以**产生** action（扫描完成、文件操作完成），但绝不修改 `EditorState`。这些 action 是**下一帧**的输入，不在执行 effect 的那一帧回灌 reducer：跨帧边界切断了 action↔effect 环，因此宿主阶段不需要轮数预算。这与现有 `Effect::Style` 的「执行器只动宿主资源」一致。
 
 ### 2.5 变更协议（M3）
 
@@ -670,10 +668,12 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 **交付**
 - `EditorState.project: ProjectState`，删除 `project_name`（3 个测试 + inspector demo 面板跟着改）；
 - `Action::Project` / `Effect::Project` + `reduce/project.rs`（先只处理 `ScanRequested` → `running = true`）；
-- `EditorApp.inbox` + 排空循环 + `ProjectService` 空壳；
+- `EditorApp.inbox` + `begin_frame` 宿主阶段（每帧一次，在 egui pass 之外）+ `ProjectService` 空壳；
 - `EffectExecutor` 增加 `project` 与 `now`；`pump` 的 `describe()` 增加 Project 分支（高频 action 要像 `StyleAction::SetField` 一样静音，避免每帧刷 console）。
 
-**验收**：编辑器启动、行为与现在完全一致；新增两条测试：inbox 保序、effect 产出的 action 在同一帧内被 apply。
+**验收**：编辑器启动、行为与现在完全一致；新增两条测试：inbox 保序、effect 产出的 action 在**下一帧**被 apply。
+
+> **实现说明（M0 落地时修订）**：采用「跨帧完成」——effect 产出的 action 一律进 inbox，下一帧 `begin_frame` 才 apply；不在同帧反复 settle，因此没有 8 轮预算，action↔effect 环由帧边界切断。代价是宿主同步产生的完成晚一帧（扫描线程的完成走 `poll`，poll 到即 apply）。M0 的 `ProjectService::execute` 同步返回一个空结果的 `Scanned`，让「请求 → effect → 完成」协议端到端可测；M1 只把函数体换成后台线程 + `poll`，app 侧不动。
 
 **风险**：静音规则写错 → console 被刷屏。用「action → 是否记录」的显式函数，而不是在 `pump` 里加 `matches!`。
 
@@ -932,7 +932,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 ## 10. 开工顺序（M0 的第一刀）
 
 1. **先在 core 立 slice**：`ProjectState { name, root, tree, view, scan, error }` + 空的 `ProjectAction/ProjectEffect` + `reduce/project.rs` 注册进 `reduce.rs`；删 `EditorState::project_name`，修 3 个 core 测试与 inspector demo。
-2. **再把回写通道打通**：`EditorApp.inbox` + 每帧排空（上限 8 轮）+ `EffectExecutor::apply -> Vec<Action>`；写两条测试（保序、同帧回写）。
-3. **最后挂空服务**：`ProjectService::poll/execute` 返回空，`ProjectState.root` 取 cwd，`name` 取目录名。此时编辑器行为与现在**完全一致**，但下一刀（M1）已经有地方落。
+2. **再把回写通道打通**：`EditorApp.inbox` + `begin_frame`（每帧一次、egui pass 之外）+ `EffectExecutor::apply -> Vec<Action>`；写两条测试（保序、下一帧回写）。
+3. **最后挂空服务**：`ProjectService` 空壳（`execute` 同步返回空结果的 `Scanned`，`poll` 空），`ProjectState.root` 取 cwd，`name` 取目录名。此时编辑器行为与现在**完全一致**，但下一刀（M1）已经有地方落。
 
 每一步都按 `docs/agents/testing.md` 只测改动的 crate；M0 结束跑一次 `cargo check --workspace --all-targets`。

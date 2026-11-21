@@ -353,6 +353,12 @@ impl Layer for EditorLayer {
             self.release.update(button_down);
         }
 
+        // One engine frame begins here. Host work (poll, inbox actions, effects,
+        // panel instances) is settled before egui draws and outside the egui
+        // pass: `run_ui` may run the pass more than once, and host work must not
+        // depend on that count.
+        self.app.begin_frame(&self.egui_ctx);
+
         let state = self
             .egui_state
             .as_mut()

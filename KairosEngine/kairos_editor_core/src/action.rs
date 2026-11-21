@@ -4,12 +4,13 @@
 //! (`kairos_editor_component::UiOut`), and [`crate::reduce`] is the only thing
 //! that applies them to [`crate::EditorState`]. Panels never mutate state.
 //!
-//! Slices stay separate enums (`LayoutAction`, `AppAction`, `StyleAction`,
-//! `SharedStyleAction`, later `DocumentAction`, `SelectionAction`,
-//! `ViewportAction`, ...) routed by the aggregate [`Action`], so no slice
-//! becomes a second global message bus.
+//! Slices stay separate enums (`LayoutAction`, `AppAction`, `ProjectAction`,
+//! `StyleAction`, `SharedStyleAction`, later `DocumentAction`,
+//! `SelectionAction`, `ViewportAction`, ...) routed by the aggregate [`Action`],
+//! so no slice becomes a second global message bus.
 
 use crate::panel::PanelId;
+use crate::project::ProjectAction;
 use crate::style::{ListEdit, SharedStyleId, StyleValue};
 
 /// Aggregate UI intent, routed by domain slice.
@@ -18,6 +19,10 @@ pub enum Action {
     Layout(LayoutAction),
     /// The application as a whole, not one panel or document.
     App(AppAction),
+    /// The project panel's own intents: scans (M0), view changes (M2), file
+    /// operations (M3). Completions produced by host work travel the same way,
+    /// so the reducer has exactly one entry point.
+    Project(ProjectAction),
     /// Panel skins (the Preferences panel's field editor).
     Style(StyleAction),
     /// Shared styles: editor-shell appearance that no panel instance owns.

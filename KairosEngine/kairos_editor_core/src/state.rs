@@ -14,6 +14,7 @@
 use std::collections::BTreeSet;
 
 use crate::panel::{PanelId, PanelInstanceId};
+use crate::project::ProjectState;
 
 /// Which panels are open and which panel instance has keyboard/focus.
 ///
@@ -66,19 +67,15 @@ impl LayoutState {
 }
 
 /// Concrete editor state: the single tree the UI reads and the reducers write.
-#[derive(Debug)]
+///
+/// The editor-state slices grow by domain, one field per slice: `layout` records
+/// open/focus intent, `project` owns the asset workspace (root, tree, view
+/// intent, scan progress). A slice's actions and effects live next to its state
+/// in the same crate; the panel UI only ever reads this tree.
+#[derive(Debug, Default)]
 pub struct EditorState {
     pub layout: LayoutState,
-    pub project_name: String,
-}
-
-impl Default for EditorState {
-    fn default() -> Self {
-        Self {
-            layout: LayoutState::default(),
-            project_name: String::from("demo-project"),
-        }
-    }
+    pub project: ProjectState,
 }
 
 impl EditorState {

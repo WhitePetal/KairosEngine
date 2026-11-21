@@ -28,12 +28,12 @@ impl Panel for ProjectPanel {
         ui_image::preload(ctx, TAB_ICON);
     }
 
-    fn title(&self, frame: &Frame) -> WidgetText {
-        format!("Project — {}", frame.state.project_name).into()
+    fn title(&self, _frame: &Frame) -> WidgetText {
+        "Project".into()
     }
 
     fn ui(&mut self, ui: &mut Ui, frame: &Frame, _out: &mut UiOut) {
         ui.heading("Project");
-        ui.label(format!("name: {}", frame.state.project_name));
+        ui.label(format!("name: {}", frame.state.project.name));
     }
 }

@@ -15,6 +15,7 @@
 
 mod app;
 mod layout;
+mod project;
 mod shared_style;
 mod style;
 
@@ -24,6 +25,7 @@ pub fn reduce(state: &mut EditorState, action: Action) -> Vec<Effect> {
     match action {
         Action::Layout(action) => layout::reduce(state, action),
         Action::App(action) => app::reduce(state, action),
+        Action::Project(action) => project::reduce(state, action),
         Action::Style(action) => style::reduce(state, action),
         Action::SharedStyle(action) => shared_style::reduce(state, action),
     }

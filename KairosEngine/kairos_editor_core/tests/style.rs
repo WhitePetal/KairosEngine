@@ -1,7 +1,8 @@
 //! Style slice: routing only — the value lands in the panel, not in state.
 
 use kairos_editor_core::{
-    Action, EditorState, Effect, ListEdit, PanelId, StyleAction, StyleEffect, StyleValue, reduce,
+    Action, EditorState, Effect, ListEdit, PanelId, ProjectState, StyleAction, StyleEffect,
+    StyleValue, reduce,
 };
 
 const CONSOLE: PanelId = PanelId("console");
@@ -76,6 +77,6 @@ fn skin_edits_leave_the_state_tree_alone() {
         }),
     );
 
-    assert_eq!(state.project_name, "demo-project");
+    assert_eq!(state.project, ProjectState::default());
     assert!(!state.layout.is_open(CONSOLE));
 }

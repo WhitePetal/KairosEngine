@@ -20,6 +20,7 @@ mod effects;
 mod eyedropper;
 mod host;
 mod paths;
+mod project;
 
 use kairos_engine::{
     Engine,

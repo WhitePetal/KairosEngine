@@ -1,4 +1,6 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::Instant;
 
 use kairos_editor_component::{
     ConsoleLine, ConsoleLog, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelInstanceId,
@@ -6,7 +8,8 @@ use kairos_editor_component::{
     toolbar::ToolBar,
 };
 use kairos_editor_core::{
-    Action, AppAction, EditorState, Effect, LayoutAction, SharedStyleAction, StyleAction, reduce,
+    Action, AppAction, EditorState, Effect, LayoutAction, ProjectAction, ProjectState,
+    SharedStyleAction, StyleAction, reduce,
 };
 use kairos_editor_docking::{
     docker::{DockState, Docker},
@@ -19,6 +22,7 @@ use kairos_profile::{Category, Profiler};
 
 use crate::consts;
 use crate::effects::EffectExecutor;
+use crate::project::ProjectService;
 
 /// Host-owned resources a panel may display but never own (the prototype's
 /// `HostState`). The console history is a `kairos_log` sink: the process logger
@@ -89,18 +93,25 @@ fn editor_info() -> EditorInfo {
     }
 }
 
-/// The first-run open set: the five panels [`default_dock`] builds tabs for.
+/// The first-run open set: the panels [`default_dock`] builds tabs for.
 ///
 /// Bootstrapping is the only code allowed to call `LayoutState::open` directly;
 /// runtime opens go through `LayoutAction` so the reducer can return a
 /// placement effect. This is app policy, not panel metadata: which panels a
 /// fresh editor shows is a product decision, so it does not live in the
 /// catalog.
+///
+/// This is also where the project slice learns its root. The working directory
+/// is read here, at the one IO boundary the app owns, and stored as data: core
+/// never calls `current_dir` (D9 in `docs/plan/project-panel`), so pointing the
+/// editor at another project later means replacing this value, not the tree.
 fn boot_state() -> EditorState {
     let mut state = EditorState::new();
+    state.project = ProjectState::at(std::env::current_dir().unwrap_or_default());
     for kind in [
         panels::SCENE,
         panels::INSPECTOR,
+        panels::PROJECT,
         panels::CONSOLE,
         panels::PROFILER,
         panels::HIERARCHY,
@@ -110,11 +121,12 @@ fn boot_state() -> EditorState {
     state
 }
 
-/// Build the first-run layout from the ids the host created for the five
-/// default panels. User drags/splits after this are pure dock-state changes.
+/// Build the first-run layout from the ids the host created for the default
+/// panels. User drags/splits after this are pure dock-state changes.
 fn default_dock(host: &PanelHost) -> DockState<PanelInstanceId> {
     let scene = host.id_of(panels::SCENE).expect("scene instance");
     let inspector = host.id_of(panels::INSPECTOR).expect("inspector instance");
+    let project = host.id_of(panels::PROJECT).expect("project instance");
     let console = host.id_of(panels::CONSOLE).expect("console instance");
     let profiler = host.id_of(panels::PROFILER).expect("profiler instance");
     let hierarchy = host.id_of(panels::HIERARCHY).expect("hierarchy instance");
@@ -129,7 +141,7 @@ fn default_dock(host: &PanelHost) -> DockState<PanelInstanceId> {
     let [top, _bottom] = dock.main_surface_mut().split_bottom(
         scene_leaf,
         Fraction::new(0.7),
-        vec![console, profiler],
+        vec![project, console, profiler],
     );
     dock.main_surface_mut()
         .split_left(top, Fraction::new(0.22), vec![hierarchy]);
@@ -142,9 +154,17 @@ pub struct EditorApp {
     dock: DockState<PanelInstanceId>,
     host_view: AppHost,
     tool_bar: ToolBar,
-    /// Host work returned by the last committed reduce. Applied at the start of
-    /// the next frame, after the panel host has synced its instances.
+    /// Host work returned by the last reduce. Executed in the next frame's host
+    /// phase, after the panel host has synced its instances.
     pending_effects: Vec<Effect>,
+    /// Actions waiting to be applied to the state tree at the next frame's host
+    /// phase (`begin_frame`). The reducer is the only writer, so host work
+    /// (scan results, watcher rescans, file-operation completions) enters
+    /// through here like any other action.
+    inbox: VecDeque<Action>,
+    /// Host side of the project slice: scanning, watching and file operations.
+    /// It owns the file system so the state tree does not have to.
+    project: ProjectService,
     /// Live panels' skin field tables, rebuilt each frame while the Preferences
     /// editor is open (and empty otherwise).
     skins: Vec<PanelSkin>,
@@ -196,40 +216,64 @@ impl EditorApp {
             host_view,
             tool_bar,
             pending_effects: Vec::new(),
+            inbox: VecDeque::new(),
+            project: ProjectService::new(),
             skins: Vec::new(),
             shared,
         }
     }
 
-    /// Align live instances (open/closed panels), dock tabs and the placement
-    /// effects returned by the reducer. Everything is derived from
-    /// `LayoutState`, so closing a panel or restoring a layout converges without
-    /// special-case code in the UI.
-    fn sync(&mut self, ctx: &egui::Context) {
-        kairos_profile::scope!(Category::Editor, "Kairos.Editor.Sync");
-        self.host.sync(&self.state.layout, ctx);
+    /// Start one engine frame: settle host work, then make the live instances
+    /// match the layout, before the UI pass draws.
+    ///
+    /// Called exactly once per engine frame by the host layer
+    /// (`EditorLayer::render`), *outside* `Context::run_ui`: egui may run a UI
+    /// pass more than once (a layout can request a discard), and host work must
+    /// not depend on how many passes a frame happens to run. The frame boundary
+    /// is the engine's, not egui's.
+    ///
+    /// The phase order is fixed:
+    ///
+    /// 1. host events that completed since the last frame (scan results, the
+    ///    watcher, file operations) enter the inbox;
+    /// 2. the inbox is applied through the reducer — the one entry point, shared
+    ///    with the UI's own actions;
+    /// 3. live instances and dock tabs are reconciled with `LayoutState`;
+    /// 4. the effects the reducer queued are executed, after the instances
+    ///    exist (a placement effect needs its panel to exist first).
+    ///
+    /// Actions an effect produces are *completions*. They are queued for the
+    /// **next** frame's host phase instead of re-entering the reducer here, so an
+    /// action/effect pair cannot cycle within a frame and the host phase needs no
+    /// settle budget. The cost is one frame of latency for a completion the host
+    /// produced synchronously; a completion delivered through `poll` (a scan
+    /// thread finishing) is applied in the first frame that polls it.
+    pub(crate) fn begin_frame(&mut self, ctx: &egui::Context) {
+        kairos_profile::scope!(Category::Editor, "Kairos.Editor.BeginFrame");
+        let now = Instant::now();
 
-        let ids: Vec<PanelInstanceId> = self.host.ids().collect();
-        for stale in self.dock.tabs().into_iter().filter(|id| !ids.contains(id)) {
-            self.dock.remove_tab_by_id(stale);
-        }
+        // 1. Host work that completed since the last frame. It joins the
+        // completions an effect produced last frame: both are actions waiting
+        // for the reducer.
+        self.inbox.extend(self.project.poll(now));
 
-        // Effects are the only source of new dock tabs: every action that opens
-        // a panel returns a placement effect (see LayoutAction::reduce). This
-        // replaces the old "append every live instance missing a tab" fallback,
-        // which silently invented a placement in the focused leaf.
-        {
-            let effects = std::mem::take(&mut self.pending_effects);
-            let mut executor =
-                EffectExecutor::new(&mut self.host, &mut self.dock, &mut self.shared);
-            for effect in effects {
-                executor.apply(effect, ctx);
-            }
-        }
+        // 2. Apply everything queued; the reducer returns this frame's effects.
+        let batch: Vec<Action> = self.inbox.drain(..).collect();
+        self.apply_actions(batch);
+
+        // 3. Instances and tabs must match the layout before effects run: a
+        // placement effect for a panel whose instance does not exist yet would
+        // otherwise find nothing to focus.
+        self.sync_instances(ctx);
+
+        // 4. Run this frame's effects. Their completions wait for the next
+        // frame; see the doc comment above.
+        let produced = self.execute_pending_effects(ctx, now);
+        self.inbox.extend(produced);
 
         // The Preferences editor draws the live panels' field tables. Building
         // them walks every token of every open skin, so snapshots exist only
-        // while that panel is open; after the effects, so an edit applied this
+        // while that panel is open; after the effects, so an edit applied last
         // frame is already visible in the table.
         self.skins = if self.state.layout.is_open(panels::PREFERENCES) {
             self.host.skins(&self.state)
@@ -238,9 +282,72 @@ impl EditorApp {
         };
 
         debug_assert!(
-            ids.iter().all(|id| self.dock.contains_tab(*id)),
+            self.host.ids().all(|id| self.dock.contains_tab(id)),
             "a live panel instance has no dock tab; opening a panel must return a layout effect"
         );
+    }
+
+    /// Make the live panel instances and the dock tabs match `LayoutState`.
+    ///
+    /// Both are derived data: the state tree holds the intent, this is the
+    /// reconciliation. It is cheap and idempotent, so the host phase can call it
+    /// every frame and the dock cannot drift from the layout.
+    fn sync_instances(&mut self, ctx: &egui::Context) {
+        self.host.sync(&self.state.layout, ctx);
+
+        let ids: Vec<PanelInstanceId> = self.host.ids().collect();
+        for stale in self.dock.tabs().into_iter().filter(|id| !ids.contains(id)) {
+            self.dock.remove_tab_by_id(stale);
+        }
+    }
+
+    /// Run the effects queued by the reducer and return the actions they
+    /// produced.
+    ///
+    /// Effects are the only source of new dock tabs: every action that opens a
+    /// panel returns a placement effect (see `LayoutAction::reduce`). This
+    /// replaces the old "append every live instance missing a tab" fallback,
+    /// which silently invented a placement in the focused leaf.
+    ///
+    /// The returned actions are the host's answers (scan completions; later,
+    /// file-operation results). The host phase queues them for the *next*
+    /// frame's `begin_frame`, never re-entering the reducer in the frame that
+    /// ran the effect: a completion is a new frame's input, which is what keeps
+    /// action and effect from cycling.
+    fn execute_pending_effects(&mut self, ctx: &egui::Context, now: Instant) -> Vec<Action> {
+        let effects = std::mem::take(&mut self.pending_effects);
+        if effects.is_empty() {
+            return Vec::new();
+        }
+        let mut produced = Vec::new();
+        {
+            let Self {
+                host,
+                dock,
+                shared,
+                project,
+                ..
+            } = self;
+            let mut executor = EffectExecutor::new(host, dock, shared, project, now);
+            for effect in effects {
+                produced.extend(executor.apply(effect, ctx));
+            }
+        }
+        produced
+    }
+
+    /// Apply one batch of actions to the state tree — the only write path.
+    ///
+    /// Logs the intent (except for gestures that fire every frame), calls the
+    /// reducer and queues the effects it returns for the host phase.
+    fn apply_actions(&mut self, actions: Vec<Action>) {
+        for action in actions {
+            if !is_quiet(&action) {
+                kairos_log::info!(target: "kairos_editor", "{}", describe(&action));
+            }
+            let effects = reduce(&mut self.state, action);
+            self.pending_effects.extend(effects);
+        }
     }
 
     /// dispatch the actions collected during the UI pass, then let the host-side resources record what happened.
@@ -249,21 +356,7 @@ impl EditorApp {
     /// run the UI pass twice, and a discarded pass must not apply its actions.
     fn pump(&mut self, mut out: UiOut) {
         kairos_profile::scope!(Category::Editor, "Kairos.Editor.Pump");
-        for action in out.take() {
-            // A skin drag emits one `SetField` per frame; logging every frame
-            // of a gesture would flood the console the way the legacy window
-            // did with its per-frame style messages. The commit (the write) is
-            // logged; the value itself is visible in the field.
-            if !matches!(
-                action,
-                Action::Style(StyleAction::SetField { .. })
-                    | Action::SharedStyle(SharedStyleAction::SetField { .. })
-            ) {
-                kairos_log::info!(target: "kairos_editor", "{}", describe(&action));
-            }
-            let effects = reduce(&mut self.state, action);
-            self.pending_effects.extend(effects);
-        }
+        self.apply_actions(out.take());
     }
 }
 
@@ -278,6 +371,27 @@ fn describe(action: &Action) -> String {
         },
         Action::App(action) => match action {
             AppAction::QuitRequested => "quit editor".to_owned(),
+        },
+        Action::Project(action) => match action {
+            ProjectAction::ScanRequested { reason, focus } => {
+                let focus = focus
+                    .as_ref()
+                    .map(|path| format!(" -> {path}"))
+                    .unwrap_or_default();
+                format!("project scan requested ({reason:?}){focus}")
+            }
+            ProjectAction::Scanned {
+                generation,
+                entries,
+                truncated,
+                elapsed_ms,
+            } => {
+                let truncated = if *truncated { " (truncated)" } else { "" };
+                format!(
+                    "project scan #{generation}: {} nodes in {elapsed_ms} ms{truncated}",
+                    entries.len()
+                )
+            }
         },
         Action::Style(action) => match action {
             StyleAction::SetField { panel, path, .. } => {
@@ -301,6 +415,24 @@ fn describe(action: &Action) -> String {
     }
 }
 
+/// Whether an action is too frequent to log.
+///
+/// A skin drag emits one `SetField` per frame; logging every frame of a gesture
+/// would flood the console the way the legacy window did with its per-frame
+/// style messages. The commit (the write) is logged; the value itself is
+/// visible in the field.
+///
+/// An explicit function rather than a `matches!` inside the pump: adding the
+/// next high-frequency action means editing this list, with a reason, instead of
+/// scattering exceptions through the dispatch path.
+fn is_quiet(action: &Action) -> bool {
+    matches!(
+        action,
+        Action::Style(StyleAction::SetField { .. })
+            | Action::SharedStyle(SharedStyleAction::SetField { .. })
+    )
+}
+
 impl EditorApp {
     /// One UI pass, independent of the window backend (also used by smoke tests).
     ///
@@ -308,6 +440,11 @@ impl EditorApp {
     /// ticks the engine once per redraw, before calling the layer; the pass this
     /// function draws belongs to the frame the loop just opened. So multi-pass
     /// egui layouts need no guard: the engine never ticks twice.
+    ///
+    /// Host work is settled by [`EditorApp::begin_frame`] before this function
+    /// runs, once per engine frame. This function only draws the current state
+    /// and pumps the committed pass's actions into the reducer; a discarded pass
+    /// commits nothing.
     ///
     /// `Profiler::end_frame` carries egui's discard decision — a discarded pass
     /// must not store the frame, and for a second pass the committed one wins.
@@ -326,7 +463,6 @@ impl EditorApp {
             ui.style_mut().interaction.selectable_labels = false;
 
             let mut out = UiOut::new();
-            self.sync(ui.ctx());
 
             // Capture is host policy: keep it tied to the visible Profiler tab
             // so closing the tab cannot leave the recorder running with no
@@ -388,6 +524,7 @@ mod tests {
     use super::*;
     use kairos_editor_component::shared_style::COLOR_PICKER;
     use kairos_editor_core::StyleValue;
+    use kairos_editor_core::project::ScanReason;
     use kairos_editor_docking::viewer::TabViewer;
 
     /// Puffin's frame collector is process-global even though each app owns its
@@ -418,15 +555,15 @@ mod tests {
         root
     }
 
-    /// Apply one action the way a committed UI pass does, then run the effects
-    /// the way the next frame's `sync` does.
+    /// Apply one action the way a committed UI pass does, then run the next
+    /// frame's host phase so its effects execute.
     fn apply(app: &mut EditorApp, action: Action, ctx: &egui::Context) {
         app.pump({
             let mut out = UiOut::new();
             out.push(action);
             out
         });
-        app.sync(ctx);
+        app.begin_frame(ctx);
     }
 
     fn build() -> EditorApp {
@@ -445,9 +582,21 @@ mod tests {
             host_view: AppHost::new(),
             tool_bar,
             pending_effects: Vec::new(),
+            inbox: VecDeque::new(),
+            project: ProjectService::new(),
             skins: Vec::new(),
             shared: SharedStyles::default(),
         }
+    }
+
+    /// How many panels the layout has open. Count-based tests derive the number
+    /// from app policy (`boot_state`) instead of pinning a literal, so the product
+    /// opening another panel by default does not mean rewriting the suite.
+    fn open_panel_count(app: &EditorApp) -> usize {
+        app.host
+            .kinds()
+            .filter(|kind| app.state.layout.is_open(*kind))
+            .count()
     }
 
     /// A light desktop must not paint a white panel inside the dark chrome: the
@@ -465,10 +614,31 @@ mod tests {
     }
 
     #[test]
-    fn default_layout_opens_the_five_default_tabs() {
+    fn default_layout_opens_a_tab_for_every_boot_panel() {
         let app = build();
-        assert_eq!(app.host.ids().count(), 5);
-        assert_eq!(app.dock.tabs().len(), 5);
+        let expected = open_panel_count(&app);
+
+        assert!(expected > 0, "boot opens at least one panel");
+        assert_eq!(app.host.ids().count(), expected);
+        assert_eq!(app.dock.tabs().len(), expected);
+    }
+
+    /// The project root is data the app reads at boot: the working directory
+    /// today (D9). Core never calls `current_dir`; this is that boundary, so the
+    /// test pins it here instead of inside the state tree.
+    #[test]
+    fn the_project_slice_starts_at_the_working_directory() {
+        let app = build();
+        let cwd = std::env::current_dir().expect("a working directory");
+
+        assert_eq!(app.state.project.root, cwd);
+        assert_eq!(
+            app.state.project.name,
+            cwd.file_name()
+                .expect("the working directory has a name")
+                .to_string_lossy()
+                .into_owned()
+        );
     }
 
     /// The About entry is an ordinary `ShowPanel`: it floats where there is no
@@ -478,13 +648,14 @@ mod tests {
     fn about_opens_as_a_floating_window_and_comes_back() {
         let mut app = build();
         let ctx = egui::Context::default();
+        let workspace_tabs = open_panel_count(&app);
 
         let mut out = UiOut::new();
         out.push(Action::Layout(LayoutAction::ShowPanel {
             panel: panels::ABOUT,
         }));
         app.pump(out);
-        app.sync(&ctx);
+        app.begin_frame(&ctx);
 
         let about = app.host.id_of(panels::ABOUT).expect("about instance");
         assert!(app.dock.contains_tab(about));
@@ -495,7 +666,7 @@ mod tests {
         );
         assert_eq!(
             app.dock.main_surface().tabs_count(),
-            5,
+            workspace_tabs,
             "the workspace layout is untouched"
         );
         assert_eq!(app.dock.focused_tab(), Some(about));
@@ -506,7 +677,7 @@ mod tests {
             panel: panels::ABOUT,
         }));
         app.pump(out);
-        app.sync(&ctx);
+        app.begin_frame(&ctx);
         assert_eq!(app.dock.valid_surface_indices().len(), 2);
         assert_eq!(app.host.id_of(panels::ABOUT), Some(about));
 
@@ -516,7 +687,7 @@ mod tests {
             panel: panels::ABOUT,
         }));
         app.pump(out);
-        app.sync(&ctx);
+        app.begin_frame(&ctx);
         assert_eq!(app.host.id_of(panels::ABOUT), None);
         assert_eq!(app.dock.valid_surface_indices().len(), 1);
     }
@@ -528,10 +699,12 @@ mod tests {
         let engine = Engine::headless();
         let ctx = egui::Context::default();
 
+        let expected = open_panel_count(&app);
+        app.begin_frame(&ctx);
         let _ = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
 
-        assert_eq!(app.host.ids().count(), 5);
-        assert_eq!(app.dock.tabs().len(), 5);
+        assert_eq!(app.host.ids().count(), expected);
+        assert_eq!(app.dock.tabs().len(), expected);
     }
 
     #[test]
@@ -546,6 +719,7 @@ mod tests {
         // the UI pass below belongs to it, and the next `update` flushes it
         // into the store.
         engine.update();
+        app.begin_frame(&ctx);
         let _ = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
         engine.update();
 
@@ -594,9 +768,10 @@ mod tests {
 
         assert!(!app.state.layout.is_open(panels::CONSOLE));
 
-        app.sync(&egui::Context::default());
-        assert_eq!(app.host.ids().count(), 4);
-        assert_eq!(app.dock.tabs().len(), 4);
+        app.begin_frame(&egui::Context::default());
+        let expected = open_panel_count(&app);
+        assert_eq!(app.host.ids().count(), expected);
+        assert_eq!(app.dock.tabs().len(), expected);
     }
 
     #[test]
@@ -650,6 +825,29 @@ mod tests {
                 style: COLOR_PICKER
             })),
             "reload color_picker shared skin"
+        );
+        assert_eq!(
+            describe(&Action::Project(ProjectAction::ScanRequested {
+                reason: ScanReason::Manual,
+                focus: None,
+            })),
+            "project scan requested (Manual)"
+        );
+        assert_eq!(
+            describe(&Action::Project(ProjectAction::ScanRequested {
+                reason: ScanReason::Manual,
+                focus: Some(kairos_editor_core::project::RelPath::new("res/models")),
+            })),
+            "project scan requested (Manual) -> res/models"
+        );
+        assert_eq!(
+            describe(&Action::Project(ProjectAction::Scanned {
+                generation: 3,
+                entries: Vec::new(),
+                truncated: true,
+                elapsed_ms: 12,
+            })),
+            "project scan #3: 0 nodes in 12 ms (truncated)"
         );
     }
 
@@ -722,9 +920,10 @@ mod tests {
         out.push(Action::App(AppAction::QuitRequested));
         app.pump(out);
 
-        // Effects run at the start of the next pass, inside it, so the close
-        // request belongs to that pass's viewport output.
+        // Effects run in the next frame's host phase, before the pass; the
+        // close request therefore belongs to that frame's viewport output.
         let ctx = egui::Context::default();
+        app.begin_frame(&ctx);
         let output = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
 
         let close_requested = output
@@ -785,6 +984,7 @@ mod tests {
         engine.profiler().set_recording(true);
 
         let ctx = egui::Context::default();
+        app.begin_frame(&ctx);
         let _ = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
         assert!(
             engine.profiler().is_recording(),
@@ -792,6 +992,7 @@ mod tests {
         );
 
         app.state.layout.close(panels::PROFILER);
+        app.begin_frame(&ctx);
         let _ = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
 
         assert!(
@@ -839,7 +1040,7 @@ mod tests {
             panel: panels::CONSOLE,
         }));
         app.pump(out);
-        app.sync(&ctx);
+        app.begin_frame(&ctx);
 
         assert_eq!(app.dock.focused_tab(), Some(console));
         assert_eq!(
@@ -856,8 +1057,9 @@ mod tests {
         let profiler = app.host.id_of(panels::PROFILER).expect("profiler instance");
 
         app.state.layout.close(panels::PROFILER);
-        app.sync(&ctx);
-        assert_eq!(app.dock.tabs().len(), 4);
+        app.begin_frame(&ctx);
+        let closed_tabs = open_panel_count(&app);
+        assert_eq!(app.dock.tabs().len(), closed_tabs);
         assert_eq!(app.dock.valid_surface_indices().len(), 1);
 
         let mut out = UiOut::new();
@@ -865,16 +1067,16 @@ mod tests {
             panel: panels::PROFILER,
         }));
         app.pump(out);
-        app.sync(&ctx);
+        app.begin_frame(&ctx);
 
         let reopened = app.host.id_of(panels::PROFILER).expect("profiler reopened");
         assert_ne!(reopened, profiler, "reopening creates a new instance");
-        assert_eq!(app.dock.tabs().len(), 5);
+        assert_eq!(app.dock.tabs().len(), closed_tabs + 1);
         assert_eq!(app.dock.valid_surface_indices().len(), 2);
         assert_eq!(app.dock.focused_tab(), Some(reopened));
         assert_eq!(
             app.dock.main_surface().tabs_count(),
-            4,
+            closed_tabs,
             "the reopened panel is a floating window, not a tab in the main surface"
         );
     }
@@ -885,24 +1087,25 @@ mod tests {
         let ctx = egui::Context::default();
 
         app.state.layout.close(panels::PROFILER);
-        app.sync(&ctx);
+        app.begin_frame(&ctx);
 
         let mut out = UiOut::new();
         out.push(Action::Layout(LayoutAction::FocusPanel {
             panel: panels::PROFILER,
         }));
         app.pump(out);
-        app.sync(&ctx);
+        app.begin_frame(&ctx);
 
         let reopened = app.host.id_of(panels::PROFILER).expect("profiler reopened");
-        assert_eq!(app.dock.tabs().len(), 5);
+        let expected = open_panel_count(&app);
+        assert_eq!(app.dock.tabs().len(), expected);
         assert_eq!(
             app.dock.valid_surface_indices().len(),
             1,
             "Focus docks a missing panel instead of opening a window"
         );
         assert_eq!(app.dock.focused_tab(), Some(reopened));
-        assert_eq!(app.dock.main_surface().tabs_count(), 5);
+        assert_eq!(app.dock.main_surface().tabs_count(), expected);
     }
 
     #[test]
@@ -911,19 +1114,21 @@ mod tests {
         let ctx = egui::Context::default();
 
         app.state.layout.close(panels::CONSOLE);
-        app.sync(&ctx);
-        assert_eq!(app.host.ids().count(), 4);
-        assert_eq!(app.dock.tabs().len(), 4);
+        app.begin_frame(&ctx);
+        let closed = open_panel_count(&app);
+        assert_eq!(app.host.ids().count(), closed);
+        assert_eq!(app.dock.tabs().len(), closed);
 
         let mut out = UiOut::new();
         out.push(Action::Layout(LayoutAction::TogglePanel {
             panel: panels::CONSOLE,
         }));
         app.pump(out);
-        app.sync(&ctx);
+        app.begin_frame(&ctx);
 
-        assert_eq!(app.host.ids().count(), 5);
-        assert_eq!(app.dock.tabs().len(), 5);
+        let expected = open_panel_count(&app);
+        assert_eq!(app.host.ids().count(), expected);
+        assert_eq!(app.dock.tabs().len(), expected);
         assert_eq!(
             app.dock.focused_tab(),
             app.host.id_of(panels::CONSOLE),
@@ -1064,6 +1269,7 @@ mod tests {
         let engine = Engine::headless();
         let ctx = egui::Context::default();
 
+        app.begin_frame(&ctx);
         let _ = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
         apply(
             &mut app,
@@ -1072,6 +1278,7 @@ mod tests {
             }),
             &ctx,
         );
+        app.begin_frame(&ctx);
         let mut output = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
 
         for _ in 0..4 {
@@ -1085,9 +1292,11 @@ mod tests {
                     phase: egui::TouchPhase::Move,
                 },
             ];
+            app.begin_frame(&ctx);
             output = ctx.run_ui(input, |ui| app.ui(&engine, ui));
         }
         for _ in 0..90 {
+            app.begin_frame(&ctx);
             output = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
         }
 
@@ -1104,6 +1313,7 @@ mod tests {
         let mut hover = |offset: egui::Vec2| {
             let mut input = raw_input();
             input.events = vec![egui::Event::PointerMoved(name + offset)];
+            app.begin_frame(&ctx);
             ctx.run_ui(input, |ui| app.ui(&engine, ui))
                 .platform_output
                 .cursor_icon
@@ -1114,5 +1324,82 @@ mod tests {
             egui::CursorIcon::ResizeHorizontal
         );
         assert_eq!(hover(egui::vec2(200.0, 5.0)), egui::CursorIcon::Text);
+    }
+
+    /// Host work enters through the inbox and is applied through the same
+    /// reducer as a UI action. Order is preserved: every action sees what the
+    /// ones before it produced.
+    #[test]
+    fn inbox_actions_are_applied_in_order() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+
+        app.inbox.push_back(Action::Layout(LayoutAction::ShowPanel {
+            panel: panels::ABOUT,
+        }));
+        app.inbox
+            .push_back(Action::Layout(LayoutAction::ClosePanel {
+                panel: panels::ABOUT,
+            }));
+
+        app.begin_frame(&ctx);
+
+        assert!(
+            !app.state.layout.is_open(panels::ABOUT),
+            "the last action wins: Close ran after Show"
+        );
+        assert_eq!(
+            app.host.id_of(panels::ABOUT),
+            None,
+            "the panel was closed before its placement effect could run"
+        );
+        assert!(app.inbox.is_empty(), "the host phase drained the inbox");
+    }
+
+    /// An action produced by executing an effect is a *completion*: it is
+    /// applied at the next frame's host phase, never in the frame that ran the
+    /// effect. That one-frame boundary is what keeps action and effect from
+    /// cycling, so the host phase needs no settle budget. This is the channel
+    /// every later async feature lands on (scan results first).
+    #[test]
+    fn an_effects_completion_is_applied_on_the_next_frame() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+        assert_eq!(app.state.project.tree.generation(), 0);
+
+        app.inbox
+            .push_back(Action::Project(ProjectAction::ScanRequested {
+                reason: ScanReason::Manual,
+                focus: None,
+            }));
+
+        app.begin_frame(&ctx);
+
+        assert_eq!(app.state.project.scan.generation, 1, "the request ran");
+        assert!(
+            app.state.project.scan.running,
+            "the frame that ran the effect has not seen its completion"
+        );
+        assert_eq!(
+            app.state.project.tree.generation(),
+            0,
+            "no completion is applied in the frame that ran the effect"
+        );
+        assert!(
+            !app.inbox.is_empty(),
+            "the completion waits in the inbox for the next frame"
+        );
+
+        app.begin_frame(&ctx);
+
+        assert!(
+            !app.state.project.scan.running,
+            "the completion landed on the next frame"
+        );
+        assert_eq!(app.state.project.tree.generation(), 1);
+        assert!(
+            app.inbox.is_empty(),
+            "nothing is left over after the completion was applied"
+        );
     }
 }

@@ -12,6 +12,7 @@
 //! styles are separate slices because they have different owners.
 
 use crate::PanelId;
+use crate::project::ProjectEffect;
 use crate::style::{ListEdit, SharedStyleId, StyleValue};
 
 /// One unit of host work returned by `reduce`.
@@ -21,6 +22,9 @@ pub enum Effect {
     /// Lifecycle work: the host owns the window and the loop, so only it can
     /// act on "the user wants to leave".
     App(AppEffect),
+    /// Project work: the file system lives in the app, so scanning (and later
+    /// persisting, file operations and opening) is asked for as data here.
+    Project(ProjectEffect),
     /// Skin work: a panel's style lives in the panel instance and its file is
     /// written by the app, so both are outside core.
     Style(StyleEffect),

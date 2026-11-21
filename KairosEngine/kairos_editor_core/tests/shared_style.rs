@@ -1,8 +1,8 @@
 //! Shared-style slice: routing only, exactly like the panel-skin slice.
 
 use kairos_editor_core::{
-    Action, EditorState, Effect, ListEdit, SharedStyleAction, SharedStyleEffect, SharedStyleId,
-    StyleValue, reduce,
+    Action, EditorState, Effect, ListEdit, ProjectState, SharedStyleAction, SharedStyleEffect,
+    SharedStyleId, StyleValue, reduce,
 };
 
 const COLOR_PICKER: SharedStyleId = SharedStyleId("color_picker");
@@ -97,5 +97,5 @@ fn shared_style_edits_leave_the_state_tree_alone() {
         }),
     );
 
-    assert_eq!(state.project_name, "demo-project");
+    assert_eq!(state.project, ProjectState::default());
 }

@@ -1,7 +1,7 @@
 //! App slice: quitting is an intent, and the reducer answers it with host work.
 
 use kairos_editor_core::{
-    Action, AppAction, AppEffect, EditorState, Effect, LayoutAction, PanelId, reduce,
+    Action, AppAction, AppEffect, EditorState, Effect, LayoutAction, PanelId, ProjectState, reduce,
 };
 
 const SCENE: PanelId = PanelId("scene");
@@ -31,5 +31,9 @@ fn quitting_leaves_the_layout_alone() {
 
     assert!(state.layout.is_open(SCENE));
     assert!(!state.layout.is_open(CONSOLE));
-    assert_eq!(state.project_name, "demo-project");
+    assert_eq!(
+        state.project,
+        ProjectState::default(),
+        "quitting must not touch the project slice"
+    );
 }

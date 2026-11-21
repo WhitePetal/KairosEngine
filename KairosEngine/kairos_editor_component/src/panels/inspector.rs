@@ -31,9 +31,8 @@ impl Panel for InspectorPanel {
         "Inspector".into()
     }
 
-    fn ui(&mut self, ui: &mut Ui, frame: &Frame, _out: &mut UiOut) {
+    fn ui(&mut self, ui: &mut Ui, _frame: &Frame, _out: &mut UiOut) {
         ui.heading("Inspector");
-        ui.label(format!("project: {}", frame.state.project_name));
         ui.separator();
         ui.weak("The document inspector lands with the project-tree port.");
     }

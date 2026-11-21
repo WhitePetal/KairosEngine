@@ -8,19 +8,30 @@
 //! preconditions to `apply` (the old single `focus_tab` preamble made every
 //! future effect depend on tab focus).
 
+use std::time::Instant;
+
 use egui::{Context, Rect};
 use kairos_editor_component::{PanelHost, PanelInstanceId, shared_style::SharedStyles};
 use kairos_editor_core::{
-    AppEffect, Effect, LayoutEffect, PanelId, SharedStyleEffect, StyleEffect,
+    Action, AppEffect, Effect, LayoutEffect, PanelId, ProjectEffect, SharedStyleEffect, StyleEffect,
 };
 use kairos_editor_docking::docker::DockState;
 
-/// Runs effects in order against the live panel host, dock tree and shared
-/// style registry.
+use crate::project::ProjectService;
+
+/// Runs effects in order against the live panel host, dock tree, shared style
+/// registry and the project service.
 pub(crate) struct EffectExecutor<'a> {
     host: &'a mut PanelHost,
     dock: &'a mut DockState<PanelInstanceId>,
     shared: &'a mut SharedStyles,
+    /// The file system's host side: scanning (M1), watching (M1), file
+    /// operations (M3).
+    project: &'a mut ProjectService,
+    /// The instant the effects run. Timing policy that depends on wall-clock
+    /// time (M4's view-file debounce, scan elapsed time) is computed here, not
+    /// in the reducer, which must stay a pure function.
+    now: Instant,
 }
 
 impl<'a> EffectExecutor<'a> {
@@ -28,19 +39,55 @@ impl<'a> EffectExecutor<'a> {
         host: &'a mut PanelHost,
         dock: &'a mut DockState<PanelInstanceId>,
         shared: &'a mut SharedStyles,
+        project: &'a mut ProjectService,
+        now: Instant,
     ) -> Self {
-        Self { host, dock, shared }
+        Self {
+            host,
+            dock,
+            shared,
+            project,
+            now,
+        }
     }
 
-    /// Dispatch one effect. Compiler-enforced extension point: a new `Effect`
-    /// variant fails this match until it has a handler.
-    pub(crate) fn apply(&mut self, effect: Effect, ctx: &Context) {
+    /// Dispatch one effect.
+    ///
+    /// Returns the actions the host work produced. Effects never write
+    /// `EditorState`; completions leave here as actions and the app queues them
+    /// for the next frame's host phase. A completion is therefore a new frame's
+    /// input, never a re-entry into the reducer in the frame that ran the effect,
+    /// so action and effect cannot cycle.
+    ///
+    /// Compiler-enforced extension point: a new `Effect` variant fails this
+    /// match until it has a handler.
+    pub(crate) fn apply(&mut self, effect: Effect, ctx: &Context) -> Vec<Action> {
         match effect {
-            Effect::Layout(effect) => self.apply_layout(effect, ctx),
-            Effect::App(effect) => self.apply_app(effect, ctx),
-            Effect::Style(effect) => self.apply_style(effect, ctx),
-            Effect::SharedStyle(effect) => self.apply_shared_style(effect, ctx),
+            Effect::Layout(effect) => {
+                self.apply_layout(effect, ctx);
+                Vec::new()
+            }
+            Effect::App(effect) => {
+                self.apply_app(effect, ctx);
+                Vec::new()
+            }
+            Effect::Project(effect) => self.apply_project(effect),
+            Effect::Style(effect) => {
+                self.apply_style(effect, ctx);
+                Vec::new()
+            }
+            Effect::SharedStyle(effect) => {
+                self.apply_shared_style(effect, ctx);
+                Vec::new()
+            }
         }
+    }
+
+    /// Project work: the service owns the file system, so an effect becomes a
+    /// service call and whatever the service completed becomes actions.
+    fn apply_project(&mut self, effect: ProjectEffect) -> Vec<Action> {
+        let now = self.now;
+        self.project.execute(effect, now)
     }
 
     /// App lifecycle: the app does not own the window (the engine's loop does),
