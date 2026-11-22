@@ -1041,8 +1041,8 @@ fn nested_processed_root_is_not_scanned_as_source() {
         .get_source(AssetSourceId::Default)
         .expect("the default source is registered");
     assert_eq!(
-        source.unprocessed_exclude(),
-        Some(Path::new("imported_assets"))
+        source.unprocessed_excludes(),
+        [PathBuf::from("imported_assets")]
     );
 
     block_on(processor.run_initial_processing());

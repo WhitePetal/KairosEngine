@@ -38,6 +38,9 @@ pollster = "0.3"
 wgpu = "29.0.3"
 half = { version = "2.4", features = ["bytemuck"] }
 kairos_ecs = { path = "../kairos_ecs" }
+# The `.kairosignore` rules, shared with the project browser: what the hierarchy
+# cannot show, the bake does not process (ADR 0018).
+kairos_ignore = { path = "../kairos_ignore" }
 kairos_asset = { path = "../kairos_asset" }
 # `Color` lives in `kairos_color` and is re-exported from here, so
 # `kairos_engine::math::Color` stays the path engine/editor code uses.

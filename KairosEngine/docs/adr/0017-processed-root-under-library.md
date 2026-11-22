@@ -71,4 +71,6 @@ ProjectPanel 迁移（`docs/plan/project-panel`，D12）要求面板把成品当
 - [ADR 0004](./0004-asset-default-source-root.md) — 源根 = cwd；成品根位置由本 ADR 取代
 - [ADR 0005](./0005-kairos-asset-rewrite-strategy-and-deviations.md) — 偏离 12（成品子树排除），
   排除结果由 `imported_assets` 变成 `Library`
+- [ADR 0018](./0018-asset-source-follows-kairosignore.md) — 资产源的排除规则改由 `.kairosignore`
+  统一提供；成品根的排除现在与项目忽略目录共用同一个列表
 - [docs/plan/project-panel](../../plan/project-panel/README.md) — D12，本 ADR 的服务对象

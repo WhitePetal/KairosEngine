@@ -7,7 +7,7 @@
 //! directories are values a test can inject and a future "open project" can
 //! replace without touching the walk.
 
-use super::ignore::IgnoreRules;
+use super::IgnoreRules;
 use super::RelPath;
 
 /// One directory entry as the scanner saw it.

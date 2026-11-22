@@ -734,7 +734,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 > - 10 个成品 `git mv` 到 `Library/imported_assets/Default/`，10 处字面量/数据、`.gitignore`、文档注释同步；ADR 0017 新增，ADR 0004/0005/0007 加交叉注记。旧编辑器只动了 `DEFAULT_PREVIEW_MESH` 与一处测试夹具（规则本身没变），76 个测试全绿。
 > - `cargo run --bin bake_assets` 在**新路径**下重新生成：已提交的 10 个成品**逐字节不变**（`git diff -- Library` 为空），说明搬迁没有动内容。
 > - 编辑器 rebake 后启动无任何 asset / texture / mesh 加载错误。
-> - **顺带发现（不是 M0.5 引入的）**：`bake_assets` 的源根是进程 cwd（ADR 0004），所以它会把 `docs/` 的研究截图、`Preferences/` 的图标、甚至 `target/doc` 的 rustdoc 图一并加工——本次产出 **230 个、约 346 MB** 未被仓库提交的成品；仓库历史上只提交了 `res/` 那 10 个。要修的话是给 bake 一个排除清单（`target`/`docs`/`Preferences`/`prototypes`）或把源根收到 `res/`，属独立小任务，不在 M1 范围。
+> - **顺带发现（不是 M0.5 引入的）→ 已按 ADR 0018 处理**：`bake_assets` 的源根是进程 cwd（ADR 0004），会把 `docs/` 的研究截图、`Preferences/` 的图标、`target/doc` 的 rustdoc 图一并加工。处理方式是把**排除规则统一到 `.kairosignore`**（新叶子 crate `kairos_ignore`，面板与 bake 共用）：现在 bake 跳过 `.cargo`/`.zed`/`target`；**仍在烘可见目录**（`Preferences/Textures` 96 个文件 160 MB、`docs/research` 74 个 91 MB、`prototypes/editor-ui` 20 个 79 MB）——按「可见即可烘」的口径这是对的，已提交的 10 个成品仍然逐字节不变。这些成品不提交，bake 后需要人工清理或另行决定口径（见 ADR 0018 的「影响」）。
 
 ### M1 — ProjectTree v2：模型 + 扫描 + 监听 + .kairosignore（2.5–3.5 天，分两刀）
 

@@ -637,8 +637,8 @@ fn processed_file_path_is_configurable_and_excluded() {
         "the custom processed root wires a processed reader"
     );
     assert_eq!(
-        source.unprocessed_exclude(),
-        Some(std::path::Path::new("out")),
+        source.unprocessed_excludes(),
+        [std::path::PathBuf::from("out")],
         "the custom processed root's top-level directory is excluded from the source scan"
     );
 }

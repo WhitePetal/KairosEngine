@@ -3,13 +3,13 @@
 use std::fs;
 use std::path::Path;
 
-use kairos_editor_core::project::{DEFAULT_IGNORE_LINES, IgnoreRules, RelPath};
+use kairos_editor_core::project::{DEFAULT_IGNORE_LINES, IgnoreRules};
 
 use super::{IGNORE_FILE, load_or_seed, seed_text};
 
 fn ignored(rules: &IgnoreRules, path: &str) -> bool {
-    let path = RelPath::new(path);
-    rules.is_ignored(&path, path.name())
+    let name = path.rsplit('/').next().unwrap_or(path);
+    rules.is_ignored(path, name)
 }
 
 #[test]

@@ -2673,6 +2673,7 @@ name = "kairos_editor_core"
 version = "0.2.0"
 dependencies = [
  "kairos_color",
+ "kairos_ignore",
 ]
 
 [[package]]
@@ -2709,6 +2710,7 @@ dependencies = [
  "kairos_color",
  "kairos_ecs",
  "kairos_graphics",
+ "kairos_ignore",
  "kairos_math",
  "kairos_physics",
  "kairos_profile",
@@ -2759,6 +2761,10 @@ dependencies = [
  "wgpu",
  "winit",
 ]
+
+[[package]]
+name = "kairos_ignore"
+version = "0.2.0"
 
 [[package]]
 name = "kairos_log"
