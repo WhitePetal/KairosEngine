@@ -23,7 +23,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
 use super::view::ProjectView;
-use super::ScanEntry;
+use super::{FileTypeRegistry, ScanEntry};
 
 /// One node of the tree.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -105,9 +105,7 @@ impl RelPath {
         }
         let bytes = self.0.as_bytes();
         let ancestor = ancestor.0.as_bytes();
-        bytes.len() > ancestor.len()
-            && bytes.starts_with(ancestor)
-            && bytes[ancestor.len()] == b'/'
+        bytes.len() > ancestor.len() && bytes.starts_with(ancestor) && bytes[ancestor.len()] == b'/'
     }
 }
 
@@ -266,7 +264,9 @@ impl ProjectTree {
     }
 
     pub fn children(&self, id: NodeId) -> &[NodeId] {
-        self.nodes.get(id.index()).map_or(&[], |node| &node.children)
+        self.nodes
+            .get(id.index())
+            .map_or(&[], |node| &node.children)
     }
 
     /// The directory the content pane shows when `path` is selected: a folder
@@ -308,24 +308,19 @@ impl ProjectTree {
     /// The rows the panel draws, in pre-order: a folder's children follow it
     /// when it is expanded in `view`.
     ///
-    /// Hidden names (dot entries and `.meta` companions) are in the tree but
-    /// skipped unless `view.show_hidden`. They are deliberately not removed from
-    /// the snapshot: revealing them must not cost a rescan, and the type registry
-    /// (M5) will take over the companion rule.
+    /// Hidden names (dot entries and companions such as `.meta`) are in the tree
+    /// but skipped unless `view.show_hidden`. They are deliberately not removed
+    /// from the snapshot: revealing them must not cost a rescan, and the rule
+    /// that decides "companion" is the file-type table's, not the tree's.
     ///
     /// O(visible rows) — it never touches a collapsed subtree, which is what lets
     /// a 100k-node project draw at frame rate.
-    pub fn visible_rows(&self, view: &ProjectView) -> Vec<NodeId> {
+    pub fn visible_rows(&self, view: &ProjectView, types: &FileTypeRegistry) -> Vec<NodeId> {
         let mut rows = Vec::new();
-        let mut stack: Vec<NodeId> = self
-            .children(self.root())
-            .iter()
-            .rev()
-            .copied()
-            .collect();
+        let mut stack: Vec<NodeId> = self.children(self.root()).iter().rev().copied().collect();
         while let Some(id) = stack.pop() {
             let Some(node) = self.node(id) else { continue };
-            if !view.show_hidden && is_hidden_name(node.name()) {
+            if !view.show_hidden && types.is_hidden(node.name()) {
                 continue;
             }
             rows.push(id);
@@ -371,16 +366,14 @@ impl ProjectTree {
         // A byte-sorted list is the scanner's normal output: reusing it keeps the
         // walk single-pass (a parent always precedes its children). Anything else
         // is copied and sorted rather than trusted.
-        let ordered: Vec<&ScanEntry> = if entries
-            .windows(2)
-            .all(|pair| pair[0].path <= pair[1].path)
-        {
-            entries.iter().collect()
-        } else {
-            let mut sorted = entries.iter().collect::<Vec<_>>();
-            sorted.sort_by(|a, b| a.path.cmp(&b.path));
-            sorted
-        };
+        let ordered: Vec<&ScanEntry> =
+            if entries.windows(2).all(|pair| pair[0].path <= pair[1].path) {
+                entries.iter().collect()
+            } else {
+                let mut sorted = entries.iter().collect::<Vec<_>>();
+                sorted.sort_by(|a, b| a.path.cmp(&b.path));
+                sorted
+            };
 
         let mut report = AssembleReport::default();
         for entry in ordered {
@@ -477,15 +470,6 @@ struct SortKey {
     file: bool,
     lower: String,
     name: String,
-}
-
-/// Whether a name is hidden by default: dot entries and `.meta` companions.
-///
-/// The companion half is a placeholder for M5's `FileTypeRegistry`: a single
-/// documented rule now beats a type table that does not exist yet, and moving it
-/// later is one function.
-pub fn is_hidden_name(name: &str) -> bool {
-    name.starts_with('.') || name.ends_with(".meta")
 }
 
 /// `FNV-1a` over the path's UTF-8 bytes.

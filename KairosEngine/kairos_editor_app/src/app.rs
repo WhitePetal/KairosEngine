@@ -8,6 +8,7 @@ use kairos_editor_component::{
     PanelSkin, UiOut, panels, shared_style::SharedStyles, shared_style::StyleCatalog,
     toolbar::ToolBar,
 };
+use kairos_editor_core::project::{ScanReason, SelectMode};
 use kairos_editor_core::{
     Action, AppAction, EditorState, Effect, LayoutAction, ProjectAction, ProjectState,
     SharedStyleAction, StyleAction, reduce,
@@ -24,6 +25,7 @@ use kairos_profile::{Category, Profiler};
 use crate::consts;
 use crate::effects::EffectExecutor;
 use crate::project::ProjectService;
+use crate::project::thumbnail::Thumbnails;
 
 /// Host-owned resources a panel may display but never own (the prototype's
 /// `HostState`). The console history is a `kairos_log` sink: the process logger
@@ -38,6 +40,13 @@ use crate::project::ProjectService;
 /// this process uses; the app never creates a second.
 struct AppHost {
     console: Arc<ConsoleLog>,
+    /// Decoded previews for the Project panel's texture rows.
+    ///
+    /// Host-owned because a preview is a GPU texture and a file read, neither
+    /// of which belongs to the UI state tree. Shared with each frame's
+    /// `HostScope` by Arc so the UI can fill it while the app's other fields are
+    /// borrowed.
+    thumbnails: Arc<Thumbnails>,
     /// Keeps the console attached to the process logger; dropping the app
     /// detaches the sink.
     _console_sink: SinkHandle,
@@ -49,6 +58,7 @@ impl AppHost {
         let console_sink = kairos_log::attach(console.clone());
         Self {
             console,
+            thumbnails: Arc::new(Thumbnails::default()),
             _console_sink: console_sink,
         }
     }
@@ -62,6 +72,7 @@ impl AppHost {
 /// bounded.
 struct HostScope<'a> {
     console: Arc<ConsoleLog>,
+    thumbnails: Arc<Thumbnails>,
     profiler: Option<&'a Profiler>,
 }
 
@@ -72,6 +83,15 @@ impl HostView for HostScope<'_> {
 
     fn profiler(&self) -> Option<&Profiler> {
         self.profiler
+    }
+
+    fn project_thumbnail(
+        &self,
+        ctx: &egui::Context,
+        root: &str,
+        relative: &str,
+    ) -> Option<egui::TextureId> {
+        self.thumbnails.get(ctx, root, relative)
     }
 }
 
@@ -182,10 +202,7 @@ impl EditorApp {
     /// loaders and wires the repaint callback. The engine belongs to the loop
     /// and is not passed here; it arrives with every UI pass.
     pub fn new(egui_ctx: &egui::Context) -> Self {
-        Self::with_root(
-            egui_ctx,
-            std::env::current_dir().unwrap_or_default(),
-        )
+        Self::with_root(egui_ctx, std::env::current_dir().unwrap_or_default())
     }
 
     /// The editor for an explicit project root.
@@ -275,8 +292,21 @@ impl EditorApp {
 
         // 1. Host work that completed since the last frame. It joins the
         // completions an effect produced last frame: both are actions waiting
-        // for the reducer.
-        self.inbox.extend(self.project.poll(now));
+        // for the reducer. An external change also invalidates every decoded
+        // preview: the image behind a path may be a different image now.
+        let events = self.project.poll(now);
+        if events.iter().any(|action| {
+            matches!(
+                action,
+                Action::Project(ProjectAction::ScanRequested {
+                    reason: ScanReason::ExternalChange,
+                    ..
+                })
+            )
+        }) {
+            self.host_view.thumbnails.clear();
+        }
+        self.inbox.extend(events);
 
         // 2. Apply everything queued; the reducer returns this frame's effects.
         let batch: Vec<Action> = self.inbox.drain(..).collect();
@@ -425,9 +455,14 @@ fn describe(action: &Action) -> String {
                     entries.len()
                 )
             }
-            ProjectAction::Select { path } => match path {
-                Some(path) => format!("project select: {path}"),
-                None => "project select: none".to_owned(),
+            ProjectAction::Select { paths, mode } => match (mode, paths.len()) {
+                (_, 0) => "project select: none".to_owned(),
+                (SelectMode::Range, 2) => {
+                    format!("project select range: {} .. {}", paths[0], paths[1])
+                }
+                (SelectMode::Toggle, count) => format!("project toggle selection: {count} paths"),
+                (_, 1) => format!("project select: {}", paths[0]),
+                (_, count) => format!("project select: {count} paths"),
             },
             ProjectAction::ToggleFolder { path } => format!("project toggle folder: {path}"),
             ProjectAction::Navigate { path } => format!("project navigate: {path}"),
@@ -438,6 +473,23 @@ fn describe(action: &Action) -> String {
             ProjectAction::CollapseAll => "project collapse all".to_owned(),
             ProjectAction::SetTreeSplit(tree_split) => format!("project tree split: {tree_split}"),
             ProjectAction::Failed { message } => format!("project failed: {message}"),
+            ProjectAction::CreateRequested { parent, name, kind } => {
+                format!("project create {kind:?}: {parent}/{name}")
+            }
+            ProjectAction::RenameRequested { path, name } => {
+                format!("project rename: {path} -> {name}")
+            }
+            ProjectAction::MoveRequested { paths, target } => {
+                format!("project move: {} entries -> {target}", paths.len())
+            }
+            ProjectAction::DeleteRequested { paths } => {
+                format!("project delete: {} entries", paths.len())
+            }
+            ProjectAction::FsCompleted { op, result } => match result {
+                Ok(outcome) => format!("project {op} done: {outcome:?}"),
+                Err(error) => format!("project {op} failed: {error}"),
+            },
+            ProjectAction::RevealRequested { path } => format!("project reveal: {path}"),
         },
         Action::Style(action) => match action {
             StyleAction::SetField { panel, path, .. } => {
@@ -521,6 +573,7 @@ impl EditorApp {
             // app, so the dock pass can still take `self` apart by field.
             let host_scope = HostScope {
                 console: self.host_view.console.clone(),
+                thumbnails: self.host_view.thumbnails.clone(),
                 profiler: Some(engine.profiler()),
             };
 
@@ -615,8 +668,8 @@ mod tests {
     /// A project root the tests own: the boot scan and the watcher are real,
     /// and they must not read the checkout the test binary happens to run from.
     fn tmp_project_root() -> std::path::PathBuf {
-        let root = std::env::temp_dir()
-            .join(format!("kairos-editor-app-project-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("kairos-editor-app-project-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&root);
         root
     }
@@ -747,7 +800,9 @@ mod tests {
             app.state
                 .project
                 .tree
-                .find(&kairos_editor_core::project::RelPath::new("res-scan-test.md"))
+                .find(&kairos_editor_core::project::RelPath::new(
+                    "res-scan-test.md"
+                ))
                 .is_some(),
             "the tree holds what the walk found"
         );
@@ -1067,6 +1122,7 @@ mod tests {
         let host = AppHost::new();
         let scope = HostScope {
             console: host.console.clone(),
+            thumbnails: host.thumbnails.clone(),
             profiler: Some(engine.profiler()),
         };
         assert!(
@@ -1080,6 +1136,7 @@ mod tests {
         let host = AppHost::new();
         let scope = HostScope {
             console: host.console.clone(),
+            thumbnails: host.thumbnails.clone(),
             profiler: None,
         };
         host.console.push(&kairos_log::Record::new(
@@ -1129,6 +1186,7 @@ mod tests {
         let engine = Engine::headless();
         let host_scope = HostScope {
             console: app.host_view.console.clone(),
+            thumbnails: app.host_view.thumbnails.clone(),
             profiler: Some(engine.profiler()),
         };
 

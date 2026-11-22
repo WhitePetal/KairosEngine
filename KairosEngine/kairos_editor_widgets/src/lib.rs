@@ -6,6 +6,7 @@ pub mod field;
 pub mod fonts;
 pub mod menu;
 pub mod min_max_scroll;
+pub mod modal;
 pub mod paint;
 pub mod splitter;
 pub mod style;

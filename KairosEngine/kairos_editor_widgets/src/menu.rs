@@ -10,9 +10,12 @@
 //! Components own the menu *contents* (labels, actions, icons); this module only
 //! knows how a menu looks and how it anchors to its trigger.
 
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use egui::{
-    Color32, CornerRadius, FontFamily, FontId, Margin, Popup, Response, Shadow, Stroke, Style, Ui,
-    UiKind, UiStackInfo, Vec2,
+    Align, Color32, CornerRadius, FontFamily, FontId, LayerId, Layout, Margin, Order, Popup,
+    PopupAnchor, PopupCloseBehavior, PopupKind, Pos2, Response, Shadow, Stroke, Style, Ui, UiKind,
+    UiStackInfo, Vec2,
     containers::menu::{MenuConfig, SubMenuButton},
     style::StyleModifier,
 };
@@ -194,15 +197,97 @@ pub fn menu_separator(ui: &mut Ui) {
     ui.separator();
 }
 
-fn show_popup<R>(response: &Response, style: &MenuStyle, content: impl FnOnce(&mut Ui) -> R) {
-    let config = style.config();
-    Popup::menu(response)
+/// Attach the menu skin to a popup before it is shown.
+///
+/// egui reads the look from three places that are set independently — the
+/// popup's [`StyleModifier`], the [`MenuConfig`] parked in the [`UiStackInfo`]
+/// (submenus inherit their style and close behavior from it), and the close
+/// behavior on the popup itself — so both entry points have to assemble all
+/// three. Assembling them here is what keeps a context menu from growing into a
+/// second menu look next to the menu bar dropdown.
+fn menu_popup<'a>(
+    popup: Popup<'a>,
+    style: &MenuStyle,
+    close_behavior: PopupCloseBehavior,
+) -> Popup<'a> {
+    let config = style.config().close_behavior(close_behavior);
+    popup
+        .close_behavior(close_behavior)
         .style(style.style_modifier())
         .info(UiStackInfo::new(UiKind::Menu).with_tag_value(MenuConfig::MENU_CONFIG_TAG, config))
-        .show(|ui| {
-            ui.set_min_width(style.popup_min_width);
-            content(ui);
-        });
+}
+
+fn show_popup<R>(response: &Response, style: &MenuStyle, content: impl FnOnce(&mut Ui) -> R) {
+    // A menu bar dropdown has always closed on the click that picks an item.
+    menu_popup(
+        Popup::menu(response),
+        style,
+        PopupCloseBehavior::CloseOnClick,
+    )
+    .show(|ui| {
+        ui.set_min_width(style.popup_min_width);
+        content(ui);
+    });
+}
+
+/// A context menu opened at a screen position instead of at a widget response.
+///
+/// [`Popup::context_menu`] anchors to a [`Response`], but a tree row's response
+/// is consumed while the row is hit-tested, so its caller only has the position
+/// of the secondary click left. This opener takes that position and the
+/// caller's own `open` flag, and draws the menu with the same [`MenuStyle`] /
+/// [`MenuConfig`] as the menu bar dropdowns.
+///
+/// `salt` must be stable across frames for one menu and different between
+/// menus: the derived id is what egui keys the popup's area state by, so a
+/// per-frame salt would move and fade the menu in again every frame. Call it
+/// from the same `ui` for the same reason: the id is that `ui`'s id salted
+/// with `salt`, so a per-row child ui would make a new menu every frame.
+///
+/// `open` is owned by the caller: the caller sets it to `true` when the
+/// secondary click is reported and reads it to keep its trigger state in sync.
+/// egui resets it to `false` when the click lands outside the menu or on
+/// Escape; a click on one of the items is reported to `content` and leaves the
+/// menu open, so the caller also resets `open` when the item it drew performs
+/// an action (item activation is the caller's decision, dismissal is not).
+///
+/// Returns the popup area's response for the frames in which it was shown, so
+/// a caller can react to the menu itself without guessing its rect.
+pub fn context_menu<R>(
+    ui: &mut Ui,
+    style: &MenuStyle,
+    salt: impl Hash,
+    pos: Pos2,
+    open: &mut bool,
+    content: impl FnOnce(&mut Ui) -> R,
+) -> Option<Response> {
+    // Fold the salt into a number first: egui wants a hashable and debuggable
+    // id source, and callers (a row id, a path) should not have to care. Same
+    // folding as `TreeView`.
+    let mut hasher = DefaultHasher::new();
+    salt.hash(&mut hasher);
+    let id = ui.make_persistent_id(("kairos-menu-context", hasher.finish()));
+    menu_popup(
+        Popup::new(
+            id,
+            ui.ctx().clone(),
+            PopupAnchor::Position(pos),
+            // The popup area allocates exactly this layer (same order, same id),
+            // so the popup bookkeeping lands on the layer it paints into.
+            LayerId::new(Order::Foreground, id),
+        )
+        .kind(PopupKind::Menu)
+        .layout(Layout::top_down_justified(Align::Min))
+        .gap(0.0)
+        .open_bool(open),
+        style,
+        PopupCloseBehavior::CloseOnClickOutside,
+    )
+    .show(|ui| {
+        ui.set_min_width(style.popup_min_width);
+        content(ui);
+    })
+    .map(|inner| inner.response)
 }
 
 #[cfg(test)]
@@ -349,11 +434,176 @@ mod tests {
         );
     }
 
+    /// The position a row reports for its context menu; the salts below keep
+    /// that row's popup id stable across frames.
+    fn context_menu_pos() -> Pos2 {
+        Pos2::new(200.0, 100.0)
+    }
+
+    /// One frame of a caller that owns the open flag and draws a one-item menu.
+    ///
+    /// Returns the frame output plus the popup and item responses; both are
+    /// `None` when the menu is closed, which is also how the tests assert that
+    /// no content was built.
+    fn context_menu_frame(
+        ctx: &Context,
+        raw: RawInput,
+        menu: &MenuStyle,
+        open: &mut bool,
+    ) -> (egui::FullOutput, Option<Response>, Option<Response>) {
+        let mut popup = None;
+        let mut item = None;
+        let output = ctx.run_ui(raw, |ui| {
+            popup = None;
+            item = None;
+            popup = context_menu(ui, menu, "row", context_menu_pos(), open, |ui| {
+                item = Some(menu_item(ui, "Rename"));
+            });
+        });
+        (output, popup, item)
+    }
+
+    #[test]
+    fn a_closed_context_menu_paints_nothing() {
+        let ctx = Context::default();
+        let menu = MenuStyle::default();
+        let mut open = false;
+
+        let (output, popup, item) = context_menu_frame(&ctx, input(10.0), &menu, &mut open);
+
+        assert!(popup.is_none(), "a closed menu has no popup response");
+        assert!(item.is_none(), "a closed menu must not build its items");
+        assert!(
+            !output
+                .shapes
+                .iter()
+                .any(|clipped| painted_anywhere(&clipped.shape, menu.popup_fill)),
+            "a closed menu must not paint the menu fill"
+        );
+    }
+
+    #[test]
+    fn an_open_context_menu_paints_at_the_reported_position() {
+        let ctx = Context::default();
+        let menu = MenuStyle::default();
+        let mut open = true;
+
+        // egui sizes a new Area invisibly on its first frame and fades it in over
+        // `animation_time`; frame at 1.0, then jump the clock so the assertion
+        // frame paints the settled, opaque colour.
+        let _ = context_menu_frame(&ctx, input(1.0), &menu, &mut open);
+        let (output, popup, item) = context_menu_frame(&ctx, input(10.0), &menu, &mut open);
+
+        let popup = popup.expect("an open menu has a popup response");
+        let item = item.expect("an open menu lays out its items");
+        let pos = context_menu_pos();
+        assert!(
+            popup.rect.min.distance(pos) < 1.0,
+            "the menu should open at the reported position, got {:?} for {pos:?}",
+            popup.rect
+        );
+        assert!(
+            popup.rect.contains(item.rect.center()),
+            "the item should be laid out inside the popup"
+        );
+        assert!(
+            output.shapes.iter().any(|clipped| painted_fill(
+                &clipped.shape,
+                menu.popup_fill,
+                pos + vec2(1.0, 1.0)
+            )),
+            "the context menu should paint the Unity menu fill at the click position"
+        );
+    }
+
+    #[test]
+    fn clicking_an_item_reports_it_but_only_an_outside_click_closes_the_menu() {
+        let ctx = Context::default();
+        let menu = MenuStyle::default();
+        let mut open = true;
+        let _ = context_menu_frame(&ctx, input(1.0), &menu, &mut open);
+        let (_, _, item) = context_menu_frame(&ctx, input(10.0), &menu, &mut open);
+        let item_rect = item.expect("item laid out while the menu is open").rect;
+
+        // Press and release on the item. This menu closes on outside clicks only
+        // (see `context_menu`), so the click is reported to the content and the
+        // flag stays set for the caller to turn the click into an action.
+        let mut press = input(10.1);
+        press.events = vec![
+            Event::PointerMoved(item_rect.center()),
+            pointer(item_rect.center(), true),
+        ];
+        let _ = context_menu_frame(&ctx, press, &menu, &mut open);
+        let mut release = input(10.2);
+        release.events = vec![
+            Event::PointerMoved(item_rect.center()),
+            pointer(item_rect.center(), false),
+        ];
+        let (_, popup, item) = context_menu_frame(&ctx, release, &menu, &mut open);
+        assert!(popup.is_some(), "the popup is shown on the click frame");
+        assert!(
+            item.expect("item laid out on the click frame").clicked(),
+            "the item should report the click"
+        );
+        assert!(open, "an item click must leave the menu open");
+
+        // The next click outside the menu dismisses it. egui writes the
+        // caller-owned flag, so nobody else has to reset it.
+        let outside = Pos2::new(600.0, 300.0);
+        let mut press = input(10.3);
+        press.events = vec![Event::PointerMoved(outside), pointer(outside, true)];
+        let _ = context_menu_frame(&ctx, press, &menu, &mut open);
+        let mut release = input(10.4);
+        release.events = vec![Event::PointerMoved(outside), pointer(outside, false)];
+        let _ = context_menu_frame(&ctx, release, &menu, &mut open);
+        assert!(!open, "an outside click closes the menu and resets open");
+    }
+
+    #[test]
+    fn a_context_menu_closed_by_its_owner_paints_nothing_on_the_next_frame() {
+        let ctx = Context::default();
+        let menu = MenuStyle::default();
+        let mut open = true;
+        let _ = context_menu_frame(&ctx, input(1.0), &menu, &mut open);
+        let (open_frame, ..) = context_menu_frame(&ctx, input(10.0), &menu, &mut open);
+        assert!(
+            open_frame
+                .shapes
+                .iter()
+                .any(|clipped| painted_anywhere(&clipped.shape, menu.popup_fill)),
+            "the menu should be painted while it is open"
+        );
+
+        // The caller clears the flag itself when an item's action dismisses the
+        // menu; the next frame must not paint a stale copy.
+        open = false;
+        let (closed, popup, item) = context_menu_frame(&ctx, input(11.0), &menu, &mut open);
+        assert!(popup.is_none());
+        assert!(item.is_none());
+        assert!(
+            !closed
+                .shapes
+                .iter()
+                .any(|clipped| painted_anywhere(&clipped.shape, menu.popup_fill)),
+            "a reopened-from-closed frame must not paint the menu fill"
+        );
+    }
+
     /// egui paints a frame with a shadow as one `Shape::Vec`; look through it.
     fn painted_fill(shape: &egui::Shape, fill: Color32, at: Pos2) -> bool {
         match shape {
             egui::Shape::Rect(rect) => rect.fill == fill && rect.rect.contains(at),
             egui::Shape::Vec(shapes) => shapes.iter().any(|shape| painted_fill(shape, fill, at)),
+            _ => false,
+        }
+    }
+
+    /// Whether this frame painted any rectangle with `fill`, wherever it lands.
+    /// Used to assert the absence of a menu, where there is no position to probe.
+    fn painted_anywhere(shape: &egui::Shape, fill: Color32) -> bool {
+        match shape {
+            egui::Shape::Rect(rect) => rect.fill == fill,
+            egui::Shape::Vec(shapes) => shapes.iter().any(|shape| painted_anywhere(shape, fill)),
             _ => false,
         }
     }

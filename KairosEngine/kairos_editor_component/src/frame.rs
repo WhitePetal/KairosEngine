@@ -34,11 +34,12 @@ use std::sync::LazyLock;
 
 use kairos_editor_core::{EditorState, action::Action};
 use kairos_editor_widgets::color_picker::ColorPickerStyle;
+use kairos_editor_widgets::modal::ModalStyle;
 use kairos_editor_widgets::style::Style;
 use kairos_log::{Level, StackFrame};
 use kairos_profile::Profiler;
 
-use crate::shared_style::{ColorPickerSkin, EditorFieldStyle, ListStyle, SharedStyles};
+use crate::shared_style::{ColorPickerSkin, EditorFieldStyle, ListStyle, ModalSkin, SharedStyles};
 use crate::toolbar::style::ToolBarStyle;
 
 /// One host-owned console entry, rendered by the Console panel.
@@ -102,6 +103,25 @@ pub trait HostView {
     /// serializable and belongs to the host), so this is the same kind of
     /// host-resource seam as [`HostView::console_lines`], not a state mutation.
     fn profiler(&self) -> Option<&Profiler> {
+        None
+    }
+
+    /// The host's preview of one project file, keyed by the project root and the
+    /// row's relative path.
+    ///
+    /// A texture row draws the asset itself instead of a family glyph, so the
+    /// tree asks this once per visible texture row per frame. The host owns the
+    /// decode, the downscale and the GPU texture (the same host-resource seam as
+    /// [`Self::console_lines`]: a texture handle is not state), and returns
+    /// [`None`] while the image is still being decoded: the row keeps its family
+    /// icon and the panel asks again on the next frame. The default implementation
+    /// has no host: headless tests and embedders keep the family icon.
+    fn project_thumbnail(
+        &self,
+        _ctx: &egui::Context,
+        _root: &str,
+        _relative: &str,
+    ) -> Option<egui::TextureId> {
         None
     }
 }
@@ -178,6 +198,15 @@ impl<'a> Frame<'a> {
             .map(ColorPickerSkin::tokens)
             .unwrap_or_default()
     }
+
+    /// The modal dialog's runtime tokens, projected from the shared skin.
+    pub fn modal_style(&self) -> ModalStyle {
+        static FALLBACK: LazyLock<ModalStyle> = LazyLock::new(ModalStyle::dark);
+        self.shared
+            .modal()
+            .map(ModalSkin::tokens)
+            .unwrap_or_else(|| (*FALLBACK).clone())
+    }
 }
 
 impl std::fmt::Debug for Frame<'_> {
@@ -222,5 +251,94 @@ impl UiOut {
 
     pub fn as_slice(&self) -> &[Action] {
         &self.actions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use egui::{Color32, Theme};
+    use kairos_color::Color;
+    use kairos_editor_core::{EditorState, StyleValue};
+
+    use super::*;
+    use crate::shared_style::{MODAL, SharedStyleDef, StyleCatalog};
+
+    struct EmptyHost;
+
+    impl HostView for EmptyHost {}
+
+    /// A registry with no shared styles registered: every accessor takes its
+    /// fallback, which is the state of a headless embedder that never loaded a
+    /// catalog.
+    fn empty_registry() -> SharedStyles {
+        static NO_STYLES: [SharedStyleDef; 0] = [];
+        SharedStyles::defaults(&StyleCatalog::new(&NO_STYLES), Theme::Dark)
+    }
+
+    fn frame_with_shared<'a>(
+        state: &'a EditorState,
+        host: &'a EmptyHost,
+        shared: &'a SharedStyles,
+    ) -> Frame<'a> {
+        Frame::with_host(state, host).with_shared(shared)
+    }
+
+    /// Without a registered skin the frame hands the dialog the widget's own
+    /// default, so a test or embedder can draw one without owning a registry.
+    #[test]
+    fn the_frame_falls_back_to_the_widgets_dialog_default() {
+        let state = EditorState::new();
+        let host = EmptyHost;
+        let shared = empty_registry();
+        let style = frame_with_shared(&state, &host, &shared).modal_style();
+        let default = ModalStyle::dark();
+
+        assert_eq!(style.backdrop, default.backdrop);
+        assert_eq!(style.fill, default.fill);
+        assert_eq!(style.stroke, default.stroke);
+        assert_eq!(style.corner_radius, default.corner_radius);
+        assert_eq!(style.shadow, default.shadow);
+        assert_eq!(style.width, default.width);
+        assert_eq!(style.padding, default.padding);
+        assert_eq!(style.title, default.title);
+        assert_eq!(style.title_size, default.title_size);
+        assert_eq!(style.title_height, default.title_height);
+        assert_eq!(style.title_bar, default.title_bar);
+        assert_eq!(style.rule, default.rule);
+        assert_eq!(style.text, default.text);
+        assert_eq!(style.text_size, default.text_size);
+        assert_eq!(style.body_gap, default.body_gap);
+        assert_eq!(style.footer_gap, default.footer_gap);
+        assert_eq!(style.button, default.button);
+        assert_eq!(style.button_gap, default.button_gap);
+        assert_eq!(style.button_text_size, default.button_text_size);
+        assert_eq!(style.button_radius, default.button_radius);
+        assert_eq!(style.button_fill, default.button_fill);
+        assert_eq!(style.button_hover, default.button_hover);
+        assert_eq!(style.button_text, default.button_text);
+        assert_eq!(style.button_stroke, default.button_stroke);
+        assert_eq!(style.danger_fill, default.danger_fill);
+        assert_eq!(style.danger_hover, default.danger_hover);
+        assert_eq!(style.danger_text, default.danger_text);
+    }
+
+    /// A registered skin wins over the fallback: the frame reads the live
+    /// registry value, so a Preferences edit is what the next dialog draws.
+    #[test]
+    fn a_registered_modal_skin_is_what_the_frame_draws_with() {
+        let state = EditorState::new();
+        let host = EmptyHost;
+        let mut shared = SharedStyles::default();
+        let backdrop = Color::from_srgb8([0x12, 0x34, 0x56, 0xFF]);
+        assert!(shared.set_field(MODAL, "backdrop", &StyleValue::Color(backdrop)));
+
+        let style = frame_with_shared(&state, &host, &shared).modal_style();
+
+        assert_eq!(style.backdrop, Color32::from_rgb(0x12, 0x34, 0x56));
+        assert_eq!(
+            style.fill,
+            ModalStyle::dark().fill,
+            "the rest of the dialog still comes from the registered skin"
+        );
     }
 }

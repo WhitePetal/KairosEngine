@@ -1,6 +1,6 @@
 # ProjectPanel 迁移重构计划
 
-> **状态**：已拍板（D1–D12 全部落定，见 [§7](#7-决策记录已拍板)）。**M0 / M0.5 / M1 / M2 已落地**（M1 分 M1a core + M1b app 两刀，M2 分 M2a core+widget / M2b 面板两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。M2 已按「开工前复核定稿」定稿并开工（M2a/M2b 两刀，见 M2 一节），交付后又按真机验收反馈做了 7 条修正（见 M2 一节末尾的「M2 验收修正」）。
+> **状态**：已拍板（D1–D12 全部落定，见 [§7](#7-决策记录已拍板)）。**M0 / M0.5 / M1 / M2 已落地**（M1 分 M1a core + M1b app 两刀，M2 分 M2a core+widget / M2b 面板两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。M2 已按「开工前复核定稿」定稿并开工（M2a/M2b 两刀，见 M2 一节），交付后又按真机验收反馈做了 7 条修正（见 M2 一节末尾的「M2 验收修正」）。**M3 已复核并对齐定稿（T1–T16，含弹窗/类型表/图标三处分界），拆 M3a core+app+widget / M3b 面板两刀，M3a 四层已落地（画面几乎不变）、M3b 面板功能已落地（右键菜单 / 行内重命名 / 删除确认 / 多选与键盘 / 拖拽移动 / 类型图标），并已按真机验收第二轮反馈做了 7 条修正（弹窗背板 / 文件夹区域落点 / 拖拽自滚动 / 多选保持 / 幽灵 / 纹理缩略图 / 多选 anchor）、第三轮反馈做了 3 条修正（离线文件夹的区域框 / 自动滚手感 / 弹窗标题条改用项目共享的红色圆圈关闭按钮），**M3 已收口（2026-11-22）**（见 M3 一节）。
 > **范围**：`kairos_editor_core`（项目领域）/ `kairos_editor_app`（扫描、监听、文件操作、持久化）/ `kairos_editor_component`（面板）/ `kairos_editor_widgets`（树控件）；旧 `kairos_editor` 只冻结，最后退役
 > **配套**：[ADR 0008](../../adr/0008-editor-ui-architecture.md)、[ADR 0009](../../adr/0009-editor-panel-host-and-viewport.md)、[rewrite-plan](../editor-ui-architecture/rewrite-plan.md)（Phase 0.5 写明「只迁 ProjectPanel 一页」）、[panel-viewport-design](../editor-ui-architecture/panel-viewport-design.md) §6.2 P1、[widget-layer](../editor-ui-architecture/widget-layer.md) §2.2/§5
 > **可抄的形状**：`prototypes/editor-ui/crates/editor-components/src/project_panel.rs`（派生函数 + 行渲染 + action 映射）、`prototypes/editor-ui/crates/editor-core/src/reduce/project.rs`（data-in / effects-out）
@@ -34,10 +34,10 @@
 | 阶段 | 估算（单人） |
 |---|---|
 | M0.5 资产布局迁移（D12） | **0.5–1 人日**（跨 `kairos_asset`/`kairos_engine`/`kairos_graphics`） |
-| M0 + M1–M6（面板本体，不含类型任务） | **13–20 人日 ≈ 3–4.5 周** |
+| M0 + M1–M6（面板本体，不含类型任务） | **15–21 人日 ≈ 3.5–5 周**（M3 复核后由 3–5 调为 5–6，见 M3 定稿） |
 | M7 资产身份与引用维护 | **5–8 人日**（跨 `kairos_asset`/`kairos_graphics`） |
 | M8 收尾（冻结 + 文档） | **0.5–1 人日** |
-| **合计（不含类型任务）** | **19–30 人日 ≈ 4–6 周** |
+| **合计（不含类型任务）** | **21–31 人日 ≈ 4.5–6.5 周** |
 | M5 的 seam（已含在 M0–M6 里） | 2–3 人日 |
 | M5 的每个类型任务（另计） | 0.5–2 人日 / 类型 |
 
@@ -254,7 +254,8 @@ impl IgnoreRules {
 pub struct ProjectView {
     pub expanded: BTreeSet<RelPath>,
     pub active: Option<RelPath>,        // 面包屑 / 内容区当前目录
-    pub selection: BTreeSet<RelPath>,   // M2 只放 0/1 个；M3 多选
+    pub selection: BTreeSet<RelPath>,   // M3 多选
+    pub anchor: Option<RelPath>,        // 选择手势的锚点（Shift 区间/键盘起点），随 selection 一起修剪与重映射
     pub sort: SortKey,                  // v1 只有 Name
     pub show_hidden: bool,              // 点文件与 .meta 伴生
     /// 左右两栏的分割比例（D1）：右栏从第一天就存在，只是先空着。
@@ -398,13 +399,29 @@ pub enum ProjectEffect {
     Reveal { root: PathBuf, path: RelPath },
 }
 
-pub struct FsOp { pub id: FsOpId, pub root: PathBuf, pub kind: FsOpKind }
+pub struct FsOp { pub id: FsOpId, pub root: PathBuf, pub companions: Vec<&'static str>, pub kind: FsOpKind }
 pub enum FsOpKind {
-    CreateFolder { parent: RelPath, name: String },
-    CreateFile { parent: RelPath, name: String, template: FileTemplate },
+    Create { parent: RelPath, name: String, kind: CreateKind },
     Rename { from: RelPath, to: RelPath },
     Move { from: Vec<RelPath>, to: RelPath },
     Trash { paths: Vec<RelPath> },
+}
+
+// M3 定稿 T14/T15：语义来自类型表，不写死在 fs 层
+pub enum CreateKind {
+    Folder,
+    File { extension: &'static str, contents: &'static str },   // 来自 CreateEntry
+}
+
+// M3 定稿 T6：完成必须带「改了什么」，否则 reducer 无法 focus、也无法重映射前缀
+pub struct FsOpId(pub u64);
+pub struct FsOutcome {
+    pub created: Option<RelPath>,
+    /// 每个被改名的条目一对；rename 一对、move N 对（reducer 按对重写前缀）
+    pub moved: Vec<(RelPath, RelPath)>,
+    /// 进回收站的条目（M3a 落地）；trash 没有后继路径可重写，
+    /// 重扫时由 settle 把它从 selection 剪掉、active 回退到最近的存活祖先
+    pub trashed: Vec<RelPath>,
 }
 ```
 
@@ -413,7 +430,7 @@ pub enum FsOpKind {
 - `Scanned` 的 generation 不匹配 → 整条丢弃（旧结果绝不覆盖新树）；
 - 重扫后 `expanded`/`selection` 里不存在的路径被剪掉；`active` 失效则回退到最近的仍存在的祖先；
 - `RenameRequested` 校验通过后**不改树**，只发 effect；完成 → `ScanRequested { focus: Some(新路径) }`。乐观改树会与 watcher 打架，而扫描很便宜；
-- `Select { mode }` 三种：`Replace` / `Toggle`（Ctrl）/ `Range`（Shift，用可见行序算区间）；
+- `Select { paths, mode }` 三种 `SelectMode`：`Replace` / `Toggle`（Ctrl）/ `Range`（Shift，`paths` 恰为 `[anchor, focus]`，区间由 reducer 用 `visible_rows` 算）；**只有单路径的 `Replace` 移动 `active`**（M3 定稿 T5；多路径 Replace 是 Ctrl+A 这类选择手势，不是导航，M3b 落地时补的细化）；**anchor 存在 core 的 `ProjectView` 里**（M3b 验收修正 #7）：每次点击/键盘移动定 anchor、Shift 区间不移动它、创建/改名成功后跟到新行、删除/外改由 `settle` 修剪、改名/移动按前缀重映射——面板不再自己记 anchor，所以关标签页再打开和一次重扫都不会让 Shift+点击从过期行开始；`Range` 的 anchor 被折叠隐藏时退化为「选中 focus 并重新 anchor」；
 - 所有 `*Requested` 在入口做**同一套名字校验**（`project/name.rs`），失败返回 `error`，不发 effect。
 
 **名字校验**（纯函数，一张表）：空名、`<>:"/\|?*`、控制字符、Windows 保留名（`CON`/`PRN`/`AUX`/`NUL`/`COM1..9`/`LPT1..9`）、结尾点或空格、超长（组件 255 字节）、同级大小写不敏感重名、改名为自身、根节点不可改不可删。每条一个测试。
@@ -428,8 +445,8 @@ D1 定稿：**左右两栏从第一天就存在**，右栏先只有面包屑 + �
 ├──────────────────────────────┬───────────────────────────────────────┤
 │ ▾ res                        │ KairosEngine / res / models           │ ← 内容头 20px
 │   ▾ models                   │                                       │   （独立灰底 + 下边线）
-│     ▣ Suzanne.png      png   │            （内容区占位）              │ 分割条可拖
-│     ▣ readme.md        md    │        网格视图在 M9 填充               │
+│     ▣ Suzanne          png   │            （内容区占位）              │ 分割条可拖
+│     ▣ readme           md    │        网格视图在 M9 填充               │
 │   ▸ shaders                  │                                       │
 │ ▸ scripts                    │                                       │
 │ ──────────────────────────── │                                       │ ← 分组线（不可拖）
@@ -504,6 +521,8 @@ impl<'a, Id: Copy + Eq + Hash> TreeView<'a, Id> {
 }
 ```
 
+**M3 扩展（已落地，T1/T2/T3）**：`TreeOutput` 再增 `secondary_clicked` / `secondary_pos`、`drag_started`、`dragging`、`drop_target`、`drag_stopped`、`edit_committed` / `edit_cancelled`（derive 因此从 `Eq` 降为 `PartialEq`，因为 `Pos2` 不是 `Eq`）；`TreeView` 增 `highlight(id)`（行底色 + 描边）与 `highlight_region(id)`（文件夹行 + 可见子树的整块区域框，M3b 验收修正 #2）、`editing(id, &mut String)`；`TreeStyle` 增 `drop_fill` / `drop_stroke`（`ProjectStyle` 与 `ProjectStyle.ron` 同步）；`TreeRow` 增 `thumbnail: Option<TextureId>`（宿主缩略图，M3b 验收修正 #6）。拖拽是**树级会话**存在 egui memory（M3b 验收修正 #3）：源行被自动滚动移出可见范围后，松手仍然报 `drag_stopped`；拖拽贴边时 widget 自己滚 ScrollArea，并翻译被 egui 在拖拽期间忽略的滚轮增量。widget 只报交互；payload / 幽灵 / 落点规则与 buffer / 校验 / 错误文案仍归面板。
+
 三处必须和原型不同（否则到了 2 万行会痛）：
 
 1. **只对可见行回调**：`ScrollArea::show_rows` 给可见区间，widget 只对区间内行调用 `row(id)`。原型把所有行物化成 `Vec<TreeRow>`，全展开时每帧 MB 级分配。
@@ -512,7 +531,7 @@ impl<'a, Id: Copy + Eq + Hash> TreeView<'a, Id> {
 
 **面板自己持有的视图状态**（关掉标签页就丢，这是对的）：搜索框文本、重命名 buffer、删除确认、拖拽中的路径、滚动定位。**core 持有**：`expanded`/`active`/`selection`/`sort`/`show_hidden`。判据：**关掉面板再打开还该在的 → core；只影响这一帧的 → 面板**。这条规则有硬理由：`PanelHost::sync` 的 `retain` 会直接 drop 关闭的面板实例（`panel/host.rs:52`），面板里存不住任何东西。滚动定位因此是面板态，但**重开标签页必须补回来**：新实例首帧把 `selection`（没有则 `active`）交给 `TreeView::scroll_to`，否则状态还在、视口却回到顶部。
 
-**绘制**：`TreeView` 只画行；重命名编辑器、右键菜单（`menu::submenu` + `menu_item_enabled`）、删除确认（`Popup`）都由面板画 —— 面板有 `&mut Ui` 和 `&mut UiOut`，widget 没有 `Action` 的概念。
+**绘制**：`TreeView` 只画行；右键菜单（`menu::context_menu` + `submenu` + `menu_item_enabled`）与确认弹窗（`widgets::modal`）由面板画 —— 面板有 `&mut Ui` 和 `&mut UiOut`，widget 没有 `Action` 的概念。**弹窗只由 Esc 关闭**（点背板不消失，M3b 验收修正 #1）：确认框是对用户停下来问的问题，不能被一次误点当成「否」。**行内重命名例外**（M3 定稿 T3）：它必须落在行内几何上，所以由 widget 画（`TreeView::editing(id, &mut String)`），buffer、校验和错误文案仍归面板。**行显示名不含扩展名**：文件行画主名（stem），扩展名是右侧后缀列；改名编辑器也只编辑主名，提交时面板把原后缀拼回去 —— 用户拍板「文件名不要展示后缀，避免重命名时把后缀给改了」。
 
 **交互规则（M2 定稿，照 Unity/Tuanjie）**：一行 = 三角（独立命中区）+ 图标 + 名字 + 后缀。**单击选中并移动内容头**（写 `selection`，同时 `active` = 命中项的目录：文件夹 → 自身，文件 → 父目录；不展开、不导航）、**双击打开**（文件夹 → `Navigate`，文件 → `OpenRequested`）、**三角只切换展开**（不选中、不导航）。键盘只在 `TreeOutput::focused` 为真时生效：↑↓ 移动选中、Home/End 首尾、`←` 已展开则折叠否则选父、`→` 未展开则展开否则选第一个子、Enter 打开。重命名/拖拽/右键菜单的通道 **M3 才加**，M2 不预留空变体（见 M2 定稿 N3）。
 
@@ -567,12 +586,12 @@ selection = ["res/models/Suzanne.png"]
 ### 2.8 类型 seam（M5）
 
 ```rust
-// core/src/project/file_type.rs —— 纯数据，注册在启动时传入
+// core/src/project/file_type.rs —— 纯数据（**M3 已落地**；open 留 M5、referenceable 留 M7）
 pub struct FileType {
     pub id: &'static str,             // "texture" | "mesh" | ...
     pub label: &'static str,          // 行尾后缀，如 "png" / "mat"
     pub extensions: &'static [&'static str],
-    pub icon: &'static str,           // Preferences/Textures/model_icon.png
+    pub icon: &'static str,           // 文件名（如 texture.png），根目录由皮肤给（M3/T16）
     pub companion: bool,              // .meta/.uid 之类：默认隐藏
     pub referenceable: bool,          // 可被别的资产引用 → M7 会给它发 guid
     pub delete_confirm: bool,         // D5：默认 true（Unity 行为），按类型可关
@@ -620,7 +639,7 @@ kairos_editor_core/src/
   project/scan.rs          ScanEntry / ScanPolicy / ScanReason（只有数据）
   project/view.rs          ProjectView / SortKey / SelectMode
   project/search.rs        查询解析 + 匹配（M6，纯函数）
-  project/file_type.rs     FileTypeRegistry（M5）
+  project/file_type.rs     FileTypeRegistry + CreateEntry（M3 数据表；打开分发 M5、guid M7）
   project/name.rs          名字校验（M3）
   reduce/project.rs        reducer（新增 slice，注册到 reduce.rs）
   tests/project_*.rs
@@ -904,23 +923,128 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 > | 7 | 工具栏三个按钮没有分割线、看不出是按钮 | 每个控件后 1 px chrome 线 + 右对齐组前一条（Console/Profiler 工具栏同规则）；绘制断言测试 + 像素采样确认（x=85/141 两条 + 眼睛前一条）。 |
 > | 8 | 追加：`Hidden files` 改成 Unity/Tuanjie 的眼睛图标 | 取 Tuanjie 资源包的 `d_scenevis_visible@2x` / `d_scenevis_hidden@2x`（light 用无 `d_` 版）缩到 32²，开 = 睁眼 + 选中底、关 = 叉眼；**评估后不加计数**（图标即状态，计数随目录变，M6 搜索要占这条横带），tooltip 写动作；harness 测试断言没有文字、选中态有底色、再点回 `SetShowHidden(false)`；真机复验 34→36 items、两态像素 400 px 不同。 |
 
-### M3 — 变更：建 / 改名 / 移动 / 删除（3–5 天）
+### M3 — 变更：建 / 改名 / 移动 / 删除（5–6 天，分 M3a / M3b 两刀）
 
 **目标**：面板可以完整编辑文件系统，每个失败都看得见。
 
-**交付**
-- core：`name.rs` 校验表（§2.5）、`Create/Rename/Move/Delete` 的 reducer、多选（Ctrl/Shift）、`FsOpId` 与完成分支；
-- app：`fs.rs` 执行 create/write/rename/move，删除走 `trash`（失败则报错，绝不静默永久删除）；每个操作完成 → `FsCompleted` → `ScanRequested { focus }`；
-- 删除确认（D5）：**文件和文件夹默认都弹确认**（Unity 行为），`FileType::delete_confirm` 只用于个别类型关掉；确认弹层是普通 UI 状态，不是原生对话框；
-- component：右键菜单（新建文件夹、新建文件▾、重命名、复制路径、在资源管理器中显示、删除）、行内重命名（Enter 提交 / Esc 取消 / 失焦提交）、拖拽移动（`ui.dnd_drag_source` + `dnd_release_payload`，egui 0.35 已有）、删除确认弹层、失败提示条；
-- 目标目录高亮、`Shift+点击` 区间选择；
-- **成簇规则（§2.11 的 G2/G3，D4 的地基）**：改名/移动/删除一个文件时，它的伴生侧车（`foo.png.meta`、将来的 `foo.png.uid`）跟着一起走；判据来自 `FileType::companion`/后缀规则，不写死 `meta`。目录操作天然整簇（内部文件一起搬/一起进回收站）。
+> **M3 开工前复核定稿（2026-11-22，用户已拍板）**——计划原文这几处会「现场发明」，实现一律按这里来（与 M1 的 R1–R5、M2 的 N1–N8 同性质）：
+>
+> | # | 决定 | 为什么现在必须定 |
+> |---|---|---|
+> | **T1** | **TreeView 补 M3 契约**：`TreeOutput` 增 `secondary_clicked` + `secondary_pos`、`drag_started`、`dragging`、`drop_target`；`TreeView::editing(id, &mut String)` + `edit_committed` / `edit_cancelled`；`TreeView::highlight(id)` 画落点高亮（M3b 验收修正 #2 再加 `highlight_region(id)` 与 `TreeRow::thumbnail`，#3 把拖拽升级为树级会话 + 自滚动；第三轮：区域框在文件夹行滚出视口后仍从视口顶边开始画） | 行的 `Response` 在 widget 内部就被消费（`tree.rs:329`），行内 `RowLayout` 是私有的 → 右键/行内改名/拖拽全部卡在这里；**没有这条契约，M3b 必然绕开 widget 自己画行** |
+> | **T2** | **拖拽 = widget 只报交互，面板持有 payload / 幽灵 / 落点规则**；幽灵画在 `Order::Tooltip` 子层并用 `TSTransform` 跟随指针（落地为单视口下的 Area；M3b 验收修正 #2 落点改为「指针所在行的最近祖先文件夹」，#5 幽灵改成单行「图标 + 主名」） | widgets 不许懂领域类型（`RelPath`）；dock 的 tab 拖拽已是同款（`docker.rs:1320-1350`），照抄视觉、不抄它的一帧 consume 握手 |
+> | **T3** | **行内重命名在 widget 内画**（`TreeView::editing`），buffer / 校验 / 错误文案归面板；提交取消照 `NumberField::draw_editor`（`number.rs:287-297`）：Enter 或失焦提交、Esc 还原；**校验失败不关闭编辑器**。**buffer 是主名（stem），不是全名**：行本身只显示主名（扩展名在后缀列），提交时面板把原后缀拼回去（文件夹不拼），所以改名不可能改掉文件类型 | 原文说「重命名编辑器由面板画」，但面板拿不到行内 rect（`RowLayout` 私有）；这是唯一会在写的时候推倒重来的地方。用户验收后补：文件名不展示后缀、改名锁后缀 |
+> | **T4** | **`menu::context_menu` 新增封装**（`Popup::context_menu` + 同一套 `MenuConfig` / `UiStackInfo`，`show_popup` 改为共用它） | `show_popup` 现在是私有的；绕开它直接用 egui 默认弹层会得到第二套菜单样式 |
+> | **T5** | **多选形状**：`Select { paths: Vec<RelPath>, mode: SelectMode }`，`SelectMode::{Replace, Toggle, Range}`；Range 的 `paths` 恰好是 `[anchor, focus]`，区间由 reducer 用 `visible_rows` 算；**只有单路径 Replace 移动 `active`**（单击联动内容头的 M2 行为不变；多路径 Replace = Ctrl+A，不动内容头）；**anchor 在 core 的 `ProjectView`**（M3b 验收修正 #7），`Range` 的 anchor 被折叠隐藏时退化为选中 focus 并重新 anchor | 破坏性改动：core 4 条测试 + 面板 3 处 `Select` 调用 + harness 断言一起改；Range 归 core 才可 headless 测 |
+> | **T6** | **完成载荷完整**：`FsOpId` 计数器在 `ProjectState`；`FsOutcome { created, moved: Vec<(from, to)> }`；`FsOp` 还带 `companions`（成簇扩展名，来自类型表）；reducer 据此设 `focus_after_scan`，**并按每一对重写 `expanded` / `selection` / `active` 的前缀** | 原文只写 `Result<FsOutcome, String>`，没定义 `FsOutcome`；不重映射前缀 → 改目录名后它自己折叠（验收「改名目录后子孙仍可选中」只算半条） |
+> | **T7** | **移动遇同级同名：面板预检（树快照）→ 阻塞式提示弹窗 → 不移动**；core 仍保留自嵌套 / 选中集去重 / 名字表硬校验；TOCTOU 由 `fs.rs` 失败回落状态栏错误 | 用户拍板「弹窗提醒、禁止移动」；也避免「搬一半」 |
+> | **T8** | **create → 自动进入重命名**：面板本地 `pending_create: Option<RelPath>`，首个扫描完成后路径存在则开始编辑、否则清掉；编辑中路径消失则取消。**不进 core** | 验收要求它，但协议没有回传通道；按 M2 归属规则它是面板态（不该跨标签页复活） |
+> | **T9** | **删除走工作线程**（复用 scan 的 poll 循环 + `FsCompleted`；实际用 `Vec<TrashJob>` 而不是单 job，并发删除不能互相取消），create/rename/move 同步。fs 边界规则：`create_new` 绝不 truncate 覆盖、拒绝 `..`、非 UTF-8 路径先做回环保守校验、Windows `rename` 目标存在必失败、仅大小写改名先实测再决定是否两段式 | `trash` 5.4 在 Windows 走 COM/`IFileOperation`（默认特性 `coinit_apartmentthreaded` 自己管 apartment）；放独立线程既避开主线程 COM 模式冲突，也让删大目录不卡宿主帧 |
+> | **T10** | **键盘与 Reveal 补进交付**：F2 改名、Delete 删除、Ctrl+A 全选、Esc 取消；`ProjectEffect::Reveal`（Windows `explorer /select,`，其余 `open(目录)`）；「复制路径」纯面板 `ctx.copy_text` | M2 定稿 N3 明确写「F2/Delete 归 M3」，M3 原文漏了；菜单有「在资源管理器中显示」却没有 effect 实现 |
+> | **T11** | **错误可见性复用状态栏右半边**，不再做第二条失败提示条。生命周期用 `ProjectError::clears_on_scan` 区分：扫描错误与一次性 host 失败（打开失败）由下一次干净 `Scanned` 清掉；**文件操作失败不被它自己触发的重扫清掉**，由下一次成功的操作清除 | M2 已经在那里画 `project.error`（`panels/project.rs:586-593`）；不加这一位的话，重命名失败的消息会被紧随的重扫在 2 帧内擦掉 |
+> | **T12** | **测试补 widget / component 两层**：右键只报 `secondary_clicked`、拖拽生命周期、行内编辑三种结局（提交/取消/校验失败）、Ctrl/Shift 三种 `Select`、确认框 → `DeleteRequested`；harness 补 modifier / 右键 / 拖拽事件构造（现在 `press/release/key` 把 `Modifiers::NONE` 写死） | M3 最危险的代码原本没有一条测试 |
+> | **T13** | **弹窗 = 新窗口件 + shell 共享皮肤 + 面板本地状态**：`widgets::modal` 包装 `egui::Modal`（不自绘背板/焦点陷阱；**标题条用共享的 `window_controls` 红色圆圈关闭按钮，和 Esc 是同一个 Dismissed，点背板不关**，M3b 验收修正 #1 + 第三轮关闭按钮）；`Preferences/Styles/Modal.ron` 经 `Frame::modal_style()` 下发（Preferences 页面自动出现）；对话框状态是**面板本地数据枚举**；**不引入 `core::ModalState`**（那是将来「退出确认 / 保存失败」的 app 级模态，届时复用同一个 widget） | 0.2.0 还没有任何弹窗设施；架构文档已规定做法（`editor-ui/README.md:235,295-324`、`widget-layer.md:132,137`：「modal 用 egui::Modal，只做样式/数据包装」）。M3 做掉其中可复用的那一半，不重写基础设施 |
+> | **T14** | **`FileTypeRegistry` 数据表提前到 M3**：字段 `id / label / extensions / icon / companion / thumbnail / delete_confirm`（`open` 留 M5、`referenceable` 留 M7）；`ProjectState.file_types`；`visible_rows(tree, view, types)` 接管伴生隐藏（删掉 `tree::is_hidden_name`）；表里含 9 个家族 + 2 条 CreateEntry | M3 需要它的三个答案（成簇判据 / 删除确认 / 新建模板）；提前 = 消掉 3 处占位，并顺带解掉 M5 的「不动 tree.rs」与 `is_hidden_name` 位置的矛盾 |
+> | **T15** | **Create 模型 = 意图表 + 类型表**：`CreateEntry { menu, label, default_stem, target: Folder \| File { extension, contents } }`；M3 只有两行：`Create ▸ Folder`（New Folder）、`Create ▸ Document ▸ Markdown`（New Document，内容 `"# "`）；**`.toml` 不建类型行、无创建入口**，未知类型走 fallback（泛型 file 图标 + 裸扩展名） | 用户拍板「先做 Folder 和 Markdown」；格式 ≠ 类型（`.mat` 也是 TOML），所以菜单挂在意图上，将来加类型只加一行数据 |
+> | **T16** | **类型图标用本机 Tuanjie 内置资源**（实测 8/8 全有，dark + light；M3b 验收修正 #6：纹理行不再用纹理族图标，改为宿主缩略图缓存画纹理本身），按现有 `scripts/extract_tuanjie_icons.py` 抽到 `Preferences/Textures/project/types/{,light/}`；`document` 用 `d_TextAsset Icon`（**没有** `d_Document Icon`）、texture 用 `d_Texture Icon`（棋盘格）；**不手绘** | 用户拍板「先看 Tuanjie，没有才自己做」；实测全部命中（见下表） |
+>
+> **M3 定稿补充 1 — 弹窗的视觉与交互（已用真实 egui 输出做对照评审，选定 C）**
+>
+> `egui::Modal` 只提供居中 / 背板遮罩 / 输入拦截 / Esc / `should_close()`，**外观 100% 由我们的 token 决定**。评审渲染了 4 个方案（`0` = 不换 Frame 的 egui 默认，`A` = 菜单家族，`B` = 窗口家族 + 蓝确认，`C` = 窗口家族 + 中性按钮 + 红 Delete），**选定 C**，理由：
+>
+> - 编辑器里没有任何"填充蓝"的按钮先例（工具栏/面板按钮是透明 + hover 填充），蓝底会引入新视觉语言；
+> - 红是唯一语义色（危险），危险按钮是 Dialog 的唯一强调点；
+> - 标题条 + 1 px 描边 + 3 px 圆角 + 阴影让它和 dock 浮动窗口同族，而不是"一个大菜单"。
+>
+> C 的 token（`ModalStyle::dark()`，`widgets/src/modal.rs` 已实现，6 条 headless 测试）：背板 `black @ 47%`、主体 `#383838`、描边 `#1E1E1E 1px`、圆角 3、阴影 `(2,3) blur 12 @ 67%`、标题条 `#3C3C3C` 22 px + 底边 1 px `#2B2B2B`、标题 13 px `#DEDEDE`、正文 12 px `#B4B4B4`、内边距 `14/12`、按钮 24 px 高 · 圆角 2 · `#4A4A4A`/`#5A5A5A` + `#232323` 描边、危险 `#8A3B33`。交互：**Enter = 第一个非危险按钮**，危险按钮只能点；Esc / 点背板 = 取消（不动文件）；按钮顺序 `[Cancel, Delete]`。
+>
+> 两个已知坑（已写进实现与测试）：① **egui 会给新建 Area 做淡入**，首帧截图/断言必须把时钟跳过 fade，否则整层是半透明的（仓库的 menu 测试注释同款）；② **`egui::Modal` 只挡指针命中，挡不住 `ui.input()` 的原始键盘事件**，所以对话框打开时必须短路面板自己的键盘处理（行内改名、方向键、Delete），Esc 交给对话框消费；③ `egui::Modal` 默认居中且**没有拖动能力**，所以 widget 自带 `show_draggable`：标题条 `Sense::drag()` 改 Area 的 anchor 偏移，offset 由调用方持有（位置是视图态）、越界 clamp 到屏幕内，普通 `show` 仍居中。
+>
+> **M3 定稿补充 2 — 类型图标出处（Tuanjie 2022.3.62t6 实测）**
+>
+> | 家族 | 扩展名 | dark 资源名 | light | 说明 |
+> |---|---|---|---|---|
+> | texture | png | `d_Texture Icon` | `Texture Icon` | 棋盘格；不需要自绘 |
+> | mesh | glb | `d_PrefabModel Icon` | `PrefabModel Icon` | Project 窗口用的模型图标（另有 `d_Mesh Icon` 偏 Inspector） |
+> | material | mat | `d_Material Icon` | `Material Icon` | |
+> | audio | ogg, wav, audio | `d_AudioClip Icon` | `AudioClip Icon` | |
+> | shader | wgsl | `d_Shader Icon` | `Shader Icon` | |
+> | script | rs | `d_cs Script Icon` | `cs Script Icon` | |
+> | document | md | `d_TextAsset Icon` | `TextAsset Icon` | **没有 `d_Document Icon`**；.md/.txt/.json 在 Unity 里就是 TextAsset |
+> | font | ttf, otf | `d_Font Icon` | `Font Icon` | |
+>
+> 源尺寸 64² 或 256²，按现有脚本 Lanczos 到 64²（与已提交的 folder/file 图标同规格）；落点 `Preferences/Textures/project/types/` + `.../types/light/`；仓库里"暗色皮肤只有一个"（`app.rs` 把主题钉死 Dark），light 版本先提交、暂不消费。
+>
+> **已落地**：脚本表 13 条（5 张通用 + 8 家族 ×2 皮肤），16 张 64² 图写入 `Preferences/Textures/project/types{,/light}/`；`FileType.icon` 只存文件名，`ProjectStyle::type_icon_root` 给目录（dark/light 各一份），面板按类型表解析、未注册家族回退通用 file 图标；`Preferences/Textures/project/README.md` 记了 provenance 与重跑命令。
+>
+> **M3 定稿补充 3 — 两处文档自相矛盾的修正**
+>
+> 1. §2.6 原文「重命名编辑器、右键菜单、删除确认都由面板画」→ 改为：**右键菜单 / 确认弹窗由面板画**（面板有 `&mut Ui` 与 `UiOut`）；**行内重命名由 widget 画**（面板给 buffer 与校验），理由见 T3。
+> 2. §6 风险表原文「M2 就留 `renaming`/`drag`/`dropped_on` 通道」→ 与 M2 定稿 N3（明确**没留**）矛盾，改为：「M3 一次性把契约补齐（T1）；撑不住就改 widget API，**不在面板里绕过 widget 自己画行**」。
+>
+> **两刀怎么切**
+>
+> | 刀 | 内容 | 验收方式 |
+> |---|---|---|
+> | **M3a（2.5–3 天，画面几乎不变）** | core：`file_type.rs`（T14）、`name.rs`（§2.5 校验表）、成簇判据、`FsOpId/FsOpKind/FsOutcome`、`Create/Rename/Move/Delete` reducer、多选形状（T5）、移动冲突/自嵌套/去重纯查询；app：`fs.rs`（create/rename/move + 成簇 + Windows 细节）、trash 工作线程、`Reveal`；widgets：树通道（T1/T2）、`modal.rs`、`menu::context_menu`；component：`shared_style/modal.rs` + `Frame::modal_style()`、`rows.rs` 改读注册表（标签/图标仍回退到泛型，视觉不变） | `cargo test-crate` 三个 crate 全绿；校验表逐条、tempdir 的 fs 矩阵、reducer 规则表、widget 交互测试 |
+> | **M3b（2.5–3 天，可见）** | 右键菜单（Create ▸ Folder / Document ▸ Markdown、Rename、Copy Path、Reveal、Delete）、行内重命名、多选（Ctrl/Shift + 键盘 F2/Delete/Ctrl+A/Esc）、拖拽移动 + 幽灵 + 落点高亮、两个对话框（删除确认 / 移动被阻塞）、类型图标接入（T16）、真机 smoke | 手动 smoke 清单 + component harness（点击/拖拽/右键/确认） |
+>
+> 先把 M3a 做完的理由：风险最高、返工最贵的两块（widget 契约 + fs 层）恰好都不可见，各自有 headless 验收线之后，M3b 只剩装配与打磨；M2「一次做完再验收」返工 7 条的教训在这里。
 
-**验收**：建文件夹 → 自动进入重命名 → 输入含 `/` 被拒并提示 → 改名目录后子孙仍可选中 → 改名 `Suzanne.png` 后 `Suzanne.png.meta` 同步改名 → Ctrl+点击多选 → 拖到另一个目录 → 删除进回收站 → 回收站里能找回来（主文件与侧车都在）→ 只读目录上删除失败有提示而不是静默。
+**交付（M3a）**
+- core：`FileTypeRegistry`（9 家族 + 2 条 CreateEntry，见 T14/T15）、`name.rs` 校验表、`Create/Rename/Move/Delete` 的 reducer 与 `FsOpId`/`FsOutcome`、多选 `Select`、移动预设校验（自嵌套 / 去重 / 同级冲突查询）；
+- app：`fs.rs` 执行 create（`create_new` + 模板内容）/ rename / move，删除走 `trash`（失败则报错，绝不静默永久删除）；**删除在独立工作线程**（`trash` 在 Windows 走 COM/IFileOperation，线程名 `project-trash`，`Mode::Inline` 测试下同步跑），完成后仍以 `FsCompleted` 回 reducer，reducer 不需要区分它来自线程还是 syscall；成簇规则（伴生侧车随行，**只对文件生效**：目录不吃同名侧车，避免误删/误改名一个恰好叫 `foo.meta` 的无关文件）；每个操作完成 → `FsCompleted` → `ScanRequested { focus }`（delete 的 focus 是 `None`：路径已不存在，指向父目录等于替用户选中一个目录）；`Reveal`；
+- widgets：`TreeOutput` / `TreeView` 的 M3 通道、`modal.rs`、`menu::context_menu`；
+- component：`ModalStyle` 的 RON 皮肤与 `Frame::modal_style()`；`rows.rs` 走注册表。
 
-**测试**：校验表逐条；fs 操作在 tempdir（含目录带子孙、仅大小写改名、目标已存在、只读父目录）；`trash` 在 CI 上不可用时 `cfg` 跳过并注释原因。
+**交付（M3b）**
+- component：右键菜单、行内重命名、多选与键盘（含 Shift+↑↓ 扩展）、拖拽、删除确认弹窗、移动被阻塞弹窗、文件夹子树区域高亮、失败提示（复用状态栏）；纹理行画文件自己的宿主缩略图（M3b 验收修正 #6）；
+- 资源：Tuanjie 类型图标抽取 + `ProjectStyle` 的图标路径接入；
+- 文档/脚本：`scripts/extract_tuanjie_icons.py` 加一张表；`Preferences/Textures/project/README.md` 记录新来源。
 
-**风险**：Windows 语义（仅大小写改名要两段式、保留名、尾点空格、路径占用）。全部收敛到 `name.rs` + `fs.rs` 两处，别散落在面板里。
+**验收（手动 smoke，M3b 收口）**：树里文件名只显示主名、扩展名在右侧后缀列 → 建文件夹 → 自动进入重命名 → 输入含 `/` 被拒并提示（编辑器不关闭）→ 改名目录后子孙仍可选中且目录不折叠 → 改名 `Suzanne`（编辑器里看不到 `.png`）后文件仍是 `.png`、`Suzanne.png.meta` 同步改名 → 删除确认框可用标题条拖动、点弹窗外面**不会**关掉（Esc 或标题条红圈才关）→ Ctrl+点击多选、Shift+点击区间、Shift+↑/↓ 扩展 → 多选拖到另一个目录，幽灵是单行「图标 + 主名」（不换行、超长截断）、目标文件夹整棵可见子树有区域框 → 拖到展开文件夹的任意子行也能移入 → 拖到树的顶部/底部附近自动滚动（贴边越近越快、慢到能停在想要的行）、拖拽中滚轮仍能滚 → 把一个展开文件夹滚到视口上方，再拖到它的子行：区域框从视口顶边开始画 → 弹窗标题条左侧的红色圆圈关闭按钮（系统窗口按钮）与 Esc 都能关，点弹窗外仍不关 → 多选移动完成后**仍是多选** → 拖同名项 → 弹窗「禁止移动」且什么都没发生 → 纹理行（`.png`）显示纹理本身的缩略图，其余类型显示类型图标 → 删除弹确认、进回收站、回收站里能找回来（主文件与侧车都在）→ 只读目录上删除失败有提示而不是静默 → 关标签页再打开，多选/展开/anchor 还在（Shift+点击仍从上次选中的行开始）。
+
+**测试**：校验表逐条（`name.rs`）；fs 操作在 tempdir（含目录带子孙、仅大小写改名、目标已存在、只读父目录、伴生侧车随行、模板内容、目录改名/删除不带走同名侧车）；reducer 的 generation/冲突/前缀重映射/删除去重；widget 的右键/拖拽/行内编辑；component 的菜单/确认/多选动作；`trash` 在 CI 上不可用（无桌面回收站的 Linux 容器）时测试按“失败且条目仍在”通过并注释原因——D5 禁止降级成永久删除，所以失败就是正确行为。
+
+**风险**：Windows 语义（仅大小写改名、保留名、尾点空格、路径占用）全部收敛到 `name.rs` + `fs.rs`；widget 契约若被撑破，改 widget API 而不是在面板里绕开；`trash` 的 COM apartment 由独立工作线程隔离。
+
+**已知行为（接受，不做抑制）**：每个 fs 操作会触发两次扫描（`FsCompleted` 一次 + watcher 一次）。M1 已有同类「一次写入被 debouncer 拆两批」的已知行为，两次扫描各约 10 ms、结果一致；要合并的话在 `ProjectService::poll` 侧收拢，留给 M6 之后按实测决定。
+
+> **落地状态（M3 已收口，2026-11-22：M3a 四层 + M3b 面板 + 第二轮 7 条 + 第三轮 3 条验收修正）**
+>
+> - **第 1 批（已落地）**：`core::project::file_type`（9 家族 + 2 条 CreateEntry，`lookup` 最长扩展名优先、伴生/隐藏/确认/标签/图标查询）、`core::project::name`（8 条规则 + 边界）、`ProjectState.file_types`、`visible_rows(tree, view, types)`（删掉 `tree::is_hidden_name`）、`core::project::fs`（`FsOpId/FsOp/FsOpKind/CreateKind/FsOutcome`）、多选 `Select { paths, mode }`（Replace/Toggle/Range 三种 reducer 规则）、`Create/Rename/Move` reducer（名字表/同级判重/自嵌套/选中集去重/扩展名补齐）、`FsCompleted`（前缀重写 + 焦点 + 重扫 + `clears_on_scan` 错误生命周期）、`RevealRequested`、`app::project::fs`（create 用 `create_new`、rename/move 拒绝覆盖、任何平台都两段式做仅大小写改名、`.meta` 成簇随行、拒绝 `..`/非 UTF-8 回环），以及面板/行缓存/描述文案的调用点更新。
+> - **第 2 批（已落地）**：
+>   - **删除**：`ProjectAction::DeleteRequested`、`FsOpKind::Trash`、`FsOutcome.trashed`、reducer `delete_requested`（选中集去重、根节点不进回收站、trash 的 `focus` 为 `None` 让重扫自己剪 selection / 回退 active）、`app::project::fs::trash`（`trash 5.4.0`，失败报错绝不降级成永久删除；只对文件带侧车）、删除工作线程 `project-trash`（`trash` 在 Windows 的 COM apartment 由 crate 自己初始化，不把 host 线程切进那种模式）、`ProjectService::poll` 收完成（`Vec<TrashJob>` 允许并发删除、互不取消，完成仍是普通 `FsCompleted`）。
+>   - **widgets 树通道（T1/T2/T3）**：`TreeOutput` 增 `secondary_clicked` / `secondary_pos`、`drag_started`、`dragging`、`drop_target`、`drag_stopped`、`edit_committed` / `edit_cancelled`（derive 因 `Pos2` 降为 `PartialEq`）；`TreeStyle` 增 `drop_fill` / `drop_stroke`（`ProjectStyle` 与 `ProjectStyle.ron` 同步补 `drop_fill` / `drop_stroke` / `drop_stroke_width`）；`TreeView::highlight(id)`、`TreeView::editing(id, &mut String)`（Enter/失焦提交、Esc 取消、校验失败保持编辑器并续编；处理了 egui lost-focus 是两帧信号导致的重复提交）。
+>   - **`menu::context_menu(ui, style, salt, pos, open, content)`**：行 Response 在 widget 内部被消费，用不了 `Popup::context_menu`；改用 `Popup::new + PopupAnchor::Position + open_bool`，与 `show_popup` 共用同一套 `MenuStyle` / `MenuConfig` / `UiStackInfo` 装配（点菜单项不自动关、点外部或 Esc 由 egui 复位 `open`）。
+>   - **弹窗皮肤（T13）**：`component::shared_style::ModalSkin`（36 个标量 token：Stroke → color+width、Shadow → offset/blur/spread+color、Margin/Vec2/CornerRadius 拆标量，`tokens()` 投影回 `widgets::modal::ModalStyle`）、`Preferences/Styles/Modal.ron`、`SharedStyles::modal()/modal_style()`、`Frame::modal_style()`（缺皮肤时回退 `ModalStyle::dark()`）；Preferences 页面自动出现，没有改 app 或面板。
+> - **M3b 第 1 批（已落地，可见）**：行右键菜单（`menu::context_menu`，位置来自 widget 的 `secondary_clicked/secondary_pos`）——Create ▸ Folder / Document ▸ Markdown（菜单由类型表的 `CreateEntry` 驱动，创建后自动进入行内改名，T8）、Rename、Copy Path（`ctx.copy_text` 项目相对路径）、Reveal、Delete（先弹确认）；行内重命名（`TreeView::editing`：Enter/失焦提交、Esc 取消，名字表拒绝时**保持编辑器**并把原因画在状态栏右侧）；删除确认弹窗（`widgets::modal` + `Frame::modal_style()`，`[Cancel, Delete]`，Enter = Cancel，确认后发 `DeleteRequested`）；菜单 / 编辑器 / 对话框打开时短路面板键盘（T13 坑 2）。测试 +10：菜单绘制、Create 子菜单、改名提交、非法名保持打开、Esc 取消、待建行自动改名、确认框、Enter 取消、Copy Path、命令派发。
+>   - **验收修正 1（弹窗可拖动）**：`widgets::modal` 增 `show_draggable(ui, style, &mut offset)` —— 标题条 `Sense::drag()` 拖动、`CursorIcon::Grab/Grabbing`、越界 clamp 保证按钮始终可达；offset 归调用方（对话框位置是视图态，重开面板不继承），删除确认框已接入。测试 +1（拖动跟手 + 越界 clamp）。
+>   - **验收修正 2（文件名不展示后缀）**：树行只画主名、扩展名列在右侧后缀列（`rows::display_name`；文件夹保留全名，所以叫 `v1.2` 的文件夹不会变成 `v1`）；行内改名的 buffer 也只放主名，提交时面板把原后缀拼回去（文件夹不拼），于是**改名不可能改掉文件类型**；后缀仍是入口外的唯一真相（滤镜/图标 M5 用）。测试 +3（行只显示主名、文件改名保留 `.md`、显示名规则）。
+> - **M3b 第 2 批（已落地，可见）**：多选与键盘（Ctrl+click = Toggle、Shift+click = 从 anchor 起的 Range、Shift+↑/↓/Home/End 扩展、F2 改名、Delete 删所选、Ctrl+A 全选可见行、Esc 清选择；**anchor 在 core 的 `ProjectView`**，随选择手势/创建/改名/删除/移动维护；多路径 Replace 不动内容头，core 只让单路径 Replace 移动 active）；拖拽移动（widget 报 drag_started/dragging/drop_target/drag_stopped，面板持 payload / 幽灵 / 落点规则；落点 = 指针所在行的最近祖先文件夹、必须非自身子树、同一父目录视为 no-op；`TreeView::highlight` + `highlight_region` 画行与子树区域框，目标是「指针所在行的最近祖先文件夹」）；幽灵是 tooltip 层的 Area（单视口下等价于 T2 的 TSTransform 方案，已注记）；移动被阻塞弹窗（T7：目标已有同名条目 → Modal 提示、什么都不动）；类型图标（T16：8 家族 dark/light 抽到 Preferences/Textures/project/types{,/light}，脚本表 13 条；FileType.icon 改为文件名 + ProjectStyle::type_icon_root 由皮肤给目录，dark/light 各指一份；面板按类型表解析、未注册家族回退通用 file 图标）。测试 +11（多选两种、F2/Delete/Ctrl+A/Esc、拖拽 move、幽灵+落点高亮、冲突弹窗、自嵌套不移动、按类型图标）。
+> - **M3b 验收修正（2026-11-22 第二轮真机 7 条）**
+>
+> | # | 问题 | 修正 |
+> |---|---|---|
+> | 1 | 弹窗出现后点空白处会被关闭 | `widgets::modal` 不再把 backdrop click 当答案：只有 Esc（或 `Ui::close`）会 `Dismissed`，背板点击被吞掉。`ModalChoice::Dismissed` 的语义同步改成「关闭」。测试：背板点击不关、Esc 关。 |
+> | 2 | 拖拽只能精确落在文件夹那一行；展开的文件夹子树占满视口后就够不到 | 落点改为**指针所在行的最近祖先文件夹**（Unity/Tuanjie 的行为）；widget 增 `TreeView::highlight_region(id)`，把文件夹行 + 可见子树画成一个区域框。测试：落在文件行 → 目标为其目录、区域框跨 3 行；widget 的区域/单行描边测试。 |
+> | 3 | 拖到顶部/底部附近不能自动滚；拖拽中滚轮失效 | 拖拽升级为**树级会话**（egui memory）：源行被自动滚动移出可见范围后松手仍报 `drag_stopped`；拖拽贴边时 widget 自己滚 ScrollArea；egui 在 widget drag 期间忽略 wheel，widget 自己翻译 `smooth_scroll_delta`。测试：自动滚到源行消失后松手仍结束拖拽；拖拽中滚轮能滚到远端行。 |
+> | 4 | 多选移动后变成单选 | `settle` 的 reveal 只在 focus **不在** selection 里时才替换选择：移动先把每个 `(from,to)` 前缀重写进 selection，reveal 的 focus 是最后一对的目的地、本来就在里面，于是整组选择保留；create 的 focus 是全新行，仍然替换。测试：两条多选移动后 scan 完成仍两条且 anchor = 最后移动项。 |
+> | 5 | 幽灵只有换行文件名 | 幽灵改成**单行「图标 + 主名」**：图标与行一致（纹理用缩略图、文件夹用文件夹图标、多选用通用文件图标），主名超长截断不换行。测试：单条幽灵显示主名而不是 `readme.md`。 |
+> | 6 | 纹理行统一用一个类型图标 | `FileType` 增 `thumbnail` 标记（只有 `texture` 家族为 true）；宿主新增 `HostView::project_thumbnail(ctx, root, relative)` 与 `app::project::thumbnail::Thumbnails`：工作线程 `image` 解码 + 32 px 下采样、UI 线程上传纹理、按绝对路径缓存、watcher 报外部变化时 `clear()`；行（`TreeRow.thumbnail`）与幽灵都用纹理本身，解码完成前回退族图标。测试：解码/非图片/超大文件/缓存生命周期 + 行投影 + 幽灵文本。 |
+> | 7 | 新建 A 后在其内新建 B，Shift+点击 A 选到父目录和兄弟、排除 B | 根因是 anchor 存在**面板态**，创建/改名后没有更新，Shift 从过期行起算。修正：anchor 移入 core 的 `ProjectView.anchor`，由 `Replace`/`Toggle`/`Range`/`Navigate`/创建 reveal/删除修剪/前缀重映射共同维护；`Range` 的 anchor 被折叠隐藏时退化为选中 focus 并重新 anchor；键盘 ↑↓/Home/End 从 anchor 起算、Shift 走 Range；F2 以 anchor 为目标。测试：点击/切换 anchor、Escape 清 anchor、连续 Shift 保 anchor、隐藏 anchor 退化、创建后 anchor 跟到新行、嵌套新建后 Shift 选中 `{A,B}`、多选移动保多选、删除后 anchor 回退。 |
+>
+> - **M3b 验收修正 2（2026-11-22 第三轮真机 3 条）**
+>
+> | # | 问题 | 修正 |
+> |---|---|---|
+> | 8 | 文件夹行滚出 Hierarchy 视口后，落点区域框不显示 | widget 先按 `rows` 找到目标下标与深度；目标行在视口上方时区域框从视口顶边开始，并按可见行深度判断子树在视口内结束还是继续到视口底；折叠文件夹的区域框仍只有自己一行（`RegionBox.extend` 只在展开时允许越过最后一行）。测试：目标行滚出视口仍有一个从顶边开始的框；折叠文件夹的框等于其行。 |
+> | 9 | 贴边自动滚太快、感受不到「越贴边越快」 | 速度改成按帧时间缩放（60/144 Hz 一致），最大 260 pt/s（60 Hz 约 4 px/帧），强度用进入边缘带深度的平方：刚进入几乎不动、贴到边才最快；边缘带 22 → 30 pt。测试沿用「自动滚到源行消失后松手仍结束拖拽」。 |
+> | 10 | 既然 Esc 能关弹窗，就该有和它等价的关闭按钮 | 不用自绘 ×：标题条改用项目已有的系统窗口按钮 widget `window_controls`（与 dock 浮动窗口 / 颜色选择器同一个组件），红色圆圈关闭灯在标题条左侧，另外两盏保持灰色禁用（`WindowControlsEnabled::CLOSE_ONLY`）；点击红圈与 Esc 都返回 `ModalChoice::Dismissed`，drag 区域从三盏灯右侧开始。交通灯颜色/几何沿用共享 `WindowControlsStyle` 默认值，不新增皮肤 token（`ModalSkin` 仍是 36 个标量）。测试：红圈用共享 close 色画出，点击返回 `Dismissed`。 |
+>
+> - **M3 收口（2026-11-22）**：三轮真机验收反馈均已修正，M3 改动随本里程碑提交；下面的手动 smoke 清单保留为回归清单（不是未完成项）。
+> - 测试：core 141 条（`project` 71，含删除 5 条、多路径选择不动内容头 1 条、第二轮 anchor/多选/移动保持 8 条）、app 70 条（`project::fs` 12 条 tempdir + `project::thumbnail` 4 条）、widgets 183 条（tree 28、menu 7、modal 10）、component 251 + 7 + 10 条（M3b 两批 +21，第二轮 +6）；`cargo check --workspace --all-targets` 绿；本轮改动文件的 `rustfmt --check`（`skip_children=true`）干净——仓库里还有 M0–M2 留下的未格式化文件，整 crate `cargo fmt` 会顺带改它们，本里程碑不纳入（也不把它们算进 diff）。`trash` 在无桌面回收站的 CI 上按“失败且条目仍在”通过并注释原因（D5 禁止降级成永久删除）。
+> - 偏差记录：`FsOutcome` 用 `moved: Vec<(from, to)>` 而不是单个 `renamed`——多选移动需要重写每一对前缀；`FsOp` 增加 `companions` 字段，让 `app::project::fs` 不硬编码 `.meta`（成簇判据仍来自类型表）；**侧车只对文件生效**（目录是单个条目，避免误删/误改名恰好叫 `foo.meta` 的无关文件）；T9 原写“复用 scan 的单 job”，实际用 `Vec<TrashJob>`；`TreeOutput` 的拖拽通道固定 6 个字段（T1 原文的 `dragging` 是 bool、`drop_target` 只在拖拽中/松手帧有意义），行内编辑的 Enter/失焦/取消三种结局由 `edit_committed` / `edit_cancelled` 两个 bool 报，面板据此决定是否停止传 `editing`。 M3b 第二轮另记：弹窗只由 Esc 关闭（不跟 egui `should_close` 的背板点击）；纹理缩略图走 `HostView::project_thumbnail` 宿主 seam，而不是 `egui_extras` 的图片加载器（后者会把 4K 纹理全尺寸解码/上传，塞进 18 px 行图标）；拖拽会话与自滚动归 widget（egui 的 ScrollArea 在 widget drag 期间不处理滚轮）；选择 anchor 归 core 的 `ProjectView`，不是面板态。
 
 ### M4 — 持久化（1.5–2.5 天）
 
@@ -940,8 +1064,8 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 **目标**：加一个类型不再触碰树和面板。
 
 **交付**
-- core：`FileTypeRegistry` + 默认表 + 伴生规则；`OpenWith` 分发；
-- component：行图标/后缀来自注册表；未注册类型显示通用图标（不隐藏）；「只看资产」开关（用注册表过滤，D2）；
+- core：**`FileTypeRegistry` 的数据表与伴生规则 M3 已落地（T14）**；M5 只补 `FileType::open`（`OpenWith` 五类）+ `referenceable`（M7 用）与按类型图标；
+- component：行图标/后缀来自注册表 —— **图标 M3 已接入（T16：`FileType.icon` 文件名 + `ProjectStyle::type_icon_root`）**，M5 只补新家族数据与 `open` 分发；未注册类型显示通用图标（不隐藏）；「只看资产」开关（用注册表过滤，D2）；
 - app：打开分发实现（`OpenWith` 五类）+ IDE 探测从旧 crate 搬来（`ui/ide_detection.rs`，改成惰性检测、Windows 下不闪控制台窗口），未知类型回退系统默认；
 - **之后每类一个任务**：纹理（缩略图 + `.meta` 是否有 / 是否已导入）、网格（预览）、材质（Inspector）、音频（试听）、着色器/代码（IDE）、文档（Markdown 只读）。凡依赖「文档/预览」的能力，都依赖 Inspector 与视口迁移，不在本计划排期。
 
@@ -1041,7 +1165,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 
 | 风险 | 触发迹象 | 缓解 |
 |---|---|---|
-| TreeView 抽象撑不住改名/拖拽/多选 | 面板里开始「绕开 widget 自己画行」 | M2 就留 `renaming`/`drag`/`dropped_on` 通道；撑不住就改 widget API，不在面板里绕过（`rewrite-plan` 同款风险） |
+| TreeView 抽象撑不住改名/拖拽/多选 | 面板里开始「绕开 widget 自己画行」 | M2 定稿 N3 当时**没留**空通道（与本节旧文矛盾，M3 定稿补充 3 已修正）；M3 一次性补齐契约（T1/T2/T3），撑不住就改 widget API，不在面板里绕过 |
 | 扫描拖慢启动 | 网络盘/巨量目录下首帧 > 1s | 后台扫 + 截断 + `elapsed_ms` 日志；M1 就用 5 万节点 fixture 验 |
 | Windows 文件语义踩坑 | 仅大小写改名失败、保留名被系统拒 | 全部收敛到 `name.rs`/`fs.rs`；每条规则一条测试 |
 | watcher 自激（自己写自己） | 每次刷新都触发下一次刷新 | watcher 按路径前缀**丢掉 `Library/` 下的事件**（缓存、日志、视图文件都在那里）+ generation + 300ms 去抖 |

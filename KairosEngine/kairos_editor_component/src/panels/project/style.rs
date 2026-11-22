@@ -20,6 +20,7 @@
 //! splitter) is measured against the Console panel's palette, which is the same
 //! Unity/Tuanjie skin.
 
+use egui::Stroke;
 use kairos_color::Color;
 use kairos_editor_widgets::color::ColorExt;
 use kairos_editor_widgets::style::Style;
@@ -50,6 +51,13 @@ pub struct ProjectStyle {
     /// The 1 px rule above a system directory (Library) and under the toolbar.
     pub separator: Color,
     pub separator_width: f32,
+    /// Drag drop-target wash under the row the pointer would drop onto (M3).
+    ///
+    /// Translucent, so the row's own hover/selection fill still reads under it;
+    /// the outline is the same blue, opaque.
+    pub drop_fill: Color,
+    pub drop_stroke: Color,
+    pub drop_stroke_width: f32,
 
     // --- tree geometry (Unity's Project browser measures) ---
     pub row_height: f32,
@@ -98,6 +106,11 @@ pub struct ProjectStyle {
 
     /// Row icon files (runtime assets under `Preferences/Textures/project`).
     pub icons: ProjectIcons,
+
+    /// Folder holding the per-type row icons; the type table supplies only the
+    /// file name (`FileType::icon`). M3/T16 puts the dark set in
+    /// `.../project/types` and the light set in `.../project/types/light`.
+    pub type_icon_root: String,
 
     /// Tab-header artwork. `serde(default)` keeps style files written before the
     /// icon existed loadable.
@@ -191,6 +204,8 @@ impl ProjectStyle {
             expander_color: self.expander.to_egui(),
             separator: self.separator.to_egui(),
             separator_width: self.separator_width,
+            drop_fill: self.drop_fill.to_egui(),
+            drop_stroke: Stroke::new(self.drop_stroke_width, self.drop_stroke.to_egui()),
             bg: self.background.to_egui(),
         }
     }
@@ -218,6 +233,11 @@ impl Style for ProjectStyle {
             expander: Color::from_srgb8([0xA8, 0xA8, 0xA8, 255]),
             separator: Color::from_srgb8([0x2B, 0x2B, 0x2B, 255]),
             separator_width: 1.0,
+            // The menu highlight blue, washed over the row; the widget's own
+            // default is the same pair (M3 drag).
+            drop_fill: Color::from_srgb8([0x2C, 0x5D, 0x87, 0x80]),
+            drop_stroke: Color::from_srgb8([0x5A, 0x9B, 0xE0, 255]),
+            drop_stroke_width: 1.0,
             row_height: 20.0,
             indent: 14.0,
             expander_size: 13.0,
@@ -247,6 +267,7 @@ impl Style for ProjectStyle {
             status_text_size: 11.0,
 
             icons: ProjectIcons::dark(),
+            type_icon_root: String::from("Preferences/Textures/project/types"),
             tab_icon: default_tab_icon(),
         }
     }
@@ -264,6 +285,10 @@ impl Style for ProjectStyle {
             hover_bg: Color::from_srgb8([0xD4, 0xD4, 0xD4, 255]),
             expander: Color::from_srgb8([0x50, 0x50, 0x50, 255]),
             separator: Color::from_srgb8([0xA6, 0xA6, 0xA6, 255]),
+            // Light keeps the same blue: it is the only semantic colour the
+            // tree has, so it must not change family with the theme.
+            drop_fill: Color::from_srgb8([0x2C, 0x5D, 0x87, 0x59]),
+            drop_stroke: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
             toolbar_bg: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]),
             toolbar_text: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
             control_hover: Color::from_srgb8([0xB4, 0xB4, 0xB4, 255]),
@@ -277,6 +302,7 @@ impl Style for ProjectStyle {
             status_bg: Color::from_srgb8([0xB4, 0xB4, 0xB4, 255]),
             status_text: Color::from_srgb8([0x60, 0x60, 0x60, 255]),
             icons: ProjectIcons::light(),
+            type_icon_root: String::from("Preferences/Textures/project/types/light"),
             tab_icon: String::from("Preferences/Textures/tab_icons/light/project.png"),
             ..Self::dark()
         }
@@ -299,6 +325,19 @@ mod tests {
                 assert!(
                     workspace().join(path).is_file(),
                     "missing project row icon {path}"
+                );
+            }
+            // Every family with artwork must resolve for this skin: the table
+            // names the file, the skin the folder (T16).
+            for kind in kairos_editor_core::project::FileTypeRegistry::builtin()
+                .types()
+                .filter(|kind| !kind.icon.is_empty())
+            {
+                let path = format!("{}/{}", style.type_icon_root, kind.icon);
+                assert!(
+                    workspace().join(&path).is_file(),
+                    "missing {} icon {path}",
+                    kind.id
                 );
             }
         }
@@ -367,6 +406,11 @@ mod tests {
         assert_eq!(tree.icon, style.icon_size);
         assert_eq!(tree.selected_bg, style.selected_bg.to_egui());
         assert_eq!(tree.selected_radius, style.selected_radius);
+        assert_eq!(tree.drop_fill, style.drop_fill.to_egui());
+        assert_eq!(
+            tree.drop_stroke,
+            Stroke::new(style.drop_stroke_width, style.drop_stroke.to_egui())
+        );
         assert_eq!(tree.bg, style.background.to_egui());
     }
 }

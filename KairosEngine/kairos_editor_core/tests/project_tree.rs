@@ -5,7 +5,7 @@
 //! and test in milliseconds.
 
 use kairos_editor_core::project::{
-    Node, NodeKind, ProjectTree, ProjectView, RelPath, ScanEntry, is_hidden_name,
+    FileTypeRegistry, Node, NodeKind, ProjectTree, ProjectView, RelPath, ScanEntry,
 };
 
 fn dir(path: &str) -> ScanEntry {
@@ -86,9 +86,7 @@ fn assemble_orders_folders_first_then_system_dirs_last() {
         vec!["res", "scripts", ".gitignore", "AGENTS.md", "Library"]
     );
 
-    let res = tree
-        .get(&RelPath::new("res"))
-        .expect("res");
+    let res = tree.get(&RelPath::new("res")).expect("res");
     let res_names: Vec<&str> = res
         .children
         .iter()
@@ -99,12 +97,7 @@ fn assemble_orders_folders_first_then_system_dirs_last() {
 
 #[test]
 fn names_sort_case_insensitively_with_a_stable_tie_break() {
-    let entries = vec![
-        dir("zebra"),
-        dir("Alpha"),
-        dir("alpha"),
-        dir("Beta"),
-    ];
+    let entries = vec![dir("zebra"), dir("Alpha"), dir("alpha"), dir("Beta")];
     let tree = assemble(&entries);
     let names: Vec<&str> = tree
         .children(tree.root())
@@ -145,13 +138,19 @@ fn visible_rows_follow_expansion_in_pre_order() {
     let mut view = ProjectView::default();
 
     assert_eq!(
-        names(&tree, &tree.visible_rows(&view)),
+        names(
+            &tree,
+            &tree.visible_rows(&view, &FileTypeRegistry::builtin())
+        ),
         vec!["res", "scripts", "AGENTS.md", "Library"]
     );
 
     view.expanded.insert(RelPath::new("res"));
     assert_eq!(
-        names(&tree, &tree.visible_rows(&view)),
+        names(
+            &tree,
+            &tree.visible_rows(&view, &FileTypeRegistry::builtin())
+        ),
         vec![
             "res",
             "res/models",
@@ -164,7 +163,10 @@ fn visible_rows_follow_expansion_in_pre_order() {
 
     view.expanded.insert(RelPath::new("res/models"));
     assert_eq!(
-        names(&tree, &tree.visible_rows(&view)),
+        names(
+            &tree,
+            &tree.visible_rows(&view, &FileTypeRegistry::builtin())
+        ),
         vec![
             "res",
             "res/models",
@@ -187,13 +189,24 @@ fn hidden_names_are_snapshotted_but_not_drawn_by_default() {
     view.expanded.insert(RelPath::new("res/models"));
 
     assert!(tree.get(&RelPath::new(".gitignore")).is_some());
-    assert!(tree.get(&RelPath::new("res/models/Suzanne.png.meta")).is_some());
-    assert!(!names(&tree, &tree.visible_rows(&view))
+    assert!(
+        tree.get(&RelPath::new("res/models/Suzanne.png.meta"))
+            .is_some()
+    );
+    assert!(
+        !names(
+            &tree,
+            &tree.visible_rows(&view, &FileTypeRegistry::builtin())
+        )
         .iter()
-        .any(|name| is_hidden_name(name.rsplit('/').next().unwrap_or(name))));
+        .any(|name| FileTypeRegistry::builtin().is_hidden(name.rsplit('/').next().unwrap_or(name)))
+    );
 
     view.show_hidden = true;
-    let rows = names(&tree, &tree.visible_rows(&view));
+    let rows = names(
+        &tree,
+        &tree.visible_rows(&view, &FileTypeRegistry::builtin()),
+    );
     assert!(rows.contains(&String::from(".gitignore")));
     assert!(rows.contains(&String::from("res/models/Suzanne.png.meta")));
 }
@@ -206,7 +219,10 @@ fn a_file_is_not_a_folder_for_the_expansion_rule() {
     view.expanded.insert(RelPath::new("AGENTS.md"));
 
     assert_eq!(
-        names(&tree, &tree.visible_rows(&view)),
+        names(
+            &tree,
+            &tree.visible_rows(&view, &FileTypeRegistry::builtin())
+        ),
         vec!["res", "scripts", ".gitignore", "AGENTS.md", "Library"]
     );
 }
@@ -261,7 +277,10 @@ fn an_entry_without_its_parent_is_skipped_and_reported() {
     let mut tree = ProjectTree::default();
     let report = tree.assemble(&entries, &[], false);
 
-    assert_eq!(report.skipped, 1, "its parent folder is not in the snapshot");
+    assert_eq!(
+        report.skipped, 1,
+        "its parent folder is not in the snapshot"
+    );
     assert!(tree.is_empty());
 }
 
@@ -287,7 +306,10 @@ fn rel_paths_split_and_join_without_allocation_surprises() {
     assert_eq!(deep.name(), "Suzanne.png");
     assert_eq!(deep.parent(), Some(RelPath::new("res/models")));
     assert_eq!(RelPath::new("res").parent(), Some(root.clone()));
-    assert_eq!(root.child("res").child("models"), RelPath::new("res/models"));
+    assert_eq!(
+        root.child("res").child("models"),
+        RelPath::new("res/models")
+    );
 
     assert!(deep.is_under(&RelPath::new("res")));
     assert!(deep.is_under(&deep));
@@ -315,6 +337,8 @@ fn a_deep_chain_keeps_every_parent_link() {
     let parent = leaf.parent.expect("parent");
     assert_eq!(
         tree.node(parent).expect("parent node").path,
-        RelPath::new("d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30")
+        RelPath::new(
+            "d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30"
+        )
     );
 }

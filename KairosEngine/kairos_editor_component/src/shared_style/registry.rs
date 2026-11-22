@@ -10,13 +10,17 @@ use std::collections::BTreeMap;
 
 use kairos_editor_core::{SharedStyleId, StyleValue};
 use kairos_editor_widgets::color_picker::ColorPickerStyle;
+use kairos_editor_widgets::modal::ModalStyle;
 
 use crate::skin::StyleField;
 use crate::toolbar::style::ToolBarStyle;
 
 use super::catalog::{SharedStyleDef, StyleCatalog};
 use super::color_picker::ColorPickerSkin;
-use super::{COLOR_PICKER, EDITOR_FIELD, EditorFieldStyle, LIST, ListStyle, SharedStyle, TOOLBAR};
+use super::{
+    COLOR_PICKER, EDITOR_FIELD, EditorFieldStyle, LIST, ListStyle, MODAL, ModalSkin, SharedStyle,
+    TOOLBAR,
+};
 
 /// One shared style as the Preferences panel sees it.
 #[derive(Clone, Debug, PartialEq)]
@@ -117,8 +121,20 @@ impl SharedStyles {
         self.get(LIST)
     }
 
+    /// The modal dialog's live skin; `None` when it is not registered (a test
+    /// catalog without it).
+    pub fn modal(&self) -> Option<&ModalSkin> {
+        self.get(MODAL)
+    }
+
     pub fn color_picker_style(&self) -> Option<ColorPickerStyle> {
         self.color_picker().map(ColorPickerSkin::tokens)
+    }
+
+    /// The modal dialog's runtime tokens; `None` when the style is not
+    /// registered (a test catalog without it).
+    pub fn modal_style(&self) -> Option<ModalStyle> {
+        self.modal().map(ModalSkin::tokens)
     }
 
     /// Field tables for the Preferences panel, in catalog order.
@@ -194,7 +210,9 @@ mod tests {
     use kairos_editor_core::ListEdit;
 
     use super::*;
-    use crate::shared_style::{COLOR_PICKER, EDITOR_FIELD, EditorFonts, FONTS, LIST, TOOLBAR};
+    use crate::shared_style::{
+        COLOR_PICKER, EDITOR_FIELD, EditorFonts, FONTS, LIST, MODAL, TOOLBAR,
+    };
 
     #[test]
     fn the_registry_exposes_a_page_for_every_shared_style() {
@@ -211,6 +229,8 @@ mod tests {
         assert!(shared.color_picker().is_some());
         assert!(shared.color_picker_style().is_some());
         assert!(shared.list_style().is_some());
+        assert!(shared.modal().is_some());
+        assert!(shared.modal_style().is_some());
         assert!(
             skins
                 .iter()
@@ -242,6 +262,15 @@ mod tests {
                 .iter()
                 .any(|field| field.path == "eyedropper_icon")
         );
+
+        let modal = skins
+            .iter()
+            .find(|skin| skin.id == MODAL)
+            .expect("modal page");
+        assert_eq!(modal.title, "Modal");
+        assert_eq!(modal.file, "Modal.ron");
+        assert!(modal.fields.iter().any(|field| field.path == "title_bar"));
+        assert!(modal.fields.iter().any(|field| field.path == "button_fill"));
 
         let fonts = skins
             .iter()

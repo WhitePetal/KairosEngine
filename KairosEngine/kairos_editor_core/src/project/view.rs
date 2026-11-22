@@ -19,6 +19,22 @@ pub enum SortKey {
     Name,
 }
 
+/// How a [`ProjectAction::Select`](super::ProjectAction::Select) changes the
+/// selection.
+///
+/// The three are the desktop list conventions: a click replaces, Ctrl+click
+/// toggles one entry, Shift+click extends from an anchor over the rows the user
+/// can actually see.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelectMode {
+    /// The clicked paths become the selection.
+    Replace,
+    /// Each path flips its own membership; the rest of the selection survives.
+    Toggle,
+    /// `[anchor, focus]`: every visible row between the two, inclusive.
+    Range,
+}
+
 /// Persistable view intent over the project tree.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProjectView {
@@ -29,9 +45,17 @@ pub struct ProjectView {
     /// folder it opens; `Select` sets it to the clicked item's directory, so a
     /// single click moves the content pane (M2 acceptance fix).
     pub active: Option<RelPath>,
-    /// Selected rows. v1 holds at most one entry; M3 grows it to a real
-    /// multi-selection.
+    /// Selected rows (M3: a real multi-selection).
     pub selection: BTreeSet<RelPath>,
+    /// The row a selection gesture extends from: the last row clicked or
+    /// toggled, or the row a reveal selected.
+    ///
+    /// Shift+click and Shift+arrow select the visible span between this path and
+    /// the focus, so the anchor belongs next to the selection, not to the panel:
+    /// a panel that reopens (or a scan that rebuilds every row) must extend from
+    /// the row the user last touched. `settle` prunes it with the selection and
+    /// `rewrite_prefixes` remaps it across a rename or a move.
+    pub anchor: Option<RelPath>,
     pub sort: SortKey,
     /// Draw dot files and companion sidecars (`.meta`). They are in the tree;
     /// this only decides whether they are drawn (M2/M5).
@@ -48,6 +72,7 @@ impl Default for ProjectView {
             expanded: BTreeSet::new(),
             active: None,
             selection: BTreeSet::new(),
+            anchor: None,
             sort: SortKey::Name,
             show_hidden: false,
             tree_split: 0.28,

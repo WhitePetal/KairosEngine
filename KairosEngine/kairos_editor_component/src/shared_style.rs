@@ -2,9 +2,9 @@
 //! not by a panel.
 //!
 //! A panel owns its skin and loads it in [`Panel::init`](crate::Panel::init).
-//! The toolbar is app chrome; the color picker, the value fields and the
-//! reorderable list are widgets; the font list is a global resource. None has a
-//! per-instance lifecycle to hang a skin on.
+//! The toolbar is app chrome; the color picker, the value fields, the
+//! reorderable list and the modal dialog are widgets; the font list is a global
+//! resource. None has a per-instance lifecycle to hang a skin on.
 //! They declare themselves with
 //! `#[SharedStyle(...)]` next to `#[derive(StyleFields)]`; the derive emits the
 //! id constant and submits a [`SharedStyleDef`]. The app collects the
@@ -40,6 +40,7 @@
 
 mod catalog;
 mod fonts;
+mod modal;
 mod registry;
 
 pub mod color_picker;
@@ -52,6 +53,7 @@ pub use color_picker::{COLOR_PICKER, ColorPickerSkin};
 pub use field::{EDITOR_FIELD, EditorFieldStyle};
 pub use fonts::{EditorFonts, FONTS};
 pub use list::{LIST, ListStyle};
+pub use modal::{MODAL, ModalSkin};
 pub use registry::{SharedSkin, SharedStyles};
 
 use egui::Context;

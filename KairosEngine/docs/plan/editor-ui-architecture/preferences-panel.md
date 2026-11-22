@@ -288,7 +288,7 @@ StyleFields::set_style_field(path, value)
 | `kairos_editor_component/src/panel.rs` | 改 | `Panel::{skin,set_skin_field,save_skin}`（默认无皮肤） |
 | `kairos_editor_component/src/panel/host.rs` | 改 | `skins`/`set_skin_field`/`save_skin` |
 | `kairos_editor_component/src/shared_style.rs` + `shared_style/{catalog,registry,color_picker}.rs` | 新增 | `SharedStyle`；`SharedStyleDef` / `StyleCatalog`；`SharedStyles` / `SharedSkin`；`ColorPickerSkin`（serde + `StyleFields` + `tokens()` 投影） |
-| `kairos_editor_component/src/frame.rs` | 改 | `Frame::skins` + `with_skins`；`Frame::shared` + `with_shared`；`toolbar_style()` / `color_picker_style()` / `field_style()` / `list_style()` |
+| `kairos_editor_component/src/frame.rs` | 改 | `Frame::skins` + `with_skins`；`Frame::shared` + `with_shared`；`toolbar_style()` / `color_picker_style()` / `field_style()` / `list_style()` / `modal_style()` |
 | `kairos_editor_component/src/panels/preferences.rs` | 新增/改 | 页面列表（面板页 + 固定 shared 页）、页、分组行、字段表到 field widget 的映射、保存边界、shared 页的 Reload、单测 |
 | `kairos_editor_component/src/panels/preferences/style.rs` | 新增/改 | `PreferencesPanelStyle`（自身也 derive，可编辑自己）+ 参考皮肤往返测试；不再投影 `ColorPickerStyle` |
 | `kairos_editor_widgets/src/color_picker.rs` | 新增 | 自有的 Unity 风格 LDR/HDR 颜色字段与取色器：色相环、SV 方块、通道滑杆、hex、Intensity、Swatches |
@@ -297,6 +297,8 @@ StyleFields::set_style_field(path, value)
 | `Preferences/Styles/EditorField.ron` | 新增 | 字段皮肤参考文件（dark + light，含 `menu` 组），与代码默认值逐字段相等的往返测试钉住 |
 | `kairos_editor_component/src/shared_style/list.rs` | 新增 | `ListStyle`（`#[SharedStyle(LIST = "list")]`）：header/band/stripe/selection/handle/container/button/几何 token，`tokens(&FieldStyle)` 投影成运行期 `ListChromeStyle` |
 | `Preferences/Styles/List.ron` | 新增 | 列表皮肤参考文件（dark + light），与代码默认值逐字段相等的往返测试钉住 |
+| `kairos_editor_component/src/shared_style/modal.rs` | 新增 | `ModalSkin`（`#[SharedStyle(MODAL = "modal")]`，M3）：弹窗的 36 个标量 token（标题条红/黄/绿三个系统窗口按钮不进皮肤，和 color picker 一样共用 `WindowControlsStyle` 默认值）——`Stroke` 拆 color+width、`Shadow` 拆 offset/blur/spread+color、`Margin`/`Vec2`/`CornerRadius` 拆数值——再由 `tokens()` 投影成运行期 `ModalStyle`；默认值与 `widgets::modal::ModalStyle::dark()/light()` 逐字段相等 |
+| `Preferences/Styles/Modal.ron` | 新增 | 弹窗皮肤参考文件（dark + light），与代码默认值逐字段相等的往返测试钉住 |
 | `kairos_color/src/linear.rs` | 新增 | `Color`（8 字节 linear f16×4，可超过 1）、`ColorUsage`/`ColorProperty`/`ColorSpace`、sRGB 传输函数与 round-trip 测试 |
 | `kairos_editor_component/src/panels/{about,console,profiler}.rs` + `*/style.rs` | 改 | 样式 derive；三个 `Panel` 方法（皮肤快照 / 写字段 / 存文件） |
 | `kairos_editor_component/src/panels.rs` | 改 | `PREFERENCES` 条目；面板数量 7 → 8 |

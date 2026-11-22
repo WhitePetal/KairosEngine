@@ -98,5 +98,11 @@ This lists the top-level directories you touched; each `kairos_*` entry is a cra
   `cargo test-crate kairos_editor` is a real check rather than a no-op: the 74
   migrated tests, led by the project path tree (32) and the audio inspector
   (23).
+- **`kairos_editor_app` has no lib target.** The alias always passes `--lib`, so
+  `cargo test-crate kairos_editor_app` fails with "no library targets found".
+  Its tests live beside the code in `src/`; use
+  `cargo test -p kairos_editor_app --bins` (or add a trailing filter the same
+  way). `cargo check --workspace --all-targets` still covers it.
 - **Doctests are documentation.** Keep them green and fix them when they break, but they are the wrong thing to pay three minutes for on every edit.
+- **Profiler panel tests that reason about the default last-frames window need spaced frame timestamps.** The plain `captured_frames` fixture captures as fast as the machine allows, so on a fast run consecutive frames can share a timestamp and a test asserting "frame 0 is scrolled past the 300-frame window" flakes. Use `captured_frames_spaced(count, gap)`: it busy-waits microseconds between frames (no sleep, so it stays fast) and gives every frame a distinct wall time. Assert the fixture precondition (e.g. `screen_of_source(frame 0) < 0`) explicitly so a future fixture change fails loudly instead of quietly testing the wrong state.
 - **There is no CI in this repo.** The full suite is therefore the only pre-merge gate and it runs wherever someone remembers to run it. If CI is added, `cargo test-full` belongs there and this file should say so.

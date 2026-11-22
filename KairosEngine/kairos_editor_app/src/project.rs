@@ -16,17 +16,19 @@
 //! threads, the reducer owns the state. That split is the reason a scan cannot
 //! leave the tree half-updated.
 
+pub(crate) mod fs;
 pub(crate) mod ignore;
 pub(crate) mod scanner;
+pub(crate) mod thumbnail;
 pub(crate) mod watcher;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Instant;
 
-use kairos_editor_core::project::{ScanPolicy, ScanReason};
+use kairos_editor_core::project::{FsOp, FsOpId, FsOpKind, FsOutcome, ScanPolicy, ScanReason};
 use kairos_editor_core::{Action, ProjectAction, ProjectEffect};
 
 /// How a scan request is answered.
@@ -41,11 +43,18 @@ enum Mode {
 }
 
 /// Owns the project's host work: the scan thread and the watcher (M1), the file
-/// operations (M3).
+/// operations (M3) and the delete thread.
 pub(crate) struct ProjectService {
     mode: Mode,
     watcher: Option<watcher::Watcher>,
     scan: Option<ScanJob>,
+    /// Deletes in flight, oldest first.
+    ///
+    /// A vector rather than the scan's single job: a newer delete must not
+    /// cancel an older one (both are user intent, and the file system may
+    /// already have half of the first one in the bin), and the worker is cheap
+    /// enough that two threads are better than a lost completion.
+    trash: Vec<TrashJob>,
 }
 
 /// One in-flight background scan.
@@ -55,6 +64,13 @@ struct ScanJob {
     /// instead of finishing a result that will be discarded.
     cancel: Arc<AtomicBool>,
     result: Receiver<scanner::ScanResult>,
+}
+
+/// One delete running on its own thread.
+struct TrashJob {
+    /// The request this answers; the reducer uses it to attribute the result.
+    op: FsOpId,
+    result: Receiver<Result<FsOutcome, String>>,
 }
 
 impl ProjectService {
@@ -87,6 +103,7 @@ impl ProjectService {
             mode: Mode::Background,
             watcher,
             scan: None,
+            trash: Vec::new(),
         };
         let actions = vec![
             Action::Project(ProjectAction::PolicyLoaded { policy }),
@@ -106,6 +123,7 @@ impl ProjectService {
             mode: Mode::Inline,
             watcher: None,
             scan: None,
+            trash: Vec::new(),
         }
     }
 
@@ -132,13 +150,26 @@ impl ProjectService {
                         truncated: false,
                         elapsed_ms: 0,
                         library_nodes: 0,
-                        errors: vec![String::from(
-                            "the scan thread stopped without a result",
-                        )],
+                        errors: vec![String::from("the scan thread stopped without a result")],
                     }));
                 }
             }
         }
+
+        // A delete finishes on its own thread; the answer is an ordinary
+        // completion, so the reducer cannot tell it from a synchronous one.
+        let mut still_running = Vec::with_capacity(self.trash.len());
+        for job in self.trash.drain(..) {
+            match job.result.try_recv() {
+                Ok(result) => actions.push(fs_completion(job.op, result)),
+                Err(TryRecvError::Empty) => still_running.push(job),
+                Err(TryRecvError::Disconnected) => actions.push(fs_completion(
+                    job.op,
+                    Err(String::from("the delete thread stopped without a result")),
+                )),
+            }
+        }
+        self.trash = still_running;
 
         if let Some(watcher) = &self.watcher
             && watcher.take_change()
@@ -208,9 +239,7 @@ impl ProjectService {
                                     truncated: false,
                                     elapsed_ms: 0,
                                     library_nodes: 0,
-                                    errors: vec![format!(
-                                        "cannot start the scan thread: {error}",
-                                    )],
+                                    errors: vec![format!("cannot start the scan thread: {error}",)],
                                 })]
                             }
                         }
@@ -222,6 +251,34 @@ impl ProjectService {
             // `that_detached` does not block on the spawned program, and an
             // error means the OS refused to start one at all (M5 replaces this
             // with the typed `OpenWith` dispatch, IDE detection included).
+            //
+            // Create, rename and move are synchronous: one syscall each, so the
+            // completion is ready before the effect returns. Delete is the one
+            // operation that gets a worker thread — the OS recycle bin is a COM
+            // shell call on Windows and can take hundreds of milliseconds on a
+            // big directory, and the `trash` crate initialises the COM apartment
+            // of the thread it runs on, which is a mode the host's own thread
+            // should not be switched into.
+            ProjectEffect::Fs(op) => {
+                if matches!(&op.kind, FsOpKind::Trash { .. }) {
+                    self.execute_trash(op)
+                } else {
+                    let result = fs::execute(&op.root, &op.companions, &op.kind);
+                    if let Err(error) = &result {
+                        kairos_log::warn!(target: "kairos_editor", "project {op_id}: {error}", op_id = op.id);
+                    }
+                    vec![fs_completion(op.id, result)]
+                }
+            }
+            ProjectEffect::Reveal { root, path } => {
+                let absolute = root.join(path.as_str());
+                match reveal_in_file_manager(&absolute) {
+                    Ok(()) => Vec::new(),
+                    Err(error) => vec![Action::Project(ProjectAction::Failed {
+                        message: format!("cannot reveal {}: {error}", absolute.display()),
+                    })],
+                }
+            }
             ProjectEffect::Open { root, path } => {
                 let absolute = root.join(path.as_str());
                 match open::that_detached(&absolute) {
@@ -233,6 +290,64 @@ impl ProjectService {
             }
         }
     }
+
+    /// Start (or, in tests, run) the one operation that leaves the frame thread.
+    ///
+    /// The worker owns the request and answers with an ordinary
+    /// [`ProjectAction::FsCompleted`], so the reducer has one completion shape
+    /// whether the host work was a syscall or a thread. The thread name is the
+    /// only attribution a crash log gets, so it says what the thread was doing.
+    fn execute_trash(&mut self, op: FsOp) -> Vec<Action> {
+        match self.mode {
+            #[cfg(test)]
+            Mode::Inline => {
+                let result = fs::execute(&op.root, &op.companions, &op.kind);
+                if let Err(error) = &result {
+                    kairos_log::warn!(target: "kairos_editor", "project {op_id}: {error}", op_id = op.id);
+                }
+                vec![fs_completion(op.id, result)]
+            }
+            Mode::Background => {
+                let FsOp {
+                    id,
+                    root,
+                    companions,
+                    kind,
+                } = op;
+                let (sender, result) = mpsc::channel();
+                let spawned = std::thread::Builder::new()
+                    .name(String::from("project-trash"))
+                    .spawn(move || {
+                        // The `trash` crate initialises this thread's platform
+                        // state (on Windows, a COM apartment) itself, which is
+                        // exactly why the call cannot share the host's thread.
+                        let outcome = fs::execute(&root, &companions, &kind);
+                        let _ = sender.send(outcome);
+                    });
+                match spawned {
+                    Ok(_thread) => {
+                        self.trash.push(TrashJob { op: id, result });
+                        Vec::new()
+                    }
+                    Err(error) => {
+                        kairos_log::warn!(
+                            target: "kairos_editor",
+                            "project {id}: cannot start the delete thread: {error}"
+                        );
+                        vec![fs_completion(
+                            id,
+                            Err(format!("cannot start the delete thread: {error}")),
+                        )]
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The completion for one file operation, whichever host path ran it.
+fn fs_completion(op: FsOpId, result: Result<FsOutcome, String>) -> Action {
+    Action::Project(ProjectAction::FsCompleted { op, result })
 }
 
 /// Turn a finished walk into the completion the reducer expects.
@@ -245,4 +360,38 @@ fn completion(result: scanner::ScanResult) -> Action {
         library_nodes: result.library_nodes,
         errors: result.errors,
     })
+}
+/// Hand one path to the OS file manager with the file selected where the
+/// platform supports it.
+///
+/// Spawned and forgotten: the editor cannot wait for a file manager, and a
+/// failure means the OS refused to start one at all, which the panel reports.
+#[cfg(target_os = "windows")]
+fn reveal_in_file_manager(path: &Path) -> std::io::Result<()> {
+    // `explorer /select,<path>` is the documented way to open the containing
+    // folder with the file highlighted; the path is quoted because the single
+    // argument is parsed again by the shell.
+    std::process::Command::new("explorer")
+        .arg(format!("/select,\"{}\"", path.display()))
+        .spawn()
+        .map(drop)
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_in_file_manager(path: &Path) -> std::io::Result<()> {
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .spawn()
+        .map(drop)
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn reveal_in_file_manager(path: &Path) -> std::io::Result<()> {
+    // No widespread "reveal this file" verb: open the containing directory.
+    let directory = path.parent().unwrap_or(path);
+    std::process::Command::new("xdg-open")
+        .arg(directory)
+        .spawn()
+        .map(drop)
 }

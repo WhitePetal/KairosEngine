@@ -4787,6 +4787,33 @@ mod probe {
         profiler
     }
 
+    /// Capture `count` committed frames with a guaranteed gap between their
+    /// start times.
+    ///
+    /// The plain fixture captures as fast as the machine allows, so on a fast
+    /// run consecutive frames can share a timestamp (and the built-in 300-frame
+    /// window then cannot be reasoned about: a test that expects the first frame
+    /// to be scrolled past sees it already inside the window and flakes). The
+    /// busy-wait is microseconds, not a sleep: it keeps the fixture snappy on
+    /// every platform while giving every frame a distinct wall time.
+    fn captured_frames_spaced(count: usize, gap: std::time::Duration) -> Profiler {
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        for _ in 0..count {
+            {
+                kairos_profile::scope!(Category::Others, "profiler.test.frame");
+            }
+            profiler.end_frame(true);
+            let until = std::time::Instant::now() + gap;
+            while std::time::Instant::now() < until {
+                std::hint::spin_loop();
+            }
+            profiler.begin_frame();
+        }
+        profiler
+    }
+
     /// Capture `count` frames that last about a millisecond each, so they have
     /// distinct wall times on the module axis.
     fn captured_slow_frames(count: usize) -> Profiler {
@@ -4871,7 +4898,10 @@ mod probe {
         let _guard = lock_profiler_tests();
         let ctx = Context::default();
 
-        let host = ProfilerHost(captured_frames(320));
+        let host = ProfilerHost(captured_frames_spaced(
+            320,
+            std::time::Duration::from_micros(20),
+        ));
         let mut panel = ProfilerPanel::default();
         let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
         let session = host.0.session();
@@ -5103,7 +5133,10 @@ mod probe {
     fn double_clicking_the_clock_ruler_restores_the_default_window() {
         let _guard = lock_profiler_tests();
         let ctx = Context::default();
-        let host = ProfilerHost(captured_frames(320));
+        let host = ProfilerHost(captured_frames_spaced(
+            320,
+            std::time::Duration::from_micros(20),
+        ));
         let mut panel = ProfilerPanel::default();
         let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
 
@@ -5144,11 +5177,22 @@ mod probe {
     fn stepping_to_an_older_frame_reveals_it_on_the_axis() {
         let _guard = lock_profiler_tests();
         let ctx = Context::default();
-        let host = ProfilerHost(captured_frames(320));
+        let host = ProfilerHost(captured_frames_spaced(
+            320,
+            std::time::Duration::from_micros(20),
+        ));
         let mut panel = ProfilerPanel::default();
         let toolbar = draw_pass(&ctx, &mut panel, &host, Vec::new());
         let session = host.0.session();
         assert!(session.frames.len() > 300);
+        let before = panel
+            .module_axis
+            .screen_of_source(session.frames[0].start_ns as f64)
+            .expect("frame 0 maps onto the axis");
+        assert!(
+            before < 0.0,
+            "fixture precondition: frame 0 starts left of the default window: {before}"
+        );
 
         // Frame 0 is left of the default window; pin the selection to frame 1 so
         // Previous is enabled, then step back. The record toggle's state fill is
@@ -5177,12 +5221,13 @@ mod probe {
         assert!(x >= 0.0, "the axis revealed the frame: {x}");
         let chart_width = 900.0 - panel.style.module_name_width - panel.style.scrollbar_width;
         assert!(
-            x >= 0.0 && x < 5.0,
-            "the first frame is revealed at the start of the axis: {x}"
+            x >= 0.0 && x <= chart_width,
+            "the revealed frame is inside the chart columns: {x} (width {chart_width})"
         );
         assert!(
-            x <= chart_width,
-            "the revealed frame is inside the chart columns"
+            panel.module_axis.left().abs() < 1e-6,
+            "the axis panned back to the start of the capture: left {}",
+            panel.module_axis.left()
         );
     }
 

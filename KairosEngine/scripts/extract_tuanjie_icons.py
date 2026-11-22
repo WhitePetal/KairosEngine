@@ -67,6 +67,68 @@ ICONS = [
         "project/light/eye_crossed.png",
         32,
     ),
+    # Per-type row icons (M3). The dark skin's copy of every editor texture is
+    # named with a "d_" prefix; the light skin ships under the bare name.
+    (
+        "d_Texture Icon",
+        "Texture Icon",
+        "project/types/texture.png",
+        "project/types/light/texture.png",
+        64,
+    ),
+    (
+        # Models (.fbx/.obj/...) are drawn with the prefab/model icon in Unity's
+        # Project browser; the editor resource bundle has no separate mesh icon.
+        "d_PrefabModel Icon",
+        "PrefabModel Icon",
+        "project/types/mesh.png",
+        "project/types/light/mesh.png",
+        64,
+    ),
+    (
+        "d_Material Icon",
+        "Material Icon",
+        "project/types/material.png",
+        "project/types/light/material.png",
+        64,
+    ),
+    (
+        "d_AudioClip Icon",
+        "AudioClip Icon",
+        "project/types/audio.png",
+        "project/types/light/audio.png",
+        64,
+    ),
+    (
+        "d_Shader Icon",
+        "Shader Icon",
+        "project/types/shader.png",
+        "project/types/light/shader.png",
+        64,
+    ),
+    (
+        "d_cs Script Icon",
+        "cs Script Icon",
+        "project/types/script.png",
+        "project/types/light/script.png",
+        64,
+    ),
+    (
+        # .md/.txt/.json are TextAssets in Unity and the Project browser draws
+        # them with the TextAsset icon; there is no "d_Document Icon" to use.
+        "d_TextAsset Icon",
+        "TextAsset Icon",
+        "project/types/document.png",
+        "project/types/light/document.png",
+        64,
+    ),
+    (
+        "d_Font Icon",
+        "Font Icon",
+        "project/types/font.png",
+        "project/types/light/font.png",
+        64,
+    ),
 ]
 
 # Bundle file names used by the Unity and Tuanjie editors respectively.

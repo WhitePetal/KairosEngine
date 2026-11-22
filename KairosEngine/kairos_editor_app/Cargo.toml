@@ -41,6 +41,11 @@ notify-debouncer-full = { version = "0.7.0", default-features = false }
 # slow editor cannot stall the host phase. Pinned to the version the legacy
 # editor already resolved, so this adds nothing new to the lockfile.
 open = "5.4.4"
+# The Project panel's delete (src/project/fs.rs): the OS recycle bin, never a
+# permanent removal (D5). Default features keep the Windows COM apartment
+# initialised per call, which is why a delete runs on its own worker thread
+# (src/project/mod.rs) instead of the host's.
+trash = "5.4.0"
 
 [dev-dependencies]
 # Project-slice tests build real directory trees (src/project/scanner.rs,

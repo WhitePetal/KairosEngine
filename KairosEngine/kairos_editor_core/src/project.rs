@@ -24,17 +24,21 @@
 //! host's answer is a completion named after what happened (`Scanned`). The UI
 //! never fabricates a completion.
 
+mod file_type;
+mod fs;
 mod ignore;
+mod name;
 mod scan;
 mod tree;
 mod view;
 
+pub use file_type::{CreateEntry, FileType, FileTypeRegistry, extension as file_extension};
+pub use fs::{CreateKind, FsOp, FsOpId, FsOpKind, FsOutcome};
 pub use ignore::{DEFAULT_IGNORE_LINES, IgnoreRules};
+pub use name::{MAX_NAME_BYTES, NameError, collides as name_collides, validate as validate_name};
 pub use scan::{ScanEntry, ScanPolicy, ScanReason, ScanState};
-pub use tree::{
-    AssembleReport, Node, NodeId, NodeKind, ProjectTree, RelPath, is_hidden_name,
-};
-pub use view::{ProjectView, SortKey};
+pub use tree::{AssembleReport, Node, NodeId, NodeKind, ProjectTree, RelPath};
+pub use view::{ProjectView, SelectMode, SortKey};
 
 use std::path::PathBuf;
 
@@ -61,11 +65,25 @@ pub struct ProjectState {
     pub policy: ScanPolicy,
     /// Snapshot of the file system, rebuilt by every accepted scan.
     pub tree: ProjectTree,
+    /// The file-type table: row labels and icons, which names hide, which move
+    /// with a sidecar, and what the Create menu offers.
+    ///
+    /// Data, like `policy`: the M5 seam lives here so a rename's cluster rule and
+    /// a delete's confirmation are table lookups rather than branches. A fake
+    /// table drives the M5 acceptance test, and nothing outside `core` reads the
+    /// built-in constants directly.
+    pub file_types: FileTypeRegistry,
     /// Persistable user intent: expanded, active directory, selection, sort,
     /// split ratio (M2/M4).
     pub view: ProjectView,
     /// Progress of the scan request/completion protocol.
     pub scan: ScanState,
+    /// Id of the next file operation this slice will ask for.
+    ///
+    /// The reducer assigns it (the request names never come from the UI), the
+    /// app echoes it back on completion, and it is what makes a log line
+    /// attributable when the user rattles off several operations.
+    pub next_fs_op: FsOpId,
     /// The most recent visible failure. A failure is state, not a log line: the
     /// status bar renders it, so it cannot disappear the way the legacy tree's
     /// `read_dir` errors did. Written by [`ProjectAction::Scanned`] (scan
@@ -100,12 +118,41 @@ pub struct ProjectError {
     /// Message shown by the panel's status bar. The app formats it; core only
     /// carries it.
     pub message: String,
+    /// Whether the next clean scan may clear it.
+    ///
+    /// Almost every failure may be superseded by a clean scan: the walk's own
+    /// verdict, and a one-off host failure such as "cannot open this file" (the
+    /// user asked once, and the message must not outlive the reason it was
+    /// shown). A **file operation** failure is the exception: its completion
+    /// always requests a rescan, so clearing it there would flash the message
+    /// for two frames and leave the user without the reason nothing happened.
+    /// It is cleared by the next successful operation instead.
+    pub clears_on_scan: bool,
 }
 
 impl ProjectError {
+    /// A one-off host failure (an open that failed): the next clean scan clears
+    /// it.
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            clears_on_scan: true,
+        }
+    }
+
+    /// A scan failure: the next clean scan clears it.
+    pub fn from_scan(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            clears_on_scan: true,
+        }
+    }
+
+    /// A failed file operation: survives the rescan its completion asks for.
+    pub fn operation(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            clears_on_scan: false,
         }
     }
 }
@@ -149,12 +196,18 @@ pub enum ProjectAction {
         /// by the status bar rather than only logged.
         errors: Vec<String>,
     },
-    /// Replace the selection with `path`; `None` clears it.
+    /// Change the selection.
     ///
-    /// Sent by a single click on a tree row (N1: a click selects, it does not
-    /// navigate). A path the tree does not have is ignored, so a stale click
-    /// cannot leave a selection pointing at nothing.
-    Select { path: Option<RelPath> },
+    /// `Replace` is the plain click; `Toggle` is Ctrl+click; `Range` is
+    /// Shift+click, where `paths` is exactly `[anchor, focus]` and the reducer
+    /// resolves the interval over the visible rows (the row order is the tree's,
+    /// which is why this stays a core rule and is testable without egui).
+    /// Paths the tree does not have are ignored, so a stale click cannot leave a
+    /// selection pointing at nothing.
+    Select {
+        paths: Vec<RelPath>,
+        mode: SelectMode,
+    },
     /// Expand or collapse one folder: the triangle's half of the tree's
     /// two-hit-area rule (N1). Files are not expandable, and a path that is not
     /// in the tree is ignored.
@@ -183,6 +236,44 @@ pub enum ProjectAction {
     /// A host-side project failure the user should see (M2: opening a file
     /// failed). Writes [`ProjectState::error`]; the status bar renders it.
     Failed { message: String },
+
+    // --- File operations: request -> effect -> completion (M3) ---
+    /// Create one entry below `parent` (M3). `name` is the user's text without
+    /// the template's extension; the reducer validates, appends the extension,
+    /// and answers with [`ProjectEffect::Fs`]. A request that fails validation
+    /// answers with [`ProjectState::error`] and no host work.
+    CreateRequested {
+        parent: RelPath,
+        name: String,
+        kind: CreateKind,
+    },
+    /// Rename one entry in place (M3). Only the name changes: moving is
+    /// [`Self::MoveRequested`].
+    RenameRequested { path: RelPath, name: String },
+    /// Move entries below another directory (M3). The reducer de-duplicates the
+    /// selection, rejects moving a folder into its own subtree, and leaves a
+    /// same-name target to [`Self::Failed`]-style validation: nothing moves.
+    MoveRequested {
+        paths: Vec<RelPath>,
+        target: RelPath,
+    },
+    /// Move entries to the recycle bin (M3, D5).
+    ///
+    /// The panel asks for this only after its confirmation dialog said yes (the
+    /// dialog is panel state, T7). The reducer repeats the entry checks every
+    /// mutation runs — de-duplicating a selection that names a folder and
+    /// something inside it, dropping paths the tree no longer has — and never
+    /// asks the host to delete the root, which is the project itself.
+    DeleteRequested { paths: Vec<RelPath> },
+    /// A file operation finished. The outcome says what changed, so the reducer
+    /// can reveal the result and rewrite the view's prefixes; a failure is a
+    /// visible error, and either way a rescan follows.
+    FsCompleted {
+        op: FsOpId,
+        result: Result<FsOutcome, String>,
+    },
+    /// Show `path` in the OS file manager (M3).
+    RevealRequested { path: RelPath },
 }
 
 /// Host work for the project slice.
@@ -201,4 +292,10 @@ pub enum ProjectEffect {
     /// no access to the state tree. A host failure is reported as
     /// [`ProjectAction::Failed`].
     Open { root: PathBuf, path: RelPath },
+    /// Execute one file operation (M3); the answer is
+    /// [`ProjectAction::FsCompleted`]. The effect carries the root for the same
+    /// reason `Open` does.
+    Fs(FsOp),
+    /// Show `path` in the OS file manager (M3).
+    Reveal { root: PathBuf, path: RelPath },
 }
