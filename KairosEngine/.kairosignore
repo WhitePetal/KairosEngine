@@ -1,0 +1,10 @@
+# .kairosignore — directories the project browser never walks.
+# Read when the editor opens the project. Gitignore-shaped, one rule per line:
+#   - a rule without '/' matches a directory name at any depth;
+#   - a rule with '/' matches a path prefix from the project root;
+#   - '*' and '?' work inside one segment; matching is case-insensitive.
+# '!' negation and '**' are not supported yet (the editor logs and skips such
+# a line).
+
+.*
+target

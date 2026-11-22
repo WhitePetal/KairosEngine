@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -105,9 +106,9 @@ fn editor_info() -> EditorInfo {
 /// is read here, at the one IO boundary the app owns, and stored as data: core
 /// never calls `current_dir` (D9 in `docs/plan/project-panel`), so pointing the
 /// editor at another project later means replacing this value, not the tree.
-fn boot_state() -> EditorState {
+fn boot_state(root: PathBuf) -> EditorState {
     let mut state = EditorState::new();
-    state.project = ProjectState::at(std::env::current_dir().unwrap_or_default());
+    state.project = ProjectState::at(root);
     for kind in [
         panels::SCENE,
         panels::INSPECTOR,
@@ -181,6 +182,18 @@ impl EditorApp {
     /// loaders and wires the repaint callback. The engine belongs to the loop
     /// and is not passed here; it arrives with every UI pass.
     pub fn new(egui_ctx: &egui::Context) -> Self {
+        Self::with_root(
+            egui_ctx,
+            std::env::current_dir().unwrap_or_default(),
+        )
+    }
+
+    /// The editor for an explicit project root.
+    ///
+    /// `new` passes the working directory. Tests pass a temp directory: the boot
+    /// scan and the watcher are real here, and they must not read the checkout
+    /// the test binary happens to run from.
+    pub(crate) fn with_root(egui_ctx: &egui::Context, root: PathBuf) -> Self {
         // The editor chrome is authored dark-only: the dock's `Style`, the
         // toolbar skin and the widget defaults are all dark, but each panel picks
         // its skin from `ctx.theme()`. Left to follow the desktop, a light system
@@ -198,13 +211,21 @@ impl EditorApp {
         let shared = SharedStyles::load(&StyleCatalog::builtin(), egui_ctx.theme());
         shared.preload(egui_ctx);
 
-        let state = boot_state();
+        let state = boot_state(root.clone());
         let mut host = PanelHost::new(panels::catalog(), PanelContext::new(editor_info()));
         host.sync(&state.layout, egui_ctx);
         let dock = default_dock(&host);
 
         let host_view = AppHost::new();
         let tool_bar = ToolBar::new();
+
+        // The project's host side, booted after the shared styles: seeding a
+        // missing style file writes into the project, and the watcher must not
+        // be running yet to report that as an external change. The two actions
+        // it returns are the order the slice requires — the policy first, then
+        // the first scan — so they enter the inbox as a pair.
+        let (project, boot_actions) = ProjectService::boot(root);
+        let inbox: VecDeque<Action> = boot_actions.into_iter().collect();
 
         // Reaches stderr, the run log and the console sink attached above.
         kairos_log::info!(target: "kairos_editor", "editor booted");
@@ -216,8 +237,8 @@ impl EditorApp {
             host_view,
             tool_bar,
             pending_effects: Vec::new(),
-            inbox: VecDeque::new(),
-            project: ProjectService::new(),
+            inbox,
+            project,
             skins: Vec::new(),
             shared,
         }
@@ -373,6 +394,11 @@ fn describe(action: &Action) -> String {
             AppAction::QuitRequested => "quit editor".to_owned(),
         },
         Action::Project(action) => match action {
+            ProjectAction::PolicyLoaded { policy } => format!(
+                "project policy: {} system dirs, {} ignore rules",
+                policy.system_dirs.len(),
+                policy.ignore.len()
+            ),
             ProjectAction::ScanRequested { reason, focus } => {
                 let focus = focus
                     .as_ref()
@@ -385,10 +411,17 @@ fn describe(action: &Action) -> String {
                 entries,
                 truncated,
                 elapsed_ms,
+                library_nodes,
+                errors,
             } => {
                 let truncated = if *truncated { " (truncated)" } else { "" };
+                let errors = if errors.is_empty() {
+                    String::new()
+                } else {
+                    format!(", {} unreadable", errors.len())
+                };
                 format!(
-                    "project scan #{generation}: {} nodes in {elapsed_ms} ms{truncated}",
+                    "project scan #{generation}: {} nodes (library {library_nodes}) in {elapsed_ms} ms{truncated}{errors}",
                     entries.len()
                 )
             }
@@ -566,10 +599,23 @@ mod tests {
         app.begin_frame(ctx);
     }
 
+    /// A project root the tests own: the boot scan and the watcher are real,
+    /// and they must not read the checkout the test binary happens to run from.
+    fn tmp_project_root() -> std::path::PathBuf {
+        let root = std::env::temp_dir()
+            .join(format!("kairos-editor-app-project-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&root);
+        root
+    }
+
     fn build() -> EditorApp {
+        build_with_root(tmp_project_root())
+    }
+
+    fn build_with_root(root: std::path::PathBuf) -> EditorApp {
         scratch_style_root();
 
-        let state = boot_state();
+        let state = boot_state(root);
         let mut host = PanelHost::new(panels::catalog(), PanelContext::new(editor_info()));
         let ctx = egui::Context::default();
         host.sync(&state.layout, &ctx);
@@ -583,7 +629,9 @@ mod tests {
             tool_bar,
             pending_effects: Vec::new(),
             inbox: VecDeque::new(),
-            project: ProjectService::new(),
+            // Scans run on the calling thread here: the protocol is what these
+            // tests assert, and a scheduler would only add timing to it.
+            project: ProjectService::inline(),
             skins: Vec::new(),
             shared: SharedStyles::default(),
         }
@@ -608,7 +656,7 @@ mod tests {
 
         let ctx = egui::Context::default();
         ctx.set_theme(egui::Theme::Light);
-        let _app = EditorApp::new(&ctx);
+        let _app = EditorApp::with_root(&ctx, tmp_project_root());
 
         assert_eq!(ctx.theme(), egui::Theme::Dark);
     }
@@ -627,17 +675,68 @@ mod tests {
     /// today (D9). Core never calls `current_dir`; this is that boundary, so the
     /// test pins it here instead of inside the state tree.
     #[test]
-    fn the_project_slice_starts_at_the_working_directory() {
-        let app = build();
-        let cwd = std::env::current_dir().expect("a working directory");
+    fn the_project_slice_starts_at_the_supplied_root() {
+        let root = tmp_project_root();
+        let app = build_with_root(root.clone());
 
-        assert_eq!(app.state.project.root, cwd);
+        assert_eq!(app.state.project.root, root);
         assert_eq!(
             app.state.project.name,
-            cwd.file_name()
-                .expect("the working directory has a name")
+            root.file_name()
+                .expect("the project root has a name")
                 .to_string_lossy()
                 .into_owned()
+        );
+    }
+
+    /// The boot path as the product runs it: read/seed `.kairosignore`, load the
+    /// policy, then walk the project — all through the real background scanner.
+    /// The loop is the test's frame loop, so this covers the same seam the editor
+    /// uses (R1): policy before request, completion through `poll`.
+    #[test]
+    fn boot_loads_the_policy_and_completes_the_first_scan() {
+        let root = tmp_project_root().join("boot-case");
+        std::fs::create_dir_all(&root).expect("the boot case directory");
+        std::fs::write(root.join("res-scan-test.md"), "hello").expect("a project file");
+        scratch_style_root();
+        let ctx = egui::Context::default();
+        let mut app = EditorApp::with_root(&ctx, root.clone());
+
+        app.begin_frame(&ctx);
+
+        assert!(
+            app.state.project.scan.running,
+            "the boot actions land on the first host phase"
+        );
+        assert_eq!(
+            app.state.project.policy.system_dirs,
+            vec![String::from("Library")],
+            "the policy reached the state tree before the walk"
+        );
+        assert!(
+            root.join(".kairosignore").is_file(),
+            "boot seeds the ignore file in place"
+        );
+
+        for _ in 0..500 {
+            app.begin_frame(&ctx);
+            if !app.state.project.scan.running {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+
+        assert!(
+            !app.state.project.scan.running,
+            "the background scan completes through poll"
+        );
+        assert!(
+            app.state
+                .project
+                .tree
+                .find(&kairos_editor_core::project::RelPath::new("res-scan-test.md"))
+                .is_some(),
+            "the tree holds what the walk found"
         );
     }
 
@@ -846,8 +945,16 @@ mod tests {
                 entries: Vec::new(),
                 truncated: true,
                 elapsed_ms: 12,
+                library_nodes: 0,
+                errors: Vec::new(),
             })),
-            "project scan #3: 0 nodes in 12 ms (truncated)"
+            "project scan #3: 0 nodes (library 0) in 12 ms (truncated)"
+        );
+        assert_eq!(
+            describe(&Action::Project(ProjectAction::PolicyLoaded {
+                policy: kairos_editor_core::project::ScanPolicy::default(),
+            })),
+            "project policy: 1 system dirs, 2 ignore rules"
         );
     }
 
@@ -1365,7 +1472,7 @@ mod tests {
     fn an_effects_completion_is_applied_on_the_next_frame() {
         let mut app = build();
         let ctx = egui::Context::default();
-        assert_eq!(app.state.project.tree.generation(), 0);
+        assert_eq!(app.state.project.tree.revision(), 0);
 
         app.inbox
             .push_back(Action::Project(ProjectAction::ScanRequested {
@@ -1381,7 +1488,7 @@ mod tests {
             "the frame that ran the effect has not seen its completion"
         );
         assert_eq!(
-            app.state.project.tree.generation(),
+            app.state.project.tree.revision(),
             0,
             "no completion is applied in the frame that ran the effect"
         );
@@ -1396,7 +1503,7 @@ mod tests {
             !app.state.project.scan.running,
             "the completion landed on the next frame"
         );
-        assert_eq!(app.state.project.tree.generation(), 1);
+        assert_eq!(app.state.project.tree.revision(), 1);
         assert!(
             app.inbox.is_empty(),
             "nothing is left over after the completion was applied"

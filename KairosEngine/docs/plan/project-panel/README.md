@@ -1,6 +1,6 @@
 # ProjectPanel 迁移重构计划
 
-> **状态**：已拍板（D1–D11 全部落定，见 [§7](#7-决策记录已拍板)），无遗留问题。M0 可开工。
+> **状态**：已拍板（D1–D12 全部落定，见 [§7](#7-决策记录已拍板)）。**M0 / M0.5 / M1 已落地**（M1 分 M1a core + M1b app 两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。下一步是 M2（面板 v1）。
 > **范围**：`kairos_editor_core`（项目领域）/ `kairos_editor_app`（扫描、监听、文件操作、持久化）/ `kairos_editor_component`（面板）/ `kairos_editor_widgets`（树控件）；旧 `kairos_editor` 只冻结，最后退役
 > **配套**：[ADR 0008](../../adr/0008-editor-ui-architecture.md)、[ADR 0009](../../adr/0009-editor-panel-host-and-viewport.md)、[rewrite-plan](../editor-ui-architecture/rewrite-plan.md)（Phase 0.5 写明「只迁 ProjectPanel 一页」）、[panel-viewport-design](../editor-ui-architecture/panel-viewport-design.md) §6.2 P1、[widget-layer](../editor-ui-architecture/widget-layer.md) §2.2/§5
 > **可抄的形状**：`prototypes/editor-ui/crates/editor-components/src/project_panel.rs`（派生函数 + 行渲染 + action 映射）、`prototypes/editor-ui/crates/editor-core/src/reduce/project.rs`（data-in / effects-out）
@@ -155,19 +155,36 @@ pub struct RelPath(String);
 pub enum NodeKind { Folder, File }
 
 pub struct Node {
-    pub path: RelPath,
-    pub name: String,          // 最后一段；改名编辑用它
+    pub path: RelPath,         // 唯一真相：`name()` 从它派生最后一段，不重复存一份字符串
     pub kind: NodeKind,
     pub parent: Option<NodeId>,
     pub children: Vec<NodeId>, // 已排序：目录在前，然后按不区分大小写的名字
-    pub row_id: u64,           // FNV-1a(path)，建树时算一次，给 egui 当行 id
+    pub row_id: u64,           // FNV-1a(path)，建树时算一次，给 egui 当行 id（跨重扫稳定）
+}
+
+impl Node {
+    /// 行标签 / 改名编辑器的初值。派生而不是字段：10 万节点省一份字符串，
+    /// 也少一处可能与 `path` 不一致的状态。
+    pub fn name(&self) -> &str;
 }
 
 pub struct ProjectTree {
     nodes: Vec<Node>,
-    by_path: BTreeMap<RelPath, NodeId>,
-    generation: u64,           // 每次 assemble +1；面板缓存按它失效
+    by_path: HashMap<RelPath, NodeId>,   // 只做查找；有序遍历用不上（孩子有序是 per-node Vec）
+    /// 顶层系统目录（当前只有 `Library`）。面板靠 `is_system_dir` 画它前面的分隔线，
+    /// M6 的 `In Library` 搜索范围靠 `is_under_system` 判前缀。存根路径而不是给每个
+    /// Node 加 bool：后代是否在系统子树里，用前缀判即可。
+    system_roots: BTreeSet<RelPath>,
+    /// 每次 assemble +1。**不要和 `ScanState::generation` 混**：那是请求号（丢弃旧结果用），
+    /// 这是内容修订号（面板行缓存按它失效）。
+    revision: u64,
     truncated: bool,
+}
+
+impl ProjectTree {
+    pub fn revision(&self) -> u64;
+    pub fn is_system_dir(&self, path: &RelPath) -> bool;   // 恰好是某个 system root
+    pub fn is_under_system(&self, path: &RelPath) -> bool; // 前缀匹配，含自身
 }
 ```
 
@@ -176,6 +193,9 @@ pub struct ProjectTree {
 1. `nodes[0]` 是唯一的根：`path == ""`、`parent == None`；
 2. `children` 有序且都指向更深的节点；`by_path` 与 `nodes` 一一对应；
 3. 扫描结果按路径**字节序**给出时，`assemble` 是 O(n) 单趟（父路径一定是子路径的前缀）。
+   **签名是 `assemble(entries, &system_dirs)`**——系统目录是 policy 的事实，但排序与
+   `system_roots` 要在建树时定死，树本身不该反过来依赖 policy。重复路径（非 UTF-8 名字
+   lossy 之后撞车）在这里丢弃并 warn，绝不 panic。
 
 ```rust
 // core/src/project/scan.rs —— 只有数据，没有 fs
@@ -245,10 +265,14 @@ pub struct ProjectView {
 pub struct ProjectState {
     pub name: String,          // 面板标题/顶栏（替换 project_name）
     pub root: PathBuf,         // 绝对路径或相对 cwd；只在 IO 边界用
+    /// 扫描策略：忽略规则 + 系统目录 + 上限。读 `.kairosignore` 是 app 的 IO，
+    /// 但策略本身是 core 的数据——app 读到之后发 `ProjectAction::PolicyLoaded` 写回来，
+    /// reducer 再从 state 里把它放进 `ProjectEffect::Scan`（M1）。
+    pub policy: ScanPolicy,
     pub tree: ProjectTree,
     pub view: ProjectView,
     pub scan: ScanState,
-    pub error: Option<ProjectError>, // 最近一次可见失败
+    pub error: Option<ProjectError>, // 最近一次可见失败（M1 起由 `Scanned.errors` 写入）
 }
 
 pub struct ScanState {
@@ -264,20 +288,25 @@ pub struct ScanState {
 ### 2.3 扫描协议
 
 ```
-UI 首帧 / watcher / 文件操作完成 / 手动刷新
+boot: ProjectService::new(root) 读/seed .kairosignore → Action::Project(PolicyLoaded { policy })
+      顺序写死在 EditorApp::new：PolicyLoaded 与 ScanRequested{Startup} 按这个顺序进 inbox
+UI / watcher / 文件操作完成 / 手动刷新
         │  Action::Project(ScanRequested { reason, focus })
         ▼
 reduce: generation += 1; scan.running = true
-        │  Effect::Project(Scan { root, policy, generation })
+        │  Effect::Project(Scan { root, policy: state.project.policy.clone(), generation })
         ▼
 app::ProjectService: 后台线程 DFS（单根：忽略规则 + 深度 + 双预算）
         │   · 主预算 max_nodes：系统目录之外的节点
         │   · 系统目录预算：进入 Library 时切换，超出不再深入并标 truncated
+        │   · 每进一个目录查一次 cancel token（watcher 连发时旧扫描尽快退出）
         │  线程结束 → 有序 Vec<ScanEntry>（按路径字节序）
+        │            + errors（read_dir 失败的目录，按目录聚合，上限 8 条）
         ▼
-Action::Project(Scanned { generation, entries, truncated, elapsed_ms, error })
+Action::Project(Scanned { generation, entries, truncated, elapsed_ms, errors })
         │
-reduce: generation 不匹配 → 丢弃；匹配 → tree.assemble() → 剪掉失效的 expanded/selection
+reduce: generation 不匹配 → 丢弃；匹配 → tree.assemble(entries, &policy.system_dirs)
+        → 剪掉失效的 expanded/selection，active 回退最近祖先 → errors 落进 state.project.error
 ```
 
 **为什么是「扫描只走目录、组装在 core」**：旧实现把 `analyse_path`、GUID 分配、`.meta` 配对全塞在遍历里，于是每条规则都只能靠改遍历代码来测。拆开后扫描器是一个 20 行 DFS，规则全是纯函数测试。
@@ -338,14 +367,15 @@ impl<'a> EffectExecutor<'a> {
 pub enum ProjectAction {
     // 查询与视图
     ScanRequested { reason: ScanReason, focus: Option<RelPath> },
-    Scanned { generation: u64, entries: Vec<ScanEntry>, truncated: bool, elapsed_ms: u64 },
-    RescanRequested,                       // watcher 触发
+    Scanned { generation: u64, entries: Vec<ScanEntry>, truncated: bool, elapsed_ms: u64, errors: Vec<String> },
+    // watcher 不单设变体：外部变更就是 ScanRequested { reason: ExternalChange, focus: None }
     Expand { path: RelPath },
     Collapse { path: RelPath },
     Navigate { path: RelPath },            // 面包屑/双击目录
     Select { paths: Vec<RelPath>, mode: SelectMode },
     SetSort(SortKey),
     SetShowHidden(bool),
+    PolicyLoaded { policy: ScanPolicy },   // boot 读 .kairosignore 之后；改规则时也走这条
     ViewRestored { view: ProjectView },    // M4
 
     // 变更（请求 → effect → 完成）
@@ -686,7 +716,8 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 **交付**
 - 仓库：`git mv imported_assets Library/imported_assets`（产品是提交进仓库的；只有 `/imported_assets/log` 被 gitignore）；
 - `.gitignore`：`/imported_assets/log` → `/Library/imported_assets/log`（`/Library/Logs`、`/Library/Profiler` 两条保持不变）；
-- 常量/字面量（生产代码，共 6 处）：`AssetOptions::DEFAULT_PROCESSED_FILE_PATH`（`kairos_asset/src/install.rs:136`）、processor 的 `LOG_PATH`（`kairos_asset/src/processor/log.rs:142`）、`kairos_engine::kairos_paths::PATH_WHITE_TEXTURE`、`kairos_graphics::render_pipeline::PATH_WHITE_TEXTURE`、`kairos_game.rs` 的两处 `load` 字面量；`bake_assets` 的文档注释；
+- 常量/字面量/数据（共 10 处；复核时从 6 处补到这里）：`AssetOptions::DEFAULT_PROCESSED_FILE_PATH`（`kairos_asset/src/install.rs:136`）、processor 的 `LOG_PATH`（`kairos_asset/src/processor/log.rs:142`）、`kairos_engine::kairos_paths::PATH_WHITE_TEXTURE`、`kairos_graphics::render_pipeline::PATH_WHITE_TEXTURE`、`kairos_game.rs` 的两处 `load` 字面量、旧编辑器 `ui/inspector/material.rs:89` 的 `DEFAULT_PREVIEW_MESH`、**`res/materials/material.mat` 的 `texture_path`**、**`Preferences/Styles/Inspectors/Material.toml` 的 `preview_meshes`**（后两处是数据/配置，不补会静默丢纹理和预览）、旧编辑器 `product_directory_is_hidden` 的测试夹具；外加 `bake_assets` 的文档注释；
+- 与 D8 的边界：旧 crate **只改上面那一处路径字面量**，其余一行不动——D8 冻结的是逻辑，不是常量。旧 `project_path_tree` 的测试用 tempdir 自建根，不受搬迁影响；
 - 语义确认（写进 ADR 0017）：`processed_subtree_exclude` 取成品路径相对源根的第一段，现在会返回 **`Library`** —— 即「资产源永不包含 `Library`」，asset watcher 也不再盯它（正是我们想要的）；
 - 文档：新 ADR `0017-processed-root-under-library.md`；给 ADR 0004/0005 加一行「成品根位置已被 0017 取代，其余结论不变」；`.gitignore` 注释、`CONTEXT.md` 里提到 `imported_assets` 的地方同步；
 - 编辑器侧：`ScanPolicy` 里**不再有** `skip_top_level`（M1 直接按最终形态写）。
@@ -698,23 +729,64 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 
 **风险**：仓库里提交的二进制产品要整体搬迁（一次性 diff 较大，但内容不变）；如果有人在别的分支上有未合并的 `imported_assets` 改动，需要 rebake 而不是手搬。
 
-### M1 — ProjectTree v2：模型 + 扫描 + 监听 + .kairosignore（2.5–3.5 天）
+> **落地状态（完成）**
+>
+> - 10 个成品 `git mv` 到 `Library/imported_assets/Default/`，10 处字面量/数据、`.gitignore`、文档注释同步；ADR 0017 新增，ADR 0004/0005/0007 加交叉注记。旧编辑器只动了 `DEFAULT_PREVIEW_MESH` 与一处测试夹具（规则本身没变），76 个测试全绿。
+> - `cargo run --bin bake_assets` 在**新路径**下重新生成：已提交的 10 个成品**逐字节不变**（`git diff -- Library` 为空），说明搬迁没有动内容。
+> - 编辑器 rebake 后启动无任何 asset / texture / mesh 加载错误。
+> - **顺带发现（不是 M0.5 引入的）**：`bake_assets` 的源根是进程 cwd（ADR 0004），所以它会把 `docs/` 的研究截图、`Preferences/` 的图标、甚至 `target/doc` 的 rustdoc 图一并加工——本次产出 **230 个、约 346 MB** 未被仓库提交的成品；仓库历史上只提交了 `res/` 那 10 个。要修的话是给 bake 一个排除清单（`target`/`docs`/`Preferences`/`prototypes`）或把源根收到 `res/`，属独立小任务，不在 M1 范围。
 
-**目标**：树在全 app 里存在且可信，面板仍是 demo。
+### M1 — ProjectTree v2：模型 + 扫描 + 监听 + .kairosignore（2.5–3.5 天，分两刀）
 
-**交付**
-- core：`RelPath`/`Node`/`ProjectTree::assemble`/`ordered_children`/`is_system_dir`/`visible_rows`/`find`/`generation`；`ScanPolicy { ignore, system_dirs, system_dir_budget }`（**没有** "跳过成品根"字段 —— M0.5 已经把产品搬进 `Library/`）；`IgnoreRules`（名字 / 路径前缀两种模式，支持 `*`/`?`）；`truncated`；
-- app：扫描线程（单根 DFS + 双预算 + 忽略）、generation 丢弃、`elapsed_ms` 日志；watcher 搬家、**按路径前缀丢弃 `Library/` 下的事件**、每帧 poll → `RescanRequested`；启动即扫一次；读项目根 `.kairosignore`（缺文件用内置兜底并就地 seed，坏行 warn + 跳过该行）；
-- 错误可见：`read_dir` 的 `Err` 按目录聚合成一条 warn（旧实现静默 `return`）；
-- 删除旧身份：`Guid`/`AssetRegistry` 不再参与树的构建（旧 crate 不动）。
+**目标**：树在全 app 里存在且可信，面板只多一块只读读数（M2 换成真面板）。
 
-**验收**
+> **M1 开工前复核定稿（5 条补充 + 3 处修正）**——计划原文这几处是空白或自相矛盾，实现按这里来：
+>
+> | # | 决定 | 为什么现在必须定 |
+> |---|---|---|
+> | R1 | `ProjectState.policy: ScanPolicy` + `Action::Project(PolicyLoaded)`；boot 顺序写死在 `EditorApp::new`：读/seed `.kairosignore` → 起 watcher → inbox 依次 `PolicyLoaded`、`ScanRequested{Startup}` | `Effect::Scan{policy}` 得有人产出；读 ignore 是 app 的 IO，策略却是 core 的数据 |
+> | R2 | `assemble(entries, &system_dirs)`；`ProjectTree::system_roots` + `is_system_dir`/`is_under_system` | 分隔线（M2）与 `In Library` 搜索范围（M6）都要问树，树不能反过来依赖 policy |
+> | R3 | `Scanned.errors: Vec<String>`（按目录聚合，上限 8）→ `ProjectState.error` | M0 已承诺「失败是状态不是日志」；只打 warn 会让 M2 的状态栏没得画，等于重现旧实现 `read_dir` 静默失败 |
+> | R4 | **watcher 用同一套 `IgnoreRules` 过滤事件**（不止 `Library/` 前缀），扫描线程每目录查 `cancel` token | `target/` 有 5.7 万个文件，编辑器开着跑 `cargo build` 会每 300ms 触发一次全量重扫；只丢 `Library/` 挡不住 |
+> | R5 | `Scanned` 的接受条件是 `running && generation == scan.generation`，接受后清 `running`；`poll` 按到达顺序全喂 inbox | 旧扫描的 completion 被 generation 挡住；重复 delivery 被清掉的 `running` 挡住——两条都要有测试 |
+>
+> 修正：`ScanPolicy` 按 §2.2 完整交付（含 `max_nodes`/`max_depth`/`follow_dir_symlinks`）；`Node` 不存 `name`（派生）、`by_path` 用 `HashMap`；树侧 `generation` 改名 `revision`。
+
+**M1a — core 纯模型（1–1.5 天）**
+
+- `RelPath`/`NodeId`/`Node`/`ProjectTree`：`assemble(entries, &system_dirs)`（字节序单趟，父一定在前缀之前）、`ordered_children`（根级 `(is_system, !is_dir, lowercase_name)`）、`node`/`find`/`is_system_dir`/`is_under_system`/`revision`/`truncated`；
+- `ScanPolicy`（完整字段）+ `system_dirs` 内置 `["Library"]` + `IgnoreRules`：内置兜底**只含点条目与 `target`**（Q3 定稿：不预置 `Preferences`/`.codegraph`，等真需要再改默认值）；名字 / 路径前缀两种模式，`*`/`?`，大小写不敏感，分隔符归一；
+- `visible_rows(&expanded, sort, show_hidden)`：O(n) 前序，只产出可见行（M2 的行缓存消费它；M1 只有测试和 debug 读数用）；
+- reducer：`PolicyLoaded`、`ScanRequested`（带 policy 发 effect）、`Scanned`（assemble + 剪枝 `expanded`/`selection`/`active` + `error` + `focus_after_scan` 揭示）；
+- 测试：三条不变量、排序/目录优先/大小写 tie-break、非 UTF-8 lossy 撞车丢弃、超限与深度截断、`Library` 排最后且不受 ignore、系统目录预算、`visible_rows` 与展开集合、`IgnoreRules` 表驱动（默认值/名字/前缀/大小写/分隔符/坏模式）、reducer 的 generation 丢弃与剪枝。
+
+**M1b — app 扫描 + 监听（1.5–2 天）**
+
+- `project/scanner.rs`：后台线程（每请求一线程 + `mpsc`，`cancel: Arc<AtomicBool>` 每目录查一次）、单根 DFS（忽略 + 深度 + 双预算）、`elapsed_ms`、`errors` 聚合；
+- `project/watcher.rs`：从 `kairos_editor/src/project_watcher.rs` 搬（`notify-debouncer-full` 0.7，300ms），**事件先过 ignore 谓词**（`target`/点条目/`Library/`），只留值得重扫的批次；`std::sync::mpsc` 替 `crossbeam-channel`，`kairos_log` 替 `log`；
+- `project/ignore.rs`：读项目根 `.kairosignore`，缺失时就地 seed（与 `Preferences/Styles/*.ron` 同一套 seed 行为），坏行 warn + 跳过；
+- `ProjectService`：`new(root)` 返回策略并起 watcher；`poll` 排空扫描完成与 watcher 事件 → `Scanned` / `RescanRequested`；`execute(Scan)` 起线程；
+- `EditorApp::new` 的 boot 顺序（R1）；
+- 组件：`panels/project.rs` 的 39 行 demo 换成只读读数（节点数 / Library 数 / 上次耗时 / truncated / 前 200 条 `visible_rows` 纯文本），M2 整段替换；
+- 测试：tempdir fixture（含被忽略目录、深层目录、系统目录预算、不可读目录→errors）、watcher 事件过滤（`target/` 下的写不产生 rescan、`Library/` 下的写不产生 rescan、普通文件写产生一次）、boot 只发一次扫描、ignore seed 幂等、坏行容忍；watcher 去抖不靠 sleep 断言时序（断言「多次事件只产生一次 rescan」）。
+
+**验收**（M1a 绿 + M1b 绿之后一起勾）
+
 - 启动日志出现 `project scan: N nodes (library M) in X ms`；
-- 在编辑器外新建/删除文件，300ms 内树刷新；
-- 5 万节点 fixture 扫描 < 300ms（debug 构建放宽）；
-- 在 `Library/` 里写文件（日志/缓存）**不触发** Project 重扫（console 里看不到 `rescan`）。
+- 在编辑器外新建/删除文件，300ms 内树刷新（debug 读数里的节点数变化）；
+- 5 万节点 fixture 扫描 < 300ms（debug 构建放宽）：**不写成普通单测**——NTFS 上建 5 万个文件比扫它们慢一个数量级，会把 `cargo test-crate` 从 8s 拉到分钟级。用 `#[ignore]` 测试或一次性脚本，M1 收尾手动跑一次，把数字写回 §5；
+- 在 `Library/` 里写文件（日志）**不触发** Project 重扫；在 `target/` 里写文件同样不触发（console 里看不到 `rescan`）；
+- 编辑器跑起来截图：Project 面板读数显示节点数，树的排序/隐藏行为与测试一致。
 
-**测试**：`assemble` 的排序/目录优先/大小写/非 UTF-8 显示/超限截断/深度截断；**`Library` 永远排顶层最后**且不受忽略规则影响；系统目录预算截断；`visible_rows` 与展开集合；`IgnoreRules` 的默认值与名字/路径前缀匹配（含大小写、路径分隔符归一）；扫描器对 tempdir fixture（含被忽略目录里的文件确实不出现）；watcher 去抖（不靠 sleep 断言时序，断言「多次事件只产生一次 rescan」）。
+> **落地状态（M1 完成，验收逐条勾）**
+>
+> - 文件：core 的 `project/{tree,scan,ignore}.rs` + `reduce/project.rs`；app 的 `project/{mod,scanner,watcher,ignore}.rs`；`panels/project.rs` 换成只读读数；`EditorApp::new` 拆出 `with_root`（测试用 tempdir 作根，不在仓库里扫/监听）。
+> - 启动日志：`project policy: 1 system dirs, 2 ignore rules` → `project scan requested (Startup)` → `project scan #1: 1398 nodes (library 20) in 11 ms`。
+> - 外部变更：编辑器外新建一个文件 → 同秒内 `project scan #2: 1399 nodes` 落地（< 300 ms）。
+> - 噪声过滤：在 `Library/Logs/` 连写两次、在 `target/` 写一次 → **0 次 rescan**（scan 号不变）；随后正常写根目录文件 → 恰好 +1 次。
+> - 截图：Project 面板显示 33 行顶层（`.git`、`target`、点目录都不在其中），`Library` 排在最后。
+> - 50,251 节点 fixture：**42 ms**（dev profile，见 §5）。
+> - 已知行为（不是缺陷）：一次外部写入偶尔被 debouncer 拆成两个批次，于是连扫两次（各约 10 ms，结果一致）。要合并的话在 `ProjectService::poll` 侧收拢即可，M2 之后视实测再定。
 
 ### M2 — 面板 v1：左右两栏 + 树 + 导航（4–6 天）
 
@@ -854,6 +926,11 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 | 面板单帧（全展开 10 万节点） | < 8ms | 只画可见行；可见行缓存按（generation, expanded, filter）失效；过滤 O(n) 单趟 |
 | 搜索输入延迟 | 单帧内完成，无去抖 | 同上；行 id 建树时算好 |
 | 内存（10 万节点） | < 20MB | `Node` + 路径字符串；相对路径不重复存绝对前缀 |
+
+**怎么量**：5 万 / 20 万节点的耗时用 `#[ignore]` 的一次性脚本（或 `examples/`）在 tempdir 里建好 fixture 后只计扫描时间——建 fixture 比扫它慢一个数量级，**不要放进日常 `cargo test-crate`**。M1 收尾量一次，把实测数字补到本表下面。
+
+**M1 实测**（dev profile，`opt-level = 1`，Windows NTFS，tempdir fixture）：**50,251 节点 42 ms**。对应命令：
+`cargo test -p kairos_editor_app --bins -- --ignored fifty_thousand --nocapture`（建 fixture 本身约 18 s，所以不进日常测试）。
 
 **留的扩展点**：`ScanPolicy` 已有 `max_depth`/`follow_dir_symlinks`；若实测网络盘不可接受，把 `Scan` 换成「首屏只扫一层 + 展开时补扫」，接口不变（`ScanRequested { reason: Lazy(dir) }` 已预留 `reason`）。
 

@@ -32,6 +32,15 @@ kairos_profile = { path = "../kairos_profile" }
 kairos_engine = { path = "../kairos_engine" }
 kairos_editor_core = { path = "../kairos_editor_core" }
 image = "0.25.10"
+# The project tree's watcher (src/project/watcher.rs): the same backend and
+# debounce window as the asset source's watcher (ADR 0006 deviations 7/8). The
+# crate is already in the workspace lockfile through `kairos_editor`.
+notify-debouncer-full = { version = "0.7.0", default-features = false }
+
+[dev-dependencies]
+# Project-slice tests build real directory trees (src/project/scanner.rs,
+# src/project/watcher.rs) instead of mocking `std::fs`.
+tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
 # The eyedropper's screen sampler (src/eyedropper/win32.rs): the OS pointer,

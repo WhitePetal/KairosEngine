@@ -41,7 +41,7 @@ pub mod style;
 pub use action::{Action, AppAction, LayoutAction, SharedStyleAction, StyleAction};
 pub use effect::{AppEffect, Effect, LayoutEffect, SharedStyleEffect, StyleEffect};
 pub use panel::{PanelId, PanelInstanceId};
-pub use project::{ProjectAction, ProjectEffect, ProjectState};
+pub use project::{ProjectAction, ProjectEffect, ProjectError, ProjectState};
 pub use reduce::reduce;
 pub use state::{EditorState, LayoutState};
 pub use style::{ListEdit, SharedStyleId, StyleValue};
