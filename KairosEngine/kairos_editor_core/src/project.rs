@@ -24,14 +24,12 @@
 //! host's answer is a completion named after what happened (`Scanned`). The UI
 //! never fabricates a completion.
 
+mod ignore;
 mod scan;
 mod tree;
 mod view;
 
-// One implementation of the `.kairosignore` grammar, shared with the asset
-// pipeline's bake (`kairos_engine::asset_pipeline`): the browser and the bake must
-// never disagree about which directories the project owns.
-pub use kairos_ignore::{DEFAULT_IGNORE_LINES, IgnoreRules};
+pub use ignore::{DEFAULT_IGNORE_LINES, IgnoreRules};
 pub use scan::{ScanEntry, ScanPolicy, ScanReason, ScanState};
 pub use tree::{
     AssembleReport, Node, NodeId, NodeKind, ProjectTree, RelPath, is_hidden_name,

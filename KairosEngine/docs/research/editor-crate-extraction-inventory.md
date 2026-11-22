@@ -950,7 +950,7 @@ GUID 与 path 是**绑定**的（GUID 是身份、path 是位置），所以搬�
 | 4 | `kairos_engine/src/kairos_game.rs:18` | 组内 `kairos_editor::{Engine, schedule},` | 拆为 `engine::Engine`（或 `crate::Engine`）与 `crate::schedule` —— **不能整组平移** |
 | 5 | `kairos_engine/src/main.rs:1-4` | `use kairos_engine::{kairos_dialog, kairos_editor::runtime::{KairosEditorRuntime, KairosEditorRuntimeEvent}};` | 文件整体搬到 `kairos_editor/src/main.rs`，改为 `use kairos_editor::{dialog, runtime::{EditorRuntime, EditorRuntimeEvent}};`（命名按 map 决策：「crate 内去掉 `Kairos` 前缀」） |
 | 6 | `kairos_engine/Cargo.toml:5` | `default-run = "kairos_engine"` | **删除**；新 crate 写 `default-run = "kairos_editor"`（裸 `cargo run` 继续指向编辑器） |
-| 7 | `kairos_engine/src/bin/bake_assets.rs` | 只用 `env_logger` + `kairos_engine::asset_pipeline::bake_assets()`，**无编辑器引用** | 不动（继续留 `kairos_engine`；`asset_pipeline` 留引擎，见 #1） |
+| 7 | `kairos_engine/src/bin/bake_assets.rs` | 只用 `env_logger` + `kairos_engine::asset_pipeline::bake_assets()`，**无编辑器引用** | ~~不动（继续留 `kairos_engine`）~~ **已被 ADR 0018 取代**：bake 是编辑器功能，bin 移到 `kairos_editor_app/src/bin/bake_assets.rs`（读项目 `.kairosignore`）；引擎只保留 `asset_pipeline::{bake_world, run_bake}` 两件仪器，不再有 `bake_assets()` 与自己的 bin |
 | 8 | `kairos_engine/benches/texture_encode_decode.rs` | `criterion` + `half::f16` + `kairos_engine::graphics::texture::format`，**无编辑器引用** | 不动 |
 | 9 | `kairos_engine/tests/` | **目录不存在** | — |
 | 10 | `Library/asset_registry.toml` | 94 条指向编辑器 | 见 §5 |

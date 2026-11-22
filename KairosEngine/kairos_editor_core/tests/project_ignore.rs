@@ -1,19 +1,18 @@
-//! The matcher: the pure half of `.kairosignore`.
+//! The ignore matcher: the pure half of `.kairosignore`.
 //!
 //! Table-driven because the grammar is small and each row is a rule a user can
-//! actually write; the two consumers (the project browser and the bake) are
-//! pinned separately below because they ask different questions of the same
-//! rules.
+//! actually write; the two consumers (the scanner and the watcher) are pinned
+//! separately because they ask different questions of the same rules.
 
-use kairos_ignore::{DEFAULT_IGNORE_LINES, IgnoreRules};
+use kairos_editor_core::project::{DEFAULT_IGNORE_LINES, IgnoreRules, RelPath};
 
 fn rules(lines: &[&str]) -> IgnoreRules {
     IgnoreRules::parse(lines.iter().map(|line| (*line).to_owned())).0
 }
 
 fn ignored(rules: &IgnoreRules, path: &str) -> bool {
-    let name = path.rsplit('/').next().unwrap_or(path);
-    rules.is_ignored(path, name)
+    let path = RelPath::new(path);
+    rules.is_ignored(&path, path.name())
 }
 
 #[test]
@@ -24,10 +23,7 @@ fn the_built_in_defaults_ignore_dot_entries_and_the_build_directory() {
     assert!(ignored(&rules, ".codegraph"));
     assert!(ignored(&rules, "target"));
     assert!(!ignored(&rules, "res"));
-    assert!(
-        !ignored(&rules, "Library"),
-        "system dirs are exempt by the walker, not by the rules"
-    );
+    assert!(!ignored(&rules, "Library"), "system dirs are exempt by the walker, not by the rules");
     assert_eq!(rules.len(), DEFAULT_IGNORE_LINES.len());
 }
 
@@ -107,8 +103,8 @@ fn comments_and_blank_lines_are_skipped_and_nothing_is_rejected() {
 }
 
 /// Negation and `**` are not implemented: accepting the line with a different
-/// meaning would be worse than reporting it, because the project browser and the
-/// bake would then disagree with the file the user wrote.
+/// meaning would be worse than reporting it, because the project tree would then
+/// disagree with the file the user wrote.
 #[test]
 fn unsupported_rules_are_reported_not_dropped() {
     let (rules, rejected) = IgnoreRules::parse(
@@ -117,10 +113,7 @@ fn unsupported_rules_are_reported_not_dropped() {
             .map(|line| (*line).to_owned()),
     );
 
-    assert_eq!(
-        rejected,
-        vec![String::from("!keep"), String::from("res/**/generated")]
-    );
+    assert_eq!(rejected, vec![String::from("!keep"), String::from("res/**/generated")]);
     assert_eq!(rules.len(), 1);
     assert!(ignored(&rules, "target"));
 }
@@ -131,27 +124,27 @@ fn an_empty_rule_set_ignores_nothing() {
 
     assert!(rules.is_empty());
     assert!(!ignored(&rules, "target"));
-    assert!(!rules.is_ignored_path(""));
+    assert!(!rules.is_ignored_path(&RelPath::default()));
 }
 
 /// The watcher's question: an event only names the changed file, so the rule must
-/// match an ancestor directory. This is what stops `target/` churn from triggering
-/// a rescan on every build.
+/// match an ancestor directory. This is what stops `target/` churn (57k files in
+/// this repo) from triggering a rescan every 300 ms during a build.
 #[test]
 fn an_event_path_is_ignored_through_any_ancestor() {
     let rules = IgnoreRules::defaults();
 
-    assert!(rules.is_ignored_path("target/debug/deps/libfoo.rlib"));
-    assert!(rules.is_ignored_path(".git/objects/ab/cdef"));
-    assert!(!rules.is_ignored_path("res/models/Suzanne.png"));
-    assert!(!rules.is_ignored_path("targeted/file.rs"));
-    assert!(!rules.is_ignored_path(""));
+    assert!(rules.is_ignored_path(&RelPath::new("target/debug/deps/libfoo.rlib")));
+    assert!(rules.is_ignored_path(&RelPath::new(".git/objects/ab/cdef")));
+    assert!(!rules.is_ignored_path(&RelPath::new("res/models/Suzanne.png")));
+    assert!(!rules.is_ignored_path(&RelPath::new("targeted/file.rs")));
+    assert!(!rules.is_ignored_path(&RelPath::default()));
 }
 
 #[test]
 fn a_prefix_rule_ignores_a_changed_file_below_it() {
     let rules = rules(&["res/generated"]);
 
-    assert!(rules.is_ignored_path("res/generated/tex/a.png"));
-    assert!(!rules.is_ignored_path("res/generatedish/a.png"));
+    assert!(rules.is_ignored_path(&RelPath::new("res/generated/tex/a.png")));
+    assert!(!rules.is_ignored_path(&RelPath::new("res/generatedish/a.png")));
 }

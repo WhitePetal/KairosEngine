@@ -39,10 +39,12 @@ pub mod inputs;
 pub mod runtime;
 pub mod spatial;
 
-// The offline half of the asset pipeline: the entry that runs the engine's own
-// `AssetProcessor` over the project sources and writes the processed assets
-// under `Library/imported_assets/Default`. The runtime host reads those assets; this
-// module is what produces them.
+// The offline half of the asset pipeline: the instruments that boot the engine's
+// own `AssetProcessor` over a source and drive it to completion, writing the
+// processed assets under `Library/imported_assets/Default`. The bake *command* —
+// what the project is and which directories it owns — is the editor's
+// (`kairos_editor_app`'s `bake_assets` bin, ADR 0018); this module stays
+// policy-free.
 pub mod asset_pipeline;
 
 // The physics subsystem is its own crate (`kairos_physics`); re-export it under

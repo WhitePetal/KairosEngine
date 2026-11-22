@@ -20,7 +20,7 @@ use std::path::Path;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::Duration;
 
-use kairos_editor_core::project::{IgnoreRules, ScanPolicy};
+use kairos_editor_core::project::{IgnoreRules, RelPath, ScanPolicy};
 use notify_debouncer_full::{
     DebounceEventResult, Debouncer, RecommendedCache, new_debouncer,
     notify::{RecommendedWatcher, RecursiveMode},
@@ -114,6 +114,7 @@ fn worth_a_rescan(
     if relative.is_empty() {
         return true;
     }
+    let relative = RelPath::new(relative);
     if ignore.is_ignored_path(&relative) {
         return false;
     }
@@ -124,8 +125,8 @@ fn worth_a_rescan(
 }
 
 /// First path segment names a system directory.
-fn is_in_system(rel: &str, system_dirs: &[String]) -> bool {
-    let first = rel.split('/').next().unwrap_or_default();
+fn is_in_system(rel: &RelPath, system_dirs: &[String]) -> bool {
+    let first = rel.as_str().split('/').next().unwrap_or_default();
     system_dirs
         .iter()
         .any(|system| system.eq_ignore_ascii_case(first))

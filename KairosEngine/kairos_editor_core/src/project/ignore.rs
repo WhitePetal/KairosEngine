@@ -1,20 +1,8 @@
-//! The project's ignore rules: the pure half of `.kairosignore`.
+//! The project's ignore rules: which directories never enter the snapshot.
 //!
-//! One grammar, two consumers, and this crate is the single implementation of it:
-//!
-//! * the project browser (`kairos_editor_core::project`) decides which directories
-//!   enter the snapshot at all;
-//! * the asset pipeline (`kairos_engine::asset_pipeline`) skips the same
-//!   directories when it bakes, so what the hierarchy cannot show is never
-//!   processed into a product.
-//!
-//! That sharing is why this is a leaf crate instead of a module in either side:
-//! the editor state tree must stay tiny (ADR 0008: no IO, no async), and the
-//! engine cannot depend on an editor crate. Neither may own the other's copy of
-//! the rules — a panel that hides `res/generated` while the bake processes it is
-//! exactly the divergence this crate exists to prevent.
-//!
-//! The grammar is gitignore's shape, deliberately small:
+//! These are the parsed form of the project root's `.kairosignore` (the file is
+//! read by `kairos_editor_app::project::ignore`; this module is the pure half).
+//! Gitignore's shape, deliberately small:
 //!
 //! * one rule per line; `#` starts a comment; blank lines are skipped;
 //! * a rule without `/` matches a directory **name** at any depth (`target`);
@@ -25,16 +13,20 @@
 //! * `!` negation and `**` are rejected in v1 — a rejected rule is reported, not
 //!   silently dropped, so a mistyped rule cannot look like it worked.
 //!
-//! **Rules only ever ignore directories.** Both consumers ask about a directory
-//! before descending, so a rule that names a file (`*.tmp`) never matches; dot
-//! *files* are hidden by the browser's own rule and skipped by the asset reader,
-//! neither of which needs this crate to know about them.
+//! **Rules only ever ignore directories.** The walk asks about a directory before
+//! descending, so a rule that names a file (`*.tmp`) never matches; hiding files
+//! is `ProjectView::show_hidden`'s job, and per-type rules arrive with the type
+//! registry (M5). Keeping that split is what lets the same predicate serve both
+//! the scanner ("don't snapshot it") and the watcher ("that change is not worth
+//! a rescan").
+
+use super::RelPath;
 
 /// The rules that apply when a project has no `.kairosignore`: every dot entry
 /// and the Cargo build directory.
 ///
-/// The editor seeds the file with exactly these lines on first open, so writing
-/// the file changes nothing until the user edits it.
+/// The app seeds the file with exactly these lines on first open, so writing the
+/// file changes nothing until the user edits it.
 pub const DEFAULT_IGNORE_LINES: &[&str] = &[".*", "target"];
 
 /// The parsed rules; see the module docs for the grammar.
@@ -51,7 +43,7 @@ impl IgnoreRules {
 
     /// Parse rule lines, returning the rules and the lines that were rejected.
     ///
-    /// Rejected lines are reported rather than dropped: a rule the project cannot
+    /// Rejected lines are reported rather than dropped: a rule the editor cannot
     /// honour must not look like it worked (the same reason a `read_dir` failure
     /// is state, not a log line).
     pub fn parse(lines: impl IntoIterator<Item = String>) -> (Self, Vec<String>) {
@@ -78,18 +70,16 @@ impl IgnoreRules {
         self.patterns.is_empty()
     }
 
-    /// Whether the directory `rel` should be ignored.
-    ///
-    /// `rel` is `/`-separated and relative to the project root; `name` is its last
-    /// segment, which both callers already have (the walk never needs to split a
+    /// Whether the directory `rel` should be ignored. `name` is `rel`'s last
+    /// segment, which the caller already has (the scanner never needs to split a
     /// path twice) and the watcher passes from the event path.
-    pub fn is_ignored(&self, rel: &str, name: &str) -> bool {
+    pub fn is_ignored(&self, rel: &RelPath, name: &str) -> bool {
         let name = name.to_lowercase();
         self.patterns.iter().any(|pattern| {
             if pattern.segments.len() == 1 {
                 return glob_match(&pattern.segments[0], &name);
             }
-            let mut actual = rel.split('/');
+            let mut actual = rel.as_str().split('/');
             pattern.segments.iter().all(|segment| {
                 actual
                     .next()
@@ -100,19 +90,16 @@ impl IgnoreRules {
 
     /// Whether `path` itself or any of its ancestors is ignored.
     ///
-    /// The watcher's question: a change below `target/` must not cost a rescan,
-    /// and the event only names the changed file, not the directory the walk
-    /// would have skipped.
-    pub fn is_ignored_path(&self, path: &str) -> bool {
-        if path.is_empty() {
+    /// The watcher's question: a change below `target/` or `Library/` must not
+    /// cost a rescan, and the event only names the changed file, not the
+    /// directory the walk would have skipped.
+    pub fn is_ignored_path(&self, path: &RelPath) -> bool {
+        if path.is_root() {
             return false;
         }
-        let mut prefix = String::new();
-        for segment in path.split('/') {
-            if !prefix.is_empty() {
-                prefix.push('/');
-            }
-            prefix.push_str(segment);
+        let mut prefix = RelPath::default();
+        for segment in path.as_str().split('/') {
+            prefix = prefix.child(segment);
             if self.is_ignored(&prefix, segment) {
                 return true;
             }

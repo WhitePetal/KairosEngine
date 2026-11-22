@@ -11,6 +11,3 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 
 [dependencies]
 kairos_color = { path = "../kairos_color" }
-# The `.kairosignore` grammar, shared verbatim with the asset pipeline's bake so the
-# browser and the bake can never disagree about which directories the project owns.
-kairos_ignore = { path = "../kairos_ignore" }

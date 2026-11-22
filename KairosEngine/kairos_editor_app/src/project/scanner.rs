@@ -103,7 +103,7 @@ pub(crate) fn scan(
             } else {
                 file_type.is_dir()
             };
-            if is_dir && !in_system && policy.ignore.is_ignored(&child, &name)
+            if is_dir && !in_system && policy.ignore.is_ignored(&RelPath::new(child.clone()), &name)
             {
                 continue;
             }
