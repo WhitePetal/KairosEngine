@@ -14,9 +14,10 @@ Usage (from the workspace root):
     python scripts/extract_tuanjie_icons.py --editor "D:/UnityInstalls/2022.3.62t6"
 
 The script discovers an editor install under the usual Windows locations, reads
-the named Texture2D entries out of the editor resources bundle, and writes them
-downscaled to 64x64 (a 2x-4x source for an 18 px row icon; the full-size editor
-textures are 256-2048 px and would cost megabytes of texture memory per icon).
+the named Texture2D entries out of the editor resources bundle, and writes each
+one downscaled to its target size: 64x64 for the 18 px row icons and 32x32 for
+the 16 px toolbar eye (its @2x source is already 2x). The full-size editor
+textures are 256-2048 px and would cost megabytes of texture memory per icon.
 
 Outputs are committed under Preferences/Textures/project/ so the editor needs no
 Python at runtime. Provenance: the extracted artwork is Unity/Tuanjie editor
@@ -29,26 +30,44 @@ import argparse
 import sys
 from pathlib import Path
 
-# (dark-skin source name, light-skin source name, dark output, light output)
+# (dark-skin source name, light-skin source name, dark output, light output, px)
 # Relative to the textures root; the two skins stay in sibling folders, the same
-# layout the Console panel's icons use.
+# layout the Console panel's icons use. Row icons ship at 64 px (a 2x-4x source
+# for an 18 px row icon); the toolbar's eye is a 16 px icon, so its 32 px @2x
+# source is already 2x and is written as-is.
 ICONS = [
-    ("d_Folder Icon", "Folder Icon", "project/folder.png", "project/light/folder.png"),
+    ("d_Folder Icon", "Folder Icon", "project/folder.png", "project/light/folder.png", 64),
     (
         "d_FolderOpened Icon",
         "FolderOpened Icon",
         "project/folder_open.png",
         "project/light/folder_open.png",
+        64,
     ),
     (
         "d_DefaultAsset Icon",
         "DefaultAsset Icon",
         "project/file.png",
         "project/light/file.png",
+        64,
+    ),
+    (
+        # Unity's scene-visibility eye, open: the hidden-files toggle is on.
+        "d_scenevis_visible@2x",
+        "scenevis_visible@2x",
+        "project/eye_open.png",
+        "project/light/eye_open.png",
+        32,
+    ),
+    (
+        # The same eye crossed out: dot files and .meta sidecars are filtered.
+        "d_scenevis_hidden@2x",
+        "scenevis_hidden@2x",
+        "project/eye_crossed.png",
+        "project/light/eye_crossed.png",
+        32,
     ),
 ]
-
-SIZE = 64
 
 # Bundle file names used by the Unity and Tuanjie editors respectively.
 BUNDLES = ("tuanjie editor resources", "unity editor resources")
@@ -98,10 +117,10 @@ def extract(editor: Path, textures: Path) -> int:
     print(f"reading {bundle}")
     env = UnityPy.load(str(bundle))
 
-    wanted: dict[str, tuple[Path, str]] = {}
-    for dark_name, light_name, dark_out, light_out in ICONS:
-        wanted[dark_name] = (textures / dark_out, "dark")
-        wanted[light_name] = (textures / light_out, "light")
+    wanted: dict[str, tuple[Path, str, int]] = {}
+    for dark_name, light_name, dark_out, light_out, size in ICONS:
+        wanted[dark_name] = (textures / dark_out, "dark", size)
+        wanted[light_name] = (textures / light_out, "light", size)
 
     written: set[str] = set()
     for obj in env.objects:
@@ -116,11 +135,11 @@ def extract(editor: Path, textures: Path) -> int:
         if image is None:
             print(f"  {name}: no decodable image")
             continue
-        image = image.convert("RGBA").resize((SIZE, SIZE), Image.LANCZOS)
-        out, skin = target
+        out, skin, size = target
+        image = image.convert("RGBA").resize((size, size), Image.LANCZOS)
         out.parent.mkdir(parents=True, exist_ok=True)
         image.save(out, optimize=True)
-        print(f"  {name:24s} {skin:5s} -> {out.relative_to(textures.parent.parent)}")
+        print(f"  {name:24s} {skin:5s} {size:2d}px -> {out.relative_to(textures.parent.parent)}")
         written.add(name)
 
     missing = sorted(set(wanted) - written)

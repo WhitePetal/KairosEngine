@@ -342,22 +342,36 @@ fn toolbar(ui: &mut Ui, style: &ProjectStyle, project: &ProjectState, out: &mut 
         x = toolbar_separator(&painter, row, style, rect.right());
     }
 
-    // Hidden files sits at the right edge, where Unity keeps its filters.
-    let label = "Hidden files";
-    let button_width = label_width(ui, style, label);
+    // Hidden files is Unity's eye toggle (the Project browser's own visibility
+    // affordance): icon-only and square, two states. A label would read as a
+    // fourth text segment, and the open / crossed-out eye already answers the only
+    // question a count could ("are hidden entries shown?"); a count would also go
+    // stale with every directory change, so it stays out of the bar.
+    let icon = if project.view.show_hidden {
+        &style.icons.eye_open
+    } else {
+        &style.icons.eye_crossed
+    };
+    // Square: a 16 px eye in Unity's 20 px toolbar cell.
+    let side = style.toolbar_height.max(style.hidden_icon_size + 2.0);
     let rect = Rect::from_min_size(
-        pos2(row.right() - button_width, row.top()),
-        vec2(button_width, style.toolbar_height),
+        pos2(row.right() - side, row.top()),
+        vec2(side, style.toolbar_height),
     );
     // A rule leads into the right-aligned group, like the Console's counts.
     toolbar_separator(&painter, row, style, rect.left() - style.separator_width);
+    let tooltip = if project.view.show_hidden {
+        "Hide hidden files"
+    } else {
+        "Show hidden files"
+    };
     let response = ui.put(
         rect,
-        Button::new(label, &button_style)
-            .width(button_width)
+        Button::icon_only(icon, style.hidden_icon_size, &button_style)
+            .width(side)
             .height(style.toolbar_height)
-            .align(ButtonAlign::Center)
             .selected(project.view.show_hidden)
+            .tooltip(tooltip)
             .id(ui.id().with("project-toolbar-hidden")),
     );
     if response.clicked() {
@@ -858,6 +872,33 @@ mod tests {
         let mut harness = ProjectHarness::new(&[]);
         let actions = harness.click(pos2(CANVAS.x - 4.0, 10.0));
         assert!(has(&actions, &ProjectAction::SetShowHidden(true)));
+    }
+
+    /// The hidden-files toggle is Unity's eye icon, not a text segment: the bar
+    /// paints no label for it, the on state fills the square, and clicking it
+    /// while on asks for the files to be filtered again.
+    #[test]
+    fn the_hidden_files_toggle_is_an_eye_icon() {
+        let style = ProjectStyle::dark();
+        let mut harness = ProjectHarness::new(&[]);
+        let texts = harness.painted_text(Vec::new());
+        assert!(
+            !texts.iter().any(|text| text == "Hidden files"),
+            "the eye replaces the text button: {texts:?}"
+        );
+
+        harness.state.project.view.show_hidden = true;
+        let painted = harness.painted(Vec::new());
+        assert!(
+            painted.iter().any(|painted| painted.fill == style.control_hover.to_egui()
+                && painted.rect.right() >= CANVAS.x - 1.0
+                && painted.rect.top() < 1.0
+                && painted.rect.height() >= style.toolbar_height - 0.5),
+            "the open eye must sit on the toggle's active fill: {painted:?}"
+        );
+
+        let actions = harness.click(pos2(CANVAS.x - 10.0, 10.0));
+        assert!(has(&actions, &ProjectAction::SetShowHidden(false)));
     }
 
     #[test]

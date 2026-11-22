@@ -65,6 +65,8 @@ pub struct ProjectStyle {
     pub toolbar_bg: Color,
     pub toolbar_text: Color,
     pub toolbar_height: f32,
+    /// Size of the toolbar's hidden-files eye (Unity's toolbar icons are 16 px).
+    pub hidden_icon_size: f32,
     /// Hover/active fill of a toolbar button and of a hovered breadcrumb.
     pub control_hover: Color,
 
@@ -103,12 +105,16 @@ pub struct ProjectStyle {
     pub tab_icon: String,
 }
 
-/// Row icon files of the Project panel, relative to the editor's working
-/// directory (see `kairos_editor_widgets::ui_image`).
+/// Icon files of the Project panel, relative to the editor's working directory
+/// (see `kairos_editor_widgets::ui_image`).
 ///
-/// The artwork is extracted from the local Unity/Tuanjie editor resources and
-/// downscaled to 64x64 by `scripts/extract_tuanjie_icons.py`; the reason is in
-/// `Preferences/Textures/project/README.md`.
+/// `folder` / `folder_open` / `file` are the tree's row icons; `eye_open` /
+/// `eye_crossed` are the toolbar's hidden-files toggle, Unity's scene-visibility
+/// eye (open = dot files and `.meta` sidecars are shown, crossed = filtered).
+///
+/// The artwork is extracted from the local Unity/Tuanjie editor resources by
+/// `scripts/extract_tuanjie_icons.py` (row icons 64x64, toolbar eye 32x32); the
+/// reason is in `Preferences/Textures/project/README.md`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, StyleFields)]
 pub struct ProjectIcons {
     pub folder: String,
@@ -116,6 +122,8 @@ pub struct ProjectIcons {
     /// Generic document icon. M2 draws it for every file; the per-type icons
     /// arrive with the `FileTypeRegistry` in M5.
     pub file: String,
+    pub eye_open: String,
+    pub eye_crossed: String,
 }
 
 impl ProjectIcons {
@@ -124,6 +132,8 @@ impl ProjectIcons {
             folder: String::from("Preferences/Textures/project/folder.png"),
             folder_open: String::from("Preferences/Textures/project/folder_open.png"),
             file: String::from("Preferences/Textures/project/file.png"),
+            eye_open: String::from("Preferences/Textures/project/eye_open.png"),
+            eye_crossed: String::from("Preferences/Textures/project/eye_crossed.png"),
         }
     }
 
@@ -132,12 +142,20 @@ impl ProjectIcons {
             folder: String::from("Preferences/Textures/project/light/folder.png"),
             folder_open: String::from("Preferences/Textures/project/light/folder_open.png"),
             file: String::from("Preferences/Textures/project/light/file.png"),
+            eye_open: String::from("Preferences/Textures/project/light/eye_open.png"),
+            eye_crossed: String::from("Preferences/Textures/project/light/eye_crossed.png"),
         }
     }
 
     /// Every path, in deterministic order, for preloading in `Panel::init`.
-    pub fn all(&self) -> [&str; 3] {
-        [&self.folder, &self.folder_open, &self.file]
+    pub fn all(&self) -> [&str; 5] {
+        [
+            &self.folder,
+            &self.folder_open,
+            &self.file,
+            &self.eye_open,
+            &self.eye_crossed,
+        ]
     }
 }
 
@@ -208,6 +226,7 @@ impl Style for ProjectStyle {
             toolbar_bg: Color::from_srgb8([0x35, 0x35, 0x35, 255]),
             toolbar_text: Color::from_srgb8([0xB1, 0xB1, 0xB1, 255]),
             toolbar_height: 20.0,
+            hidden_icon_size: 16.0,
             control_hover: Color::from_srgb8([0x46, 0x46, 0x46, 255]),
 
             splitter_idle: Color::from_srgb8([0x20, 0x20, 0x20, 255]),

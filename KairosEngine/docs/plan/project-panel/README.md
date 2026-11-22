@@ -424,7 +424,7 @@ D1 定稿：**左右两栏从第一天就存在**，右栏先只有面包屑 + �
 
 ```
 ┌ Project ─────────────────────────────────────────────────────────────┐
-│ 折叠全部 │ 刷新 │                                │ 隐藏文件 │ 工具栏 20px
+│ 折叠全部 │ 刷新 │                                 │ ◉ │ 工具栏 20px
 ├──────────────────────────────┬───────────────────────────────────────┤
 │ ▾ res                        │ KairosEngine / res / models           │ ← 内容头 20px
 │   ▾ models                   │                                       │   （独立灰底 + 下边线）
@@ -439,7 +439,7 @@ D1 定稿：**左右两栏从第一天就存在**，右栏先只有面包屑 + �
 └──────────────────────────────┴───────────────────────────────────────┘
 ```
 
-- **工具栏 M2 只放真能用的三项**：`折叠全部` / `刷新` / `隐藏文件`（新建 ▾ / 删除等 M3 有真实动作再加，不做灰按钮占位）；每个控件后画 1 px chrome 线（Console/Profiler 工具栏同一规则），`隐藏文件` 组前另加一条——没有分割线，文字按钮读起来就是标签；
+- **工具栏 M2 只放真能用的三项**：`折叠全部` / `刷新` 两个文字段 + **隐藏文件的眼睛开关**（新建 ▾ / 删除等 M3 有真实动作再加，不做灰按钮占位）；每个控件后画 1 px chrome 线（Console/Profiler 工具栏同一规则），眼睛前另加一条——没有分割线，文字按钮读起来就是标签。眼睛是 Unity 的 scene-visibility eye（开 = 显示隐藏项、叉 = 过滤），图标本身即状态，**不加计数文本**：计数会随目录变、M6 的搜索框要占这条横带，tooltip 写清动作就够；
 - 分割条用现成的 `widgets::splitter`：拖拽中的宽度**面板本地持有**（`Option<f32>`，`None` = 跟随 `ProjectView::tree_split`），松手只发一条 `SetTreeSplit`；两边宽度进 `tree_split`（M4 持久化）；
 - **`Library` 固定排最后**（D2）：模型里它就是顶层的一个普通目录，只是 `ordered_children` 把它排到最后、面板在它前面画一条 1px 分隔线；默认折叠，展开状态同样进 `expanded`；不受忽略规则影响，但有独立节点预算；
 - 搜索**不进入 `Library`**：里面是引擎产物，搜出来只会是噪音（要查导入产物请直接展开它）；
@@ -516,7 +516,7 @@ impl<'a, Id: Copy + Eq + Hash> TreeView<'a, Id> {
 
 **交互规则（M2 定稿，照 Unity/Tuanjie）**：一行 = 三角（独立命中区）+ 图标 + 名字 + 后缀。**单击选中并移动内容头**（写 `selection`，同时 `active` = 命中项的目录：文件夹 → 自身，文件 → 父目录；不展开、不导航）、**双击打开**（文件夹 → `Navigate`，文件 → `OpenRequested`）、**三角只切换展开**（不选中、不导航）。键盘只在 `TreeOutput::focused` 为真时生效：↑↓ 移动选中、Home/End 首尾、`←` 已展开则折叠否则选父、`→` 未展开则展开否则选第一个子、Enter 打开。重命名/拖拽/右键菜单的通道 **M3 才加**，M2 不预留空变体（见 M2 定稿 N3）。
 
-**视觉来源（N5）**：行图标取自本机 Tuanjie 编辑器资源包，Lanczos 缩到 64² 提交在 `Preferences/Textures/project/{,light/}`（`folder.png` / `folder_open.png` / `file.png`），重跑脚本 `scripts/extract_tuanjie_icons.py`。M2 文件行统一用泛型 `file` 图标；按类型的图标（texture/mesh/material/audio/...）在 M5 从同一个包抽。
+**视觉来源（N5）**：行图标取自本机 Tuanjie 编辑器资源包，Lanczos 缩到 64² 提交在 `Preferences/Textures/project/{,light/}`（`folder.png` / `folder_open.png` / `file.png`），重跑脚本 `scripts/extract_tuanjie_icons.py`。M2 文件行统一用泛型 `file` 图标；按类型的图标（texture/mesh/material/audio/...）在 M5 从同一个包抽。工具栏的隐藏文件开关也用同一个包：`d_scenevis_visible@2x` / `d_scenevis_hidden@2x`（light 用无 `d_` 版），32²（16 px 的 2×）。
 
 ### 2.7 持久化（M4）
 
@@ -862,7 +862,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 
 **M2b — 面板装配 + 皮肤 + 打开 + 键盘（2–3 天，可见）**
 
-- **component**：工具栏 20px（折叠全部 / 刷新 / 隐藏文件，控件间 1 px chrome 线）→ `Splitter::vertical` 覆盖式分割左右（比例来自 `view.tree_split`，有像素下限）→ 左树 `TreeView` / 右栏内容头（独立灰底 20px + 面包屑）+ 空态 → 按两栏分割的状态栏 18px。`panels/project/style.rs` 的 `ProjectStyle`：
+- **component**：工具栏 20px（折叠全部 / 刷新两个文字段 + 隐藏文件眼睛开关，控件间 1 px chrome 线）→ `Splitter::vertical` 覆盖式分割左右（比例来自 `view.tree_split`，有像素下限）→ 左树 `TreeView` / 右栏内容头（独立灰底 20px + 面包屑）+ 空态 → 按两栏分割的状态栏 18px。`panels/project/style.rs` 的 `ProjectStyle`：
   - 继承 `ProjectWindowStyle.toml [hierachy]` 的 6 个 token：`file_header_color #c8c8c8`（文件夹与文件同色，Unity 2022 同款；legacy 的 `directory_header_color #dcdcb4` 淡黄不沿用）、`selected_file_background_color #3c4b64`、`file_suffix_color #787878`、`file_header_size 11`（后缀字号）、`file_icon_size 18`、`selected_file_background_corner_radius 4`；旧 TOML 里**没有**的（行高 20、缩进 14、工具栏、状态栏、面包屑、hover、分隔线、splitter 三色、内容头灰底与高度 `header_bg`/`header_height`）按 Console 的调色板与量测补齐；
   - 新增 `icons: ProjectIcons { folder, folder_open, file }`（dark/light 两套路径）+ `tab_icon`（`Preferences/Textures/tab_icons/project.png`）；
   - `impl ProjectStyle { fn tree(&self) -> TreeStyle }`；`#[derive(StyleFields)]` 让 Preferences 自动可编辑；文件 `Preferences/Styles/ProjectStyle.ron`。
@@ -870,17 +870,17 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 - **键盘**（仅 `TreeOutput::focused`）：↑↓ 移动选中（可见行序）、Home/End 首尾、`←` 已展开则折叠否则选父、`→` 未展开则展开否则选第一个子、Enter 打开选中项。
 - **测试**：component 用 Console 的 harness 法（`Context::run` + 合成点击）断言「点行 → `Select`、点三角 → `ToggleFolder`、双击文件夹 → `Navigate`、双击文件 → `OpenRequested`」；`ProjectStyle` RON round-trip；空树 / 单行 / `Library` 分隔线三个装配 case。
 
-**验收（手动 smoke）**：单击 `res/models` → 只选中，**内容头与左半状态栏立即跟到 `res/models`**（不展开、不导航）→ 双击 → 左树同步展开 → 双击 `Suzanne.png` → 系统默认程序打开 → 拖分割条比例正确、松手不回弹、右栏不溢出 → `Library` 排在最后、上方有 1px 分组线（**它只是分组线，不能拖**），展开看到 `Library/imported_assets` → 勾选「隐藏文件」后 `.meta`/点文件出现 → 工具栏刷新 → 日志出现 `project scan requested (Manual)` → 关掉 Project 面板再打开，展开/选中还在且树滚回选中行 → 20 万行全展开拖动滚动条不卡（Profiler 看 UI 线程 < 8ms；widget 测试里另有「行回调 ≤ 可见行数」的硬断言）。
+**验收（手动 smoke）**：单击 `res/models` → 只选中，**内容头与左半状态栏立即跟到 `res/models`**（不展开、不导航）→ 双击 → 左树同步展开 → 双击 `Suzanne.png` → 系统默认程序打开 → 拖分割条比例正确、松手不回弹、右栏不溢出 → `Library` 排在最后、上方有 1px 分组线（**它只是分组线，不能拖**），展开看到 `Library/imported_assets` → **点右侧眼睛**后 `.meta`/点文件出现、图标从叉眼变睁眼且按钮保持选中底 → 工具栏刷新 → 日志出现 `project scan requested (Manual)` → 关掉 Project 面板再打开，展开/选中还在且树滚回选中行 → 20 万行全展开拖动滚动条不卡（Profiler 看 UI 线程 < 8ms；widget 测试里另有「行回调 ≤ 可见行数」的硬断言）。
 
 **风险**：`TreeView` API 被 M3 的改名/拖拽撑破。缓解（已改）：M2 不预留空通道，但 widget 保持「行内绘制 + 全行命中区 + 三角独立命中区」，M3 加通道只改 widget 内部和一个调用点。
 
 > **落地状态（M2 完成，验收逐条勾；含 2026-11-22 真机验收修正）**
 >
-> - **文件**：widgets 新增 `tree.rs`（虚拟化行控件 + 三角独立命中 + 焦点/滚动，11 条 headless 测试）；core 的 `ProjectAction` 新增 8 个变体 + `ProjectEffect::Open`，`reduce/project.rs` 8 个 arm，`ProjectTree::content_dir`，`tests/project.rs` +20 条（16 + 验收修正 4）；component 的 `panels/project.rs` 整篇替换（工具栏/分割/树/内容头/状态栏/键盘）与 `panels/project/{style,rows,content}.rs`（32 条测试，含合成点击、拖拽与绘制断言）；app 的 `ProjectEffect::Open` 真实实现（`open::that_detached`，失败回 `Failed` 落状态栏）+ `open = "5.4.4"`。
-> - **测试**：`cargo test-crate kairos_editor_core` 38（project 切片）+ 其余全绿；`kairos_editor_widgets` 152（tree 11）；`kairos_editor_component` 214 + 17 集成；`cargo check --workspace --all-targets` 通过。
-> - **运行（真机 smoke）**：启动日志 `project policy: 1 system dirs, 2 ignore rules` → `project scan #1: 1417 nodes (library 20) in 14 ms`；Project 面板显示工具栏三项（控件间 chrome 线）、Unity 文件夹图标、灰底内容头、`34 items` 左半状态栏、可拖的垂直分割线。**验收轮复验（新构建）**：拖分割条 287 → 367 px 松手后保持；单击 `kairos_audio` → 内容头变 `KairosEngine / kairos_audio`、左半状态栏变 `2 items`；像素采样确认工具栏三条分割线、内容头 `#2F2F2F`、状态行分界线。
+> - **文件**：widgets 新增 `tree.rs`（虚拟化行控件 + 三角独立命中 + 焦点/滚动，11 条 headless 测试）；core 的 `ProjectAction` 新增 8 个变体 + `ProjectEffect::Open`，`reduce/project.rs` 8 个 arm，`ProjectTree::content_dir`，`tests/project.rs` +20 条（16 + 验收修正 4）；component 的 `panels/project.rs` 整篇替换（工具栏/分割/树/内容头/状态栏/键盘）与 `panels/project/{style,rows,content}.rs`（33 条测试，含合成点击、拖拽与绘制断言）；app 的 `ProjectEffect::Open` 真实实现（`open::that_detached`，失败回 `Failed` 落状态栏）+ `open = "5.4.4"`。
+> - **测试**：`cargo test-crate kairos_editor_core` 38（project 切片）+ 其余全绿；`kairos_editor_widgets` 152（tree 11）；`kairos_editor_component` 215 + 17 集成；`cargo check --workspace --all-targets` 通过。
+> - **运行（真机 smoke）**：启动日志 `project policy: 1 system dirs, 2 ignore rules` → `project scan #1: 1417 nodes (library 20) in 14 ms`；Project 面板显示工具栏（折叠全部 / 刷新 + 眼睛开关，控件间 chrome 线）、Unity 文件夹图标、灰底内容头、`34 items` 左半状态栏、可拖的垂直分割线。**验收轮复验（新构建）**：拖分割条 287 → 367 px 松手后保持；单击 `kairos_audio` → 内容头变 `KairosEngine / kairos_audio`、左半状态栏变 `2 items`；像素采样确认工具栏分割线、内容头 `#2F2F2F`、状态行分界线。**眼睛开关复验**：点一下 → 状态栏 `34 items` 变 `36 items`（根目录两个被隐藏的 dot 文件出现），按钮从叉眼（工具条底色）变睁眼（选中底 `#464646`），两态像素差 400 px。
 > - **图标**：从本机 Tuanjie 2022.3 编辑器资源包抽 `d_Folder Icon` / `d_FolderOpened Icon` / `d_DefaultAsset Icon` 及 light 版，Lanczos 缩到 64²（<2 KB/张）提交在 `Preferences/Textures/project/`，重跑脚本 `scripts/extract_tuanjie_icons.py`，来源说明见该目录 README。**理由实测**：现存 `Preferences/Textures/*.png` 是 2048²，egui_extras 0.35 的加载器忽略 size hint（`ImageCrateLoader::load(..., _: SizeHint)`），一张就是 16 MB 纹理。
-> - **皮肤**：`Preferences/Styles/ProjectStyle.ron`（dark + light，33 个 token）首次启动就地 seed；`#[derive(StyleFields)]` 让 Preferences 面板自动可编辑；「仓库里的 RON 必须能解析」有测试兜底（加 token 忘改 RON 会红）。
+> - **皮肤**：`Preferences/Styles/ProjectStyle.ron`（dark + light，34 个 token）首次启动就地 seed；`#[derive(StyleFields)]` 让 Preferences 面板自动可编辑；「仓库里的 RON 必须能解析」有测试兜底（加 token 忘改 RON 会红）。
 > - 已知行为与偏离：
 >   1. legacy 的 `directory_header_color #dcdcb4`（淡黄文件夹文字）不沿用，文件夹与文件同色——Unity 2022 同款；M2b 的 token 说明已改。
 >   2. `tree_split` 只在分割条 `drag_stopped` 时写一条 action（拖拽中的宽度是面板本地态）；双击分割条复位未做（M4 持久化时一起定）。
@@ -890,7 +890,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 >   6. 手动 smoke 的 4 项已在 2026-11-22 真机验收轮点过，并引出下面的 7 条修正；修正后拖分割条、单击联动、关闭重开定位都有 harness 测试兜底。
 > - 未做（按计划）：M3 的建/改名/移动/删除、右键菜单与拖拽；M5 的类型图标与 IDE 打开；M6 搜索。
 >
-> **M2 验收修正（2026-11-22，真机 7 条反馈）**
+> **M2 验收修正（2026-11-22，真机 7 条反馈 + 隐藏文件眼睛 1 条追加）**
 >
 > | # | 反馈 | 处理与验证 |
 > |---|---|---|
@@ -901,7 +901,8 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 > | 4 | 单击选中不更新左下 `x items` | 同 #3：计数本来就是 `active` 目录的直接子项数，`active` 跟随单击后自然跟着变。 |
 > | 5 | Content Header 与内容区同色，分不出 Header | 新增 `header_bg`（暗 `#2F2F2F` / 亮 `#BDBDBD`）+ `header_height 20`，底边 1 px chrome 线；绘制断言测试 + 像素采样确认。 |
 > | 6 | 右下角路径多余；状态行该按两栏分割 | 删除选中路径；状态行在列分界处分割（线用 `splitter_idle`——暗色下 `status_bg` 与 `separator` 同色会看不见）；右半预留给 M9 图标大小滑条，当前只显示 error。 |
-> | 7 | 工具栏三个按钮没有分割线、看不出是按钮 | 每个控件后 1 px chrome 线 + `Hidden files` 组前一条（Console/Profiler 工具栏同规则）；绘制断言测试 + 像素采样确认（x=85/141/925 三条）。 |
+> | 7 | 工具栏三个按钮没有分割线、看不出是按钮 | 每个控件后 1 px chrome 线 + 右对齐组前一条（Console/Profiler 工具栏同规则）；绘制断言测试 + 像素采样确认（x=85/141 两条 + 眼睛前一条）。 |
+> | 8 | 追加：`Hidden files` 改成 Unity/Tuanjie 的眼睛图标 | 取 Tuanjie 资源包的 `d_scenevis_visible@2x` / `d_scenevis_hidden@2x`（light 用无 `d_` 版）缩到 32²，开 = 睁眼 + 选中底、关 = 叉眼；**评估后不加计数**（图标即状态，计数随目录变，M6 搜索要占这条横带），tooltip 写动作；harness 测试断言没有文字、选中态有底色、再点回 `SetShowHidden(false)`；真机复验 34→36 items、两态像素 400 px 不同。 |
 
 ### M3 — 变更：建 / 改名 / 移动 / 删除（3–5 天）
 
