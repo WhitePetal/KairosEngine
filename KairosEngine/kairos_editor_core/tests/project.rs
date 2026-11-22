@@ -5,11 +5,15 @@
 //! `kairos_editor_app`. These cases pin the contract the two sides share — the
 //! generation, the assembled tree, the pruned view intent, the pending reveal and
 //! the visible error.
+//!
+//! The M2 panel's own intents (select, expand, navigate, open, split, collapse)
+//! are pinned here too: they are plain state transitions over paths the tree
+//! already has, so they need no scanner.
 
 use std::path::{Path, PathBuf};
 
 use kairos_editor_core::project::{
-    IgnoreRules, ProjectView, RelPath, ScanEntry, ScanPolicy, ScanReason, ScanState,
+    IgnoreRules, ProjectError, ProjectView, RelPath, ScanEntry, ScanPolicy, ScanReason, ScanState,
 };
 use kairos_editor_core::{
     Action, EditorState, Effect, ProjectAction, ProjectEffect, ProjectState, reduce,
@@ -69,6 +73,27 @@ fn completion(
         library_nodes: 0,
         errors,
     })
+}
+
+/// Reduce one project action, without the aggregate `Action` wrapper.
+fn view_action(state: &mut EditorState, action: ProjectAction) -> Vec<Effect> {
+    reduce(state, Action::Project(action))
+}
+
+/// A state whose tree holds `res/models/a.png`, `res/a.png` and `Library`.
+fn scanned_state() -> EditorState {
+    let mut state = EditorState::new();
+    scan_with(
+        &mut state,
+        vec![
+            dir("res"),
+            dir("res/models"),
+            file("res/models/a.png"),
+            file("res/a.png"),
+            dir("Library"),
+        ],
+    );
+    state
 }
 
 #[test]
@@ -427,4 +452,301 @@ fn truncation_is_recorded_on_the_state() {
 
     assert!(state.project.scan.truncated);
     assert!(state.project.tree.truncated());
+}
+
+// ---------------------------------------------------------------------------
+// M2: the panel's own view intents
+// ---------------------------------------------------------------------------
+
+/// A click selects one row; it must not navigate (N1: click selects, double
+/// click opens).
+#[test]
+fn selecting_a_row_replaces_the_selection() {
+    let mut state = scanned_state();
+    state.project.view.selection.insert(RelPath::new("res/a.png"));
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::Select {
+            path: Some(RelPath::new("res/models/a.png")),
+        },
+    );
+
+    assert!(effects.is_empty(), "a selection is pure state");
+    assert_eq!(
+        state.project.view.selection,
+        [RelPath::new("res/models/a.png")].into_iter().collect()
+    );
+    assert_eq!(
+        state.project.view.active, None,
+        "a click selects, it does not navigate"
+    );
+}
+
+/// A path the tree does not have cannot be selected: a stale click clears the
+/// selection instead of leaving a dangling path in the view.
+#[test]
+fn selecting_a_missing_path_leaves_the_selection_empty() {
+    let mut state = scanned_state();
+    state.project.view.selection.insert(RelPath::new("res/a.png"));
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::Select {
+            path: Some(RelPath::new("res/gone.png")),
+        },
+    );
+
+    assert!(effects.is_empty());
+    assert!(state.project.view.selection.is_empty());
+}
+
+#[test]
+fn select_none_clears_the_selection() {
+    let mut state = scanned_state();
+    state.project.view.selection.insert(RelPath::new("res/a.png"));
+
+    let effects = view_action(&mut state, ProjectAction::Select { path: None });
+
+    assert!(effects.is_empty());
+    assert!(state.project.view.selection.is_empty());
+}
+
+#[test]
+fn toggle_folder_expands_and_collapses_a_folder() {
+    let mut state = scanned_state();
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::ToggleFolder {
+            path: RelPath::new("res"),
+        },
+    );
+    assert!(effects.is_empty());
+    assert_eq!(
+        state.project.view.expanded,
+        [RelPath::new("res")].into_iter().collect()
+    );
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::ToggleFolder {
+            path: RelPath::new("res"),
+        },
+    );
+    assert!(effects.is_empty());
+    assert!(state.project.view.expanded.is_empty());
+}
+
+/// Only a folder has a triangle; a file reaching the toggle is stale UI input.
+#[test]
+fn toggle_folder_ignores_a_file() {
+    let mut state = scanned_state();
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::ToggleFolder {
+            path: RelPath::new("res/a.png"),
+        },
+    );
+
+    assert!(effects.is_empty());
+    assert!(state.project.view.expanded.is_empty());
+}
+
+#[test]
+fn toggle_folder_ignores_a_missing_path() {
+    let mut state = scanned_state();
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::ToggleFolder {
+            path: RelPath::new("gone"),
+        },
+    );
+
+    assert!(effects.is_empty());
+    assert!(state.project.view.expanded.is_empty());
+}
+
+/// Double-clicking a folder navigates: it becomes active and selected, and it
+/// plus its ancestors expand so the row is visible.
+#[test]
+fn navigate_sets_active_selection_and_expands_ancestors() {
+    let mut state = scanned_state();
+    state.project.view.expanded.insert(RelPath::new("Library"));
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::Navigate {
+            path: RelPath::new("res/models"),
+        },
+    );
+
+    assert!(effects.is_empty());
+    assert_eq!(state.project.view.active, Some(RelPath::new("res/models")));
+    assert_eq!(
+        state.project.view.expanded,
+        [
+            RelPath::new("res"),
+            RelPath::new("res/models"),
+            RelPath::new("Library"),
+        ]
+        .into_iter()
+        .collect()
+    );
+    assert_eq!(
+        state.project.view.selection,
+        [RelPath::new("res/models")].into_iter().collect()
+    );
+}
+
+#[test]
+fn navigate_ignores_a_file() {
+    let mut state = scanned_state();
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::Navigate {
+            path: RelPath::new("res/a.png"),
+        },
+    );
+
+    assert!(effects.is_empty());
+    assert_eq!(state.project.view.active, None);
+    assert!(state.project.view.selection.is_empty());
+    assert!(state.project.view.expanded.is_empty());
+}
+
+#[test]
+fn navigate_ignores_a_missing_path() {
+    let mut state = scanned_state();
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::Navigate {
+            path: RelPath::new("res/gone"),
+        },
+    );
+
+    assert!(effects.is_empty());
+    assert_eq!(state.project.view.active, None);
+}
+
+/// A request, not a completion: the reducer changes no state and asks the host
+/// to open the file, carrying the project root the executor cannot read.
+#[test]
+fn open_requested_asks_the_host_to_open_the_path() {
+    let mut state = EditorState::new();
+    state.project = ProjectState::at(Path::new("res/project"));
+    scan_with(&mut state, vec![dir("res"), file("res/a.png")]);
+    let before = state.project.view.clone();
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::OpenRequested {
+            path: RelPath::new("res/a.png"),
+        },
+    );
+
+    assert_eq!(
+        effects,
+        vec![Effect::Project(ProjectEffect::Open {
+            root: PathBuf::from("res/project"),
+            path: RelPath::new("res/a.png"),
+        })]
+    );
+    assert_eq!(state.project.view, before, "opening changes no state");
+}
+
+#[test]
+fn open_requested_ignores_a_missing_path() {
+    let mut state = scanned_state();
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::OpenRequested {
+            path: RelPath::new("res/gone.png"),
+        },
+    );
+
+    assert!(effects.is_empty(), "there is nothing to open");
+}
+
+#[test]
+fn set_show_hidden_writes_the_view() {
+    let mut state = scanned_state();
+
+    let effects = view_action(&mut state, ProjectAction::SetShowHidden(true));
+    assert!(effects.is_empty());
+    assert!(state.project.view.show_hidden);
+
+    let effects = view_action(&mut state, ProjectAction::SetShowHidden(false));
+    assert!(effects.is_empty());
+    assert!(!state.project.view.show_hidden);
+}
+
+/// The toolbar collapses rows, not the user's place: active and selection stay.
+#[test]
+fn collapse_all_keeps_active_and_selection() {
+    let mut state = scanned_state();
+    state.project.view.expanded.insert(RelPath::new("res"));
+    state.project.view.expanded.insert(RelPath::new("res/models"));
+    state.project.view.active = Some(RelPath::new("res/models"));
+    state.project.view.selection.insert(RelPath::new("res/models/a.png"));
+
+    let effects = view_action(&mut state, ProjectAction::CollapseAll);
+
+    assert!(effects.is_empty());
+    assert!(state.project.view.expanded.is_empty());
+    assert_eq!(state.project.view.active, Some(RelPath::new("res/models")));
+    assert_eq!(
+        state.project.view.selection,
+        [RelPath::new("res/models/a.png")].into_iter().collect()
+    );
+}
+
+#[test]
+fn tree_split_is_clamped_to_the_documented_range() {
+    let mut state = scanned_state();
+
+    for (requested, expected) in [(0.9, 0.6), (0.0, 0.15), (-2.0, 0.15), (0.45, 0.45)] {
+        let effects = view_action(&mut state, ProjectAction::SetTreeSplit(requested));
+        assert!(effects.is_empty());
+        assert_eq!(
+            state.project.view.tree_split, expected,
+            "requested {requested}"
+        );
+    }
+}
+
+/// NaN would slip through clamp and poison the layout on every frame.
+#[test]
+fn tree_split_ignores_nan() {
+    let mut state = scanned_state();
+    state.project.view.tree_split = 0.4;
+
+    let effects = view_action(&mut state, ProjectAction::SetTreeSplit(f32::NAN));
+
+    assert!(effects.is_empty());
+    assert_eq!(state.project.view.tree_split, 0.4);
+}
+
+/// A host failure is state the status bar renders, not a log line.
+#[test]
+fn a_host_failure_lands_in_the_visible_error() {
+    let mut state = scanned_state();
+
+    let effects = view_action(
+        &mut state,
+        ProjectAction::Failed {
+            message: String::from("cannot open res/a.png"),
+        },
+    );
+
+    assert!(effects.is_empty());
+    assert_eq!(
+        state.project.error,
+        Some(ProjectError::new("cannot open res/a.png"))
+    );
 }

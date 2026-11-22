@@ -68,7 +68,9 @@ pub struct ProjectState {
     pub scan: ScanState,
     /// The most recent visible failure. A failure is state, not a log line: the
     /// status bar renders it, so it cannot disappear the way the legacy tree's
-    /// `read_dir` errors did. Written by [`ProjectAction::Scanned`].
+    /// `read_dir` errors did. Written by [`ProjectAction::Scanned`] (scan
+    /// failures) and [`ProjectAction::Failed`] (a host operation the user
+    /// asked for).
     pub error: Option<ProjectError>,
 }
 
@@ -147,6 +149,40 @@ pub enum ProjectAction {
         /// by the status bar rather than only logged.
         errors: Vec<String>,
     },
+    /// Replace the selection with `path`; `None` clears it.
+    ///
+    /// Sent by a single click on a tree row (N1: a click selects, it does not
+    /// navigate). A path the tree does not have is ignored, so a stale click
+    /// cannot leave a selection pointing at nothing.
+    Select { path: Option<RelPath> },
+    /// Expand or collapse one folder: the triangle's half of the tree's
+    /// two-hit-area rule (N1). Files are not expandable, and a path that is not
+    /// in the tree is ignored.
+    ToggleFolder { path: RelPath },
+    /// Make `path` the active directory: the double-click on a folder and the
+    /// breadcrumb's forward navigation (N1/N6). Sets `active`, expands the path
+    /// and its ancestors, and selects it. A file, or a path that is not in the
+    /// tree, is ignored.
+    Navigate { path: RelPath },
+    /// Open `path` with the system default program (M2; M5 replaces it with the
+    /// typed `OpenWith` dispatch). A pure request: the reducer changes no state
+    /// and answers with [`ProjectEffect::Open`]; a host failure comes back as
+    /// [`Self::Failed`].
+    OpenRequested { path: RelPath },
+    /// Show or hide dot files and `.meta` companions. They are in the tree
+    /// either way; this only decides whether the panel draws them.
+    SetShowHidden(bool),
+    /// Collapse every folder (the toolbar's "collapse all"). `active` and
+    /// `selection` survive: the user collapsed rows, not their place in the
+    /// project.
+    CollapseAll,
+    /// Set the left column's fraction of the panel width (the splitter's drag
+    /// end). Clamped to `0.15..=0.6`; NaN is ignored so a degenerate drag cannot
+    /// poison the layout.
+    SetTreeSplit(f32),
+    /// A host-side project failure the user should see (M2: opening a file
+    /// failed). Writes [`ProjectState::error`]; the status bar renders it.
+    Failed { message: String },
 }
 
 /// Host work for the project slice.
@@ -160,4 +196,9 @@ pub enum ProjectEffect {
         policy: ScanPolicy,
         generation: u64,
     },
+    /// Open `path` under `root` with the system default program (M2; M5 adds
+    /// the IDE dispatch). The effect carries the root because the executor has
+    /// no access to the state tree. A host failure is reported as
+    /// [`ProjectAction::Failed`].
+    Open { root: PathBuf, path: RelPath },
 }

@@ -36,6 +36,11 @@ image = "0.25.10"
 # debounce window as the asset source's watcher (ADR 0006 deviations 7/8). The
 # crate is already in the workspace lockfile through `kairos_editor`.
 notify-debouncer-full = { version = "0.7.0", default-features = false }
+# Opening a project file with its OS default program (src/project/mod.rs):
+# `that_detached` asks ShellExecute/xdg-open/open(1) and returns at once, so a
+# slow editor cannot stall the host phase. Pinned to the version the legacy
+# editor already resolved, so this adds nothing new to the lockfile.
+open = "5.4.4"
 
 [dev-dependencies]
 # Project-slice tests build real directory trees (src/project/scanner.rs,

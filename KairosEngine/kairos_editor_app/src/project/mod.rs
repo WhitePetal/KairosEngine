@@ -217,6 +217,20 @@ impl ProjectService {
                     }
                 }
             }
+            // Opening is not the project's state: the host hands the file to the
+            // OS and only reports the failure back. Synchronous on purpose —
+            // `that_detached` does not block on the spawned program, and an
+            // error means the OS refused to start one at all (M5 replaces this
+            // with the typed `OpenWith` dispatch, IDE detection included).
+            ProjectEffect::Open { root, path } => {
+                let absolute = root.join(path.as_str());
+                match open::that_detached(&absolute) {
+                    Ok(()) => Vec::new(),
+                    Err(error) => vec![Action::Project(ProjectAction::Failed {
+                        message: format!("cannot open {}: {error}", absolute.display()),
+                    })],
+                }
+            }
         }
     }
 }

@@ -1,6 +1,6 @@
 # ProjectPanel 迁移重构计划
 
-> **状态**：已拍板（D1–D12 全部落定，见 [§7](#7-决策记录已拍板)）。**M0 / M0.5 / M1 已落地**（M1 分 M1a core + M1b app 两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。下一步是 M2（面板 v1）。
+> **状态**：已拍板（D1–D12 全部落定，见 [§7](#7-决策记录已拍板)）。**M0 / M0.5 / M1 / M2 已落地**（M1 分 M1a core + M1b app 两刀，M2 分 M2a core+widget / M2b 面板两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。M2 已按「开工前复核定稿」定稿并开工（M2a/M2b 两刀，见 M2 一节）。
 > **范围**：`kairos_editor_core`（项目领域）/ `kairos_editor_app`（扫描、监听、文件操作、持久化）/ `kairos_editor_component`（面板）/ `kairos_editor_widgets`（树控件）；旧 `kairos_editor` 只冻结，最后退役
 > **配套**：[ADR 0008](../../adr/0008-editor-ui-architecture.md)、[ADR 0009](../../adr/0009-editor-panel-host-and-viewport.md)、[rewrite-plan](../editor-ui-architecture/rewrite-plan.md)（Phase 0.5 写明「只迁 ProjectPanel 一页」）、[panel-viewport-design](../editor-ui-architecture/panel-viewport-design.md) §6.2 P1、[widget-layer](../editor-ui-architecture/widget-layer.md) §2.2/§5
 > **可抄的形状**：`prototypes/editor-ui/crates/editor-components/src/project_panel.rs`（派生函数 + 行渲染 + action 映射）、`prototypes/editor-ui/crates/editor-core/src/reduce/project.rs`（data-in / effects-out）
@@ -34,10 +34,10 @@
 | 阶段 | 估算（单人） |
 |---|---|
 | M0.5 资产布局迁移（D12） | **0.5–1 人日**（跨 `kairos_asset`/`kairos_engine`/`kairos_graphics`） |
-| M0 + M1–M6（面板本体，不含类型任务） | **13.5–21 人日 ≈ 3–4.5 周** |
+| M0 + M1–M6（面板本体，不含类型任务） | **13–20 人日 ≈ 3–4.5 周** |
 | M7 资产身份与引用维护 | **5–8 人日**（跨 `kairos_asset`/`kairos_graphics`） |
 | M8 收尾（冻结 + 文档） | **0.5–1 人日** |
-| **合计（不含类型任务）** | **19.5–31 人日 ≈ 4–6 周** |
+| **合计（不含类型任务）** | **19–30 人日 ≈ 4–6 周** |
 | M5 的 seam（已含在 M0–M6 里） | 2–3 人日 |
 | M5 的每个类型任务（另计） | 0.5–2 人日 / 类型 |
 
@@ -258,7 +258,7 @@ pub struct ProjectView {
     pub sort: SortKey,                  // v1 只有 Name
     pub show_hidden: bool,              // 点文件与 .meta 伴生
     /// 左右两栏的分割比例（D1）：右栏从第一天就存在，只是先空着。
-    pub tree_split: f32,                // 0.15..=0.6，默认 0.28
+    pub tree_split: f32,                // 0.15..=0.6，默认 0.28；reducer 与面板都再收一次像素下限
 }
 
 // core/src/project/mod.rs
@@ -424,7 +424,7 @@ D1 定稿：**左右两栏从第一天就存在**，右栏先只有面包屑 + �
 
 ```
 ┌ Project ────────────────────────────────────────────────────────────┐
-│ [新建文件夹] [新建文件▾] [删除] [折叠全部] [刷新]      [隐藏文件] │ 工具栏 20px
+│ [折叠全部] [刷新]                              [隐藏文件] │ 工具栏 20px
 ├──────────────────────────────┬──────────────────────────────────────┤
 │ ▾ res                        │ res / models /                       │ 面包屑 20px
 │   ▾ models                   │                                      │
@@ -439,41 +439,67 @@ D1 定稿：**左右两栏从第一天就存在**，右栏先只有面包屑 + �
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+- **工具栏 M2 只放真能用的三项**：`折叠全部` / `刷新` / `隐藏文件`（新建 ▾ / 删除等 M3 有真实动作再加，不做灰按钮占位）；
 - 分割条用现成的 `widgets::splitter`（两边宽度进 `ProjectView::tree_split`，M4 持久化）；
 - **`Library` 固定排最后**（D2）：模型里它就是顶层的一个普通目录，只是 `ordered_children` 把它排到最后、面板在它前面画一条 1px 分隔线；默认折叠，展开状态同样进 `expanded`；不受忽略规则影响，但有独立节点预算；
 - 搜索**不进入 `Library`**：里面是引擎产物，搜出来只会是噪音（要查导入产物请直接展开它）；
 - 右栏 v1 是「面包屑 + 空状态」：面包屑可点任意一级跳转，空状态写明下一阶段做网格 —— 它已经能验证 `active` 这套导航状态是对的；
-- 状态栏跨两栏通栏：左半边计数、右半边选中路径、截断告警优先（宁可挤掉路径）。
+- 状态栏跨两栏通栏：左半边是 `active` 目录的直接子项数、右半边选中路径、截断/错误告警优先（宁可挤掉路径）。
 
 **widget 契约**（`widgets/src/tree.rs`）：
 
 ```rust
+// widgets/src/tree.rs —— M2 定稿后的契约（M2a 实现它）
+pub struct TreeStyle {
+    pub row_height: f32,        // 20
+    pub indent: f32,            // 14
+    pub expander: f32,          // 13：三角的命中框（图形本身 8x8）
+    pub icon: f32,              // 18
+    pub text_size: f32,         // 12
+    pub suffix_size: f32,       // 11
+    pub text: Color32,
+    pub suffix: Color32,
+    pub selected_bg: Color32,
+    pub selected_radius: u8,    // 4
+    pub hover_bg: Color32,
+    pub expander_color: Color32,
+    pub separator: Color32,
+    pub separator_width: f32,   // 1
+    pub bg: Color32,
+}
+impl TreeStyle {
+    pub fn dark() -> Self;
+    pub fn light() -> Self;
+}
+
 pub struct TreeRow<'a> {
     pub depth: u16,
     pub label: &'a str,
     pub suffix: Option<&'a str>,
     pub icon: Option<&'a str>,      // Preferences/Textures 下的相对路径
-    pub expander: Option<Expander>, // None = 文件
+    pub expander: Option<Expander>, // None = 文件；三角是独立命中区
     pub selected: bool,
-    pub drop_target: bool,
+    pub separator_above: bool,      // 系统目录（Library）行上方的 1px
 }
 
 pub struct TreeOutput<Id> {
-    pub clicked: Option<Id>,
-    pub double_clicked: Option<Id>,
-    pub expander_toggled: Option<Id>,
-    pub context_menu: Option<Id>,
-    pub rename_committed: Option<(Id, String)>,
-    pub rename_cancelled: Option<Id>,
-    pub drag_started: Option<Id>,
-    pub dropped_on: Option<(Id, Id)>,
+    pub clicked: Option<Id>,          // 单击行 = 选中
+    pub double_clicked: Option<Id>,   // 双击行 = 打开
+    pub expander_toggled: Option<Id>, // 三角 = 展开/收起（与 clicked 互斥）
     pub hovered: Option<Id>,
+    pub focused: bool,                // 树有键盘焦点，面板据此吃方向键
 }
 
 impl<'a, Id: Copy + Eq + Hash> TreeView<'a, Id> {
     /// rows 只给 id（前序）；行内容按需回调，只对可见行调用。
-    pub fn new(rows: &'a [Id], row: impl Fn(Id) -> TreeRow<'a> + 'a) -> Self;
-    pub fn renaming(self, id: Id, buffer: &'a mut String) -> Self; // 行内编辑器
+    pub fn new(
+        id_salt: impl Hash,
+        rows: &'a [Id],
+        style: &'a TreeStyle,
+        row: impl Fn(Id) -> TreeRow<'a> + 'a,
+    ) -> Self;
+    /// 把这一行滚进可视区（键盘移动选中项、reveal 之后）。
+    pub fn scroll_to(self, id: Id) -> Self;
     pub fn show(self, ui: &mut egui::Ui) -> TreeOutput<Id>;
 }
 ```
@@ -487,6 +513,10 @@ impl<'a, Id: Copy + Eq + Hash> TreeView<'a, Id> {
 **面板自己持有的视图状态**（关掉标签页就丢，这是对的）：搜索框文本、重命名 buffer、删除确认、拖拽中的路径、滚动定位。**core 持有**：`expanded`/`active`/`selection`/`sort`/`show_hidden`。判据：**关掉面板再打开还该在的 → core；只影响这一帧的 → 面板**。这条规则有硬理由：`PanelHost::sync` 的 `retain` 会直接 drop 关闭的面板实例（`panel/host.rs:52`），面板里存不住任何东西。
 
 **绘制**：`TreeView` 只画行；重命名编辑器、右键菜单（`menu::submenu` + `menu_item_enabled`）、删除确认（`Popup`）都由面板画 —— 面板有 `&mut Ui` 和 `&mut UiOut`，widget 没有 `Action` 的概念。
+
+**交互规则（M2 定稿，照 Unity/Tuanjie）**：一行 = 三角（独立命中区）+ 图标 + 名字 + 后缀。**单击选中**（只写 `selection`，不动 `active`）、**双击打开**（文件夹 → `Navigate`，文件 → `OpenRequested`）、**三角只切换展开**（不选中、不导航）。键盘只在 `TreeOutput::focused` 为真时生效：↑↓ 移动选中、Home/End 首尾、`←` 已展开则折叠否则选父、`→` 未展开则展开否则选第一个子、Enter 打开。重命名/拖拽/右键菜单的通道 **M3 才加**，M2 不预留空变体（见 M2 定稿 N3）。
+
+**视觉来源（N5）**：行图标取自本机 Tuanjie 编辑器资源包，Lanczos 缩到 64² 提交在 `Preferences/Textures/project/{,light/}`（`folder.png` / `folder_open.png` / `file.png`），重跑脚本 `scripts/extract_tuanjie_icons.py`。M2 文件行统一用泛型 `file` 图标；按类型的图标（texture/mesh/material/audio/...）在 M5 从同一个包抽。
 
 ### 2.7 持久化（M4）
 
@@ -577,7 +607,7 @@ impl FileTypeRegistry {
 - **搜索范围（Unity 同款）**：搜索框左侧一个范围选择器，`In Assets`（默认）= 只搜普通目录，`In Library` = 只搜 `Library`；对应 `SearchScope::{Assets, Library}`，属于面板视图状态；
 - 空查询 = 不过滤；命中项的祖先自动展开（`In Library` 时 Library 根自动展开），`Esc` 恢复过滤前的展开集合；`Ctrl+F` 聚焦搜索框；
 - 解析结果 `Vec<Term>` 与 `SearchScope` 一起放进面板视图状态（不进 core 的 `ProjectView`：它们是本帧视图，不是持久意图）；`visible_rows` 接收 `(&SearchQuery, SearchScope)`；
-- 面板缓存 `Vec<NodeId>`，失效条件 = `(tree.generation, expanded, query, sort, show_hidden)`；
+- 面板缓存 `Vec<NodeId>`（M2 定稿 N2：缓存在面板，core 只给纯函数），失效条件 = `(tree.revision, expanded, show_hidden, query, scope)`；
 - 性能：O(n) 单趟（10 万节点 ~1ms），无索引、无去抖；解析只做一次（查询字符串没变就不重解析）；
 - **不做内容搜索**：需要读文件、忽略规则、后台索引、结果列表（「跳到第 N 行」），是另一个面板的活，单独立项 + ADR。
 
@@ -603,7 +633,7 @@ kairos_editor_app/src/
   project/persist.rs       project_view.toml 读写 + 去抖 + 原子写
   project/ignore.rs        .kairosignore 解析（缺文件 seed 默认） + 规则匹配入口
   project/identity.rs      guid ↔ path 索引（读侧车、可重建缓存，M7）
-  project/open.rs          外部编辑器 / 系统默认（从 ui/ide_detection.rs 搬来）
+  project/open.rs          M2：系统默认程序（`open` crate）；M5：`OpenWith` 分发 + IDE 探测
 
 kairos_editor_component/src/
   panels/project.rs        装配：工具栏 + [树 | 面包屑+占位] + 状态栏 + 弹层
@@ -611,7 +641,7 @@ kairos_editor_component/src/
   panels/project/rows.rs   core 状态 → TreeRow 的纯映射 + 行缓存
   panels/project/content.rs 右栏占位（M9 换成网格，接口先定）
 
-kairos_editor_widgets/src/tree.rs   TreeView / TreeRow / TreeOutput
+  kairos_editor_widgets/src/tree.rs   TreeView / TreeStyle / TreeRow / TreeOutput
 ```
 
 新依赖（只进 app）：`notify-debouncer-full`、`toml`、`serde`、`trash`、`open` —— 版本与 `kairos_editor/Cargo.toml:39-49` 现有条目一致。M7 不引入新依赖：`kairos_asset` 已经依赖 `uuid`（`kairos_asset/Cargo.toml`）。
@@ -788,21 +818,76 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 > - 50,251 节点 fixture：**42 ms**（dev profile，见 §5）。
 > - 已知行为（不是缺陷）：一次外部写入偶尔被 debouncer 拆成两个批次，于是连扫两次（各约 10 ms，结果一致）。要合并的话在 `ProjectService::poll` 侧收拢即可，M2 之后视实测再定。
 
-### M2 — 面板 v1：左右两栏 + 树 + 导航（4–6 天）
+### M2 — 面板 v1：左右两栏 + 树 + 导航（3.5–5 天，分 M2a / M2b 两刀）
 
-**目标**：Project 面板变成**左右两栏**的真实面板（D1）：左树能展开/导航/选中/打开，右栏是面包屑 + 空白占位；树底部固定排最后的 `Library` 与分隔线（D2）；**只读**。
+**目标**：Project 面板变成**左右两栏**的真实面板（D1）：左树能展开/选中/导航/打开，右栏是面包屑 + 空白占位；树底部固定排最后的 `Library` 与分隔线（D2）；**只读**（不改文件系统）。
 
-**交付**
-- widgets：`tree.rs`（§2.6 契约）+ headless 测试；
-- component：工具栏（通栏）/ `[树 | 面包屑 + 占位]`（`widgets::splitter`）/ 状态栏（通栏）；`ProjectStyle`（`Preferences/Styles/ProjectStyle.ron`，从 `ProjectWindowStyle.toml` 1:1 映射：行高 20、图标 18、选中 `#3c4b64`、后缀 `#787878`，另加 `tree_split` 默认值）；`#[panel(PROJECT = "project", skin = ProjectStyle)]`；
-- core：`Expand/Collapse/Navigate/Select/SetSort/SetShowHidden/SetTreeSplit` 的 reducer；`visible_rows` 缓存；系统目录 `Library` 默认折叠；
-- app：`Open` effect 的两个实现（外部编辑器 / 系统默认），`ide_detection` 从旧 crate 搬来；
-- 键盘：↑↓ 移动、←→ 折叠/展开、Home/End、Enter 打开、F2 改名（M3 接上）。
+> **M2 开工前复核定稿（2026-11-22，用户已拍板 6 条）** —— 计划原文这些地方会「现场发明」，实现一律按这里来：
+>
+> | # | 决定 | 为什么 |
+> |---|---|---|
+> | N1 | **导航照 Unity/Tuanjie**：行左端是**独立的展开/收起三角**；**单击 = 选中**（只写 `selection`，不动 `active`）；**双击 = 打开**（文件夹 → `Navigate` + 展开；文件 → 系统默认程序）。三角与行是两个命中区 | 参考编辑器的行为；「单击选、双击开」要求三角和行各管一件事，否则点一下就跳目录 |
+> | N2 | **可见行缓存归面板**（`Vec<NodeId>` + 失效键），core 只留 `visible_rows` 纯函数 | M6 的 query/scope 是面板视图状态，core 里的缓存服务不了它；放面板 = M6 不用搬 |
+> | N3 | **TreeView 用最小 API**：不做 `renaming` / `drag_started` / `dropped_on` / 右键菜单通道；F2/Delete 归 M3 | 没有消费者的通道不可测，M3 一定会按真实需求重画 |
+> | N4 | **M2 的打开 = 系统默认程序**（`open` crate）；IDE 探测 + `OpenWith` 分发 + `ui/ide_detection.rs` 搬迁归 M5 | `OpenWith` 是 `FileType` 的字段，M5 才有消费者；提前搬 311 行只会返工 |
+> | N5 | **图标取自本机 Tuanjie 编辑器资源包**（`d_Folder Icon` / `d_FolderOpened Icon` / `d_DefaultAsset Icon`），Lanczos 缩到 64²，提交到 `Preferences/Textures/project/{,light/}`；重跑脚本 `scripts/extract_tuanjie_icons.py` | 现存 `Preferences/Textures/*.png` 是 2048²，而 egui_extras 的图片加载器忽略 size hint（不降采样）→ 一张 16 MB 纹理；64² 一张 16 KB。M2 文件行统一泛型 file 图标，按类型图标归 M5 |
+> | N6 | **先定稿再开工**；M2 拆 **M2a**（core + widget + 纯映射，画面零变化）/ **M2b**（面板装配 + 皮肤 + 打开 + 键盘） | 与 M1 同款刀法：M2a 100% headless 可验收 |
+>
+> **补齐的 8 处**（原文空白或自相矛盾，在这里定死）：
+>
+> 1. **TreeView 的视觉入口**：widgets 新增 `TreeStyle`（行高/缩进/三角/图标/字号/颜色/选中底色/分隔线），component 把 `ProjectStyle` 映射成它。仓库没有 `Theme`，也没有第二个画树的 widget——**不要**为此发明主题系统。
+> 2. **键盘焦点与滚动**：`TreeOutput::focused` 回答「树有没有键盘焦点」，面板只在 focused 时吃方向键；选中项移动后用 `TreeView::scroll_to(id)` 滚进可视区。
+> 3. **`tree_split` 的写回时机**：拖拽期间面板本地持有 `Option<f32>`（`None` = 跟随 core 值），`drag_stopped` 时发**一条** `SetTreeSplit`；reducer 里 clamp（0.15..=0.6，另有两侧像素下限）。**不要**每帧发 action。
+> 4. **系统目录分隔线**：面板问 `ProjectTree::is_system_dir(path)`，在那一行上方画 1px；`Library` 默认折叠 = 初始 `expanded` 不含它，不写特例。
+> 5. **状态栏语义**：`N items` = 当前 `active` 目录的**直接子项数**（不是可见行数，也不是全树节点数）；右半是选中路径；`truncated` 与 `error` 优先挤掉路径。
+> 6. **面包屑根**显示 `ProjectState.name`，每一段可点 = `Navigate`。
+> 7. **工具栏只放 M2 真能用的**：`折叠全部` / `刷新`（= `ScanRequested{Manual}`）/ `隐藏文件`。新建/删除等按钮等 M3 有真实动作再加，不做灰按钮占位。
+> 8. **面板 `scroll_bars()` 必须返回 `[false, false]`**：dock 默认会在面板外再套一层 `ScrollArea`（`docker.rs:1562`），而这里两栏各自滚动 + 通栏状态栏；Profiler/Preferences 是同一先例。
 
-**验收（手动 smoke）**：展开 `res/models` → 看到 `Suzanne.png`（后缀灰色）→ 单击选中、状态栏显示路径 → 双击目录后右栏面包屑前进且左树同步展开到该目录 → 拖动分割条后左右比例正确、右栏不溢出 → 树底部有分隔线 + `Library`，展开后看到 `Logs/` 等内容 → 过滤时 `Library` 不参与 → 双击 `.md` 用编辑器打开 → 点 Window ▸ Project 关闭再打开，展开状态还在 → 20k 节点全展开时拖动滚动条不卡（用 Profiler 面板看 UI 线程每帧 < 8ms）。
+**M2a — core + widgets + 纯映射（1.5–2 天，画面零变化）**
 
-**风险**：`TreeView` 的 API 被 M3 的改名/拖拽撑破。缓解：M2 就把 `renaming`/`drag_started`/`dropped_on` 三个通道留出来（可以先只返回 `None`），不要让面板绕过 widget 自己画行。
+- **core**（`ProjectAction` 新增，全部是纯状态迁移）：
+  - `Select { path: Option<RelPath> }` —— 替换选择集，`None` 清空；不在树里的路径忽略；
+  - `ToggleFolder { path }` —— 三角 / `→` 的「展开」那一半；非文件夹或不存在则忽略；
+  - `Navigate { path }` —— 双击文件夹 / 点面包屑：`active = path`、把 path 与其祖先放进 `expanded`、`selection = {path}`；
+  - `OpenRequested { path }` —— 不改状态，只发 `ProjectEffect::Open { root, path }`；
+  - `SetShowHidden(bool)`；`CollapseAll`（清 `expanded`，保留 `active`/`selection`）；
+  - `SetTreeSplit(f32)` —— clamp 到 0.15..=0.6，NaN 忽略；
+  - `Failed { message }` —— 宿主工作的可见失败（M2 先给「打开失败」用），写 `state.project.error`；
+  - `ProjectEffect::Open { root, path }`（M2 只有「系统默认」一个实现）。
+- **core 测试**：每个 action 一条以上（非法/不存在路径、clamp、NaN、`CollapseAll` 保留 active、`Navigate` 展开祖先、`Failed` 落 error）。
+- **widgets**（`kairos_editor_widgets/src/tree.rs`）：契约见 §2.6 的 M2 定稿版（`TreeStyle` / `TreeRow` / `TreeOutput` / `TreeView`）。
+- **widgets 测试**（headless，`Context::run` + 合成指针）：20 万行时行回调次数 ≤ 可见行数 + 2（虚拟化真的生效）；三角命中只报 `expander_toggled` 不报 `clicked`；行单击/双击；选中底色与分隔线出现在 painter 上；图标路径缺失不 panic。
+- **component** `panels/project/rows.rs`（纯函数 + 单测，不碰 egui）：`Node + ProjectTree + ProjectView + ProjectIcons → TreeRow`；`suffix` = 扩展名（M5 换成 `FileTypeRegistry`）；行缓存 `ProjectRows { rows: Vec<NodeId>, key: (revision, show_hidden, expanded) }`。
 
+**M2b — 面板装配 + 皮肤 + 打开 + 键盘（2–3 天，可见）**
+
+- **component**：工具栏 20px（折叠全部 / 刷新 / 隐藏文件）→ `Splitter::horizontal` 分左右（比例来自 `view.tree_split`，有像素下限）→ 左树 `TreeView` / 右栏面包屑 + 空态 → 通栏状态栏 18px。`panels/project/style.rs` 的 `ProjectStyle`：
+  - 继承 `ProjectWindowStyle.toml [hierachy]` 的 6 个 token：`file_header_color #c8c8c8`（文件夹与文件同色，Unity 2022 同款；legacy 的 `directory_header_color #dcdcb4` 淡黄不沿用）、`selected_file_background_color #3c4b64`、`file_suffix_color #787878`、`file_header_size 11`（后缀字号）、`file_icon_size 18`、`selected_file_background_corner_radius 4`；旧 TOML 里**没有**的（行高 20、缩进 14、工具栏、状态栏、面包屑、hover、分隔线、splitter 三色）按 Console 的调色板与量测补齐；
+  - 新增 `icons: ProjectIcons { folder, folder_open, file }`（dark/light 两套路径）+ `tab_icon`（`Preferences/Textures/tab_icons/project.png`）；
+  - `impl ProjectStyle { fn tree(&self) -> TreeStyle }`；`#[derive(StyleFields)]` 让 Preferences 自动可编辑；文件 `Preferences/Styles/ProjectStyle.ron`。
+- **app**：`ProjectEffect::Open` 实现（`open::that_detached`，失败 → `ProjectAction::Failed`），依赖 `open = "5.4.0"`（与旧 crate 同版本）；`describe()` 补新 action 文案；`is_quiet` 不需要新增（`SetTreeSplit` 每次拖拽只发一条）。
+- **键盘**（仅 `TreeOutput::focused`）：↑↓ 移动选中（可见行序）、Home/End 首尾、`←` 已展开则折叠否则选父、`→` 未展开则展开否则选第一个子、Enter 打开选中项。
+- **测试**：component 用 Console 的 harness 法（`Context::run` + 合成点击）断言「点行 → `Select`、点三角 → `ToggleFolder`、双击文件夹 → `Navigate`、双击文件 → `OpenRequested`」；`ProjectStyle` RON round-trip；空树 / 单行 / `Library` 分隔线三个装配 case。
+
+**验收（手动 smoke）**：单击 `res/models` → 只选中（状态栏出路径，右栏不动）→ 双击 → 右栏面包屑前进、左树同步展开 → 双击 `Suzanne.png` → 系统默认程序打开 → 拖分割条比例正确、右栏不溢出 → `Library` 排在最后、上方有 1px 分隔线，展开看到 `Library/imported_assets` → 勾选「隐藏文件」后 `.meta`/点文件出现 → 工具栏刷新 → 日志出现 `project scan requested (Manual)` → 关掉 Project 面板再打开，展开/选中还在 → 20 万行全展开拖动滚动条不卡（Profiler 看 UI 线程 < 8ms；widget 测试里另有「行回调 ≤ 可见行数」的硬断言）。
+
+**风险**：`TreeView` API 被 M3 的改名/拖拽撑破。缓解（已改）：M2 不预留空通道，但 widget 保持「行内绘制 + 全行命中区 + 三角独立命中区」，M3 加通道只改 widget 内部和一个调用点。
+
+> **落地状态（M2 完成，验收逐条勾）**
+>
+> - **文件**：widgets 新增 `tree.rs`（虚拟化行控件 + 三角独立命中 + 焦点/滚动，11 条 headless 测试）；core 的 `ProjectAction` 新增 8 个变体 + `ProjectEffect::Open`，`reduce/project.rs` 8 个 arm，`tests/project.rs` +16 条；component 的 `panels/project.rs` 整篇替换（工具栏/分割/树/面包屑/状态栏/键盘）与 `panels/project/{style,rows,content}.rs`（27 条测试，含合成点击与绘制断言）；app 的 `ProjectEffect::Open` 真实实现（`open::that_detached`，失败回 `Failed` 落状态栏）+ `open = "5.4.4"`。
+> - **测试**：`cargo test-crate kairos_editor_core` 34（project 切片）+ 其余全绿；`kairos_editor_widgets` 152（tree 11）；`kairos_editor_component` 208 + 17 集成；`cargo check --workspace --all-targets` 通过。
+> - **运行（真机 smoke）**：启动日志 `project policy: 1 system dirs, 2 ignore rules` → `project scan #1: 1417 nodes (library 20) in 14 ms`；Project 面板显示工具栏三项、Unity 文件夹图标、面包屑、`34 items / no selection` 状态栏、可拖的垂直分割线。
+> - **图标**：从本机 Tuanjie 2022.3 编辑器资源包抽 `d_Folder Icon` / `d_FolderOpened Icon` / `d_DefaultAsset Icon` 及 light 版，Lanczos 缩到 64²（<2 KB/张）提交在 `Preferences/Textures/project/`，重跑脚本 `scripts/extract_tuanjie_icons.py`，来源说明见该目录 README。**理由实测**：现存 `Preferences/Textures/*.png` 是 2048²，egui_extras 0.35 的加载器忽略 size hint（`ImageCrateLoader::load(..., _: SizeHint)`），一张就是 16 MB 纹理。
+> - **皮肤**：`Preferences/Styles/ProjectStyle.ron`（dark + light，31 个 token）首次启动就地 seed；`#[derive(StyleFields)]` 让 Preferences 面板自动可编辑。
+> - 已知行为与偏离：
+>   1. legacy 的 `directory_header_color #dcdcb4`（淡黄文件夹文字）不沿用，文件夹与文件同色——Unity 2022 同款；M2b 的 token 说明已改。
+>   2. `tree_split` 只在分割条 drag 结束时写一条 action；双击分割条复位未做（M4 持久化时一起定）。
+>   3. **egui 坑（记一笔）**：工具栏按钮用 `ui.put` 会把布局游标重锚到按钮高度（20）而不是预留的 21，所以面板 body 必须从工具栏返回的 row 下沿推导，不能用 `available_rect_before_wrap()`。测试里首帧也要先空跑一帧，egui 的命中测试依赖上一帧的 widget rect。
+>   4. `Library` 排在根级最后、上方有 1px 分隔线（有测试覆盖）；它在可视区下方，需要滚动才看得到。
+>   5. 手动 smoke 还剩四项要在真机点：双击文件用系统默认程序打开、拖分割条、隐藏文件开关、关面板再开后展开/选中仍在——启动 + 截图 + harness 测试已覆盖其余路径。
+> - 未做（按计划）：M3 的建/改名/移动/删除、右键菜单与拖拽；M5 的类型图标与 IDE 打开；M6 搜索。
 ### M3 — 变更：建 / 改名 / 移动 / 删除（3–5 天）
 
 **目标**：面板可以完整编辑文件系统，每个失败都看得见。
@@ -841,7 +926,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 **交付**
 - core：`FileTypeRegistry` + 默认表 + 伴生规则；`OpenWith` 分发；
 - component：行图标/后缀来自注册表；未注册类型显示通用图标（不隐藏）；「只看资产」开关（用注册表过滤，D2）；
-- app：打开分发（外部编辑器 / 系统默认），未知类型回退系统默认；
+- app：打开分发实现（`OpenWith` 五类）+ IDE 探测从旧 crate 搬来（`ui/ide_detection.rs`，改成惰性检测、Windows 下不闪控制台窗口），未知类型回退系统默认；
 - **之后每类一个任务**：纹理（缩略图 + `.meta` 是否有 / 是否已导入）、网格（预览）、材质（Inspector）、音频（试听）、着色器/代码（IDE）、文档（Markdown 只读）。凡依赖「文档/预览」的能力，都依赖 Inspector 与视口迁移，不在本计划排期。
 
 **验收**：测试替身注册一个 `foo` 类型 → 树里出现带图标的行 → `Enter` 走它自己的处理器 → 删掉这个类型后行为回到通用文件。整个过程不改 `tree.rs` / `panels/project.rs`。

@@ -425,6 +425,19 @@ fn describe(action: &Action) -> String {
                     entries.len()
                 )
             }
+            ProjectAction::Select { path } => match path {
+                Some(path) => format!("project select: {path}"),
+                None => "project select: none".to_owned(),
+            },
+            ProjectAction::ToggleFolder { path } => format!("project toggle folder: {path}"),
+            ProjectAction::Navigate { path } => format!("project navigate: {path}"),
+            ProjectAction::OpenRequested { path } => format!("project open: {path}"),
+            ProjectAction::SetShowHidden(show_hidden) => {
+                format!("project show hidden: {show_hidden}")
+            }
+            ProjectAction::CollapseAll => "project collapse all".to_owned(),
+            ProjectAction::SetTreeSplit(tree_split) => format!("project tree split: {tree_split}"),
+            ProjectAction::Failed { message } => format!("project failed: {message}"),
         },
         Action::Style(action) => match action {
             StyleAction::SetField { panel, path, .. } => {

@@ -7,6 +7,10 @@
 //! still exist, a pending reveal is honoured, and the walk's failures land in
 //! [`ProjectState::error`] where the status bar can render them.
 //!
+//! The panel's own intents (select, expand, navigate, split) land here too. They
+//! are plain state transitions over paths already in the tree: no IO, and the
+//! only host work any of them may ask for is [`ProjectEffect::Open`].
+//!
 //! Two rules keep a slow or duplicated answer from corrupting the tree:
 //!
 //! * a completion is accepted only while a scan is running **and** its
@@ -74,6 +78,89 @@ pub(super) fn reduce(state: &mut EditorState, action: ProjectAction) -> Vec<Effe
             settle(tree, view, scan);
 
             project.error = visible_error(&errors, report.skipped);
+            Vec::new()
+        }
+        ProjectAction::Select { path } => {
+            let project = &mut state.project;
+            // The selection is replaced, never merged: a click selects one row
+            // (M3 turns this into modes). A path the tree does not have is not
+            // selectable, so a stale click ends with an empty selection rather
+            // than a dangling path.
+            project.view.selection.clear();
+            if let Some(path) = path
+                && project.tree.find(&path).is_some()
+            {
+                project.view.selection.insert(path);
+            }
+            Vec::new()
+        }
+        ProjectAction::ToggleFolder { path } => {
+            let project = &mut state.project;
+            // Only a folder has a triangle to hit; a file arriving here is stale
+            // UI input, not intent, and leaves the view untouched.
+            let is_folder = project.tree.get(&path).is_some_and(Node::is_folder);
+            if is_folder && !project.view.expanded.remove(&path) {
+                project.view.expanded.insert(path);
+            }
+            Vec::new()
+        }
+        ProjectAction::Navigate { path } => {
+            let project = &mut state.project;
+            if project.tree.get(&path).is_some_and(Node::is_folder) {
+                // Navigating into a folder shows its contents, so the path
+                // itself is expanded too; its ancestors are expanded so the row
+                // is actually visible. The root is the window, not a row, and
+                // never belongs in `expanded` (the same rule `settle` keeps).
+                let mut cursor = Some(path.clone());
+                while let Some(ancestor) = cursor {
+                    if ancestor.is_root() {
+                        break;
+                    }
+                    if project.tree.get(&ancestor).is_some_and(Node::is_folder) {
+                        project.view.expanded.insert(ancestor.clone());
+                    }
+                    cursor = ancestor.parent();
+                }
+                project.view.active = Some(path.clone());
+                project.view.selection.clear();
+                project.view.selection.insert(path);
+            }
+            Vec::new()
+        }
+        ProjectAction::OpenRequested { path } => {
+            // A request, not a completion: nothing in the state changes here.
+            // The app answers it with host work and reports a failure back as
+            // `Failed`; an open of a path the tree no longer has is dropped.
+            let project = &state.project;
+            if project.tree.find(&path).is_none() {
+                return Vec::new();
+            }
+            vec![Effect::Project(ProjectEffect::Open {
+                root: project.root.clone(),
+                path,
+            })]
+        }
+        ProjectAction::SetShowHidden(show_hidden) => {
+            state.project.view.show_hidden = show_hidden;
+            Vec::new()
+        }
+        ProjectAction::CollapseAll => {
+            // Rows are what the toolbar collapses: the active directory and the
+            // selection are the user's place in the project and survive.
+            state.project.view.expanded.clear();
+            Vec::new()
+        }
+        ProjectAction::SetTreeSplit(tree_split) => {
+            // NaN fails every comparison, so it would slip through `clamp` and
+            // poison the splitter on every frame; a degenerate drag is not
+            // intent. The range is the documented one (D1).
+            if !tree_split.is_nan() {
+                state.project.view.tree_split = tree_split.clamp(0.15, 0.6);
+            }
+            Vec::new()
+        }
+        ProjectAction::Failed { message } => {
+            state.project.error = Some(ProjectError::new(message));
             Vec::new()
         }
     }
