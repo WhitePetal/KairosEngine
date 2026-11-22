@@ -48,7 +48,7 @@ use crate::{
 /// Data path of the fallback white texture the pipeline binds when a material
 /// has none. Relative to the engine's working directory; it names the texture
 /// processor's committed product under the processed root (issue #239).
-const PATH_WHITE_TEXTURE: &str = "imported_assets/Default/res/textures/white.png";
+const PATH_WHITE_TEXTURE: &str = "Library/imported_assets/Default/res/textures/white.png";
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct PipelineKey {

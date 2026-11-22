@@ -26,12 +26,13 @@ use crate::vertex::Vertex;
 const SAMPLE_MODELS: [&str; 3] = ["Ball", "Plane", "Suzanne"];
 
 /// The committed products mirror the sources under the processed root
-/// (ADR 0004's `imported_assets/Default`, issue #239).
+/// (ADR 0004's processed default, moved under `Library/` by ADR 0017; issue
+/// #239).
 fn imported_models_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("kairos_engine sits under the workspace root")
-        .join("imported_assets/Default/res/models")
+        .join("Library/imported_assets/Default/res/models")
 }
 
 fn read_or_panic(path: &Path) -> Vec<u8> {

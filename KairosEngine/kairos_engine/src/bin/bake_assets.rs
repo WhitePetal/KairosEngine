@@ -1,4 +1,4 @@
-//! Regenerates the processed assets under `imported_assets/Default`.
+//! Regenerates the processed assets under `Library/imported_assets/Default`.
 //!
 //! Run it from the workspace root, where the default asset source is rooted
 //! (ADR 0004) and where the editor's host runs:

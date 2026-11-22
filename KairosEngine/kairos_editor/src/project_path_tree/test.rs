@@ -771,6 +771,9 @@ fn unimported_source_is_hidden() {
 
 #[test]
 fn product_directory_is_hidden() {
+    // ADR 0017 moved the processed root under `Library/`; the rule under test is
+    // unchanged (the processed root's top-level directory is not shown), so the
+    // fixture and its expectation follow the layout.
     let tmp = TempDir::new().unwrap();
     let mut registry = AssetRegistry::new();
     let graph = scan(
@@ -779,13 +782,13 @@ fn product_directory_is_hidden() {
         &[
             "res/textures/hero.png",
             "res/textures/hero.png.meta",
-            "imported_assets/Default/res/textures/hero.png",
-            "imported_assets/Default/res/textures/hero.png.meta",
+            "Library/imported_assets/Default/res/textures/hero.png",
+            "Library/imported_assets/Default/res/textures/hero.png.meta",
         ],
     );
 
-    assert!(node_at(&graph, "imported_assets").is_none());
-    assert!(node_at(&graph, "imported_assets/Default/res/textures/hero.png").is_none());
+    assert!(node_at(&graph, "Library").is_none());
+    assert!(node_at(&graph, "Library/imported_assets/Default/res/textures/hero.png").is_none());
 }
 
 #[test]

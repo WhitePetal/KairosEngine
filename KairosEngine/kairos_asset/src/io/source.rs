@@ -388,9 +388,9 @@ impl AssetSourceBuilder {
         if let Some(processed_path) = processed_path {
             // When the processed root lives under the source root, the processor
             // must not walk into it: ADR 0004 roots the default source at the
-            // working directory, and `imported_assets/Default` sits inside it.
-            // Excluding the processed path's top-level component also skips the
-            // transaction log written beside `Default`.
+            // working directory, and `Library/imported_assets/Default` sits inside
+            // it (ADR 0017). Excluding the processed path's top-level component —
+            // `Library` — also skips the transaction log written beside `Default`.
             if let Some(exclude) = processed_subtree_exclude(path, processed_path) {
                 builder = builder.with_unprocessed_exclude(exclude);
             }
@@ -421,9 +421,9 @@ impl AssetSourceBuilder {
 /// unprocessed root.
 ///
 /// Returns the processed path's first component relative to the unprocessed
-/// root — the whole `imported_assets` directory rather than just
-/// `imported_assets/Default`, so the transaction log beside `Default` is skipped
-/// too — or [`None`] when the roots do not overlap.
+/// root — with the default layout that is the whole `Library` directory rather
+/// than just `Library/imported_assets/Default`, so the transaction log beside
+/// `Default` is skipped too — or [`None`] when the roots do not overlap.
 fn processed_subtree_exclude(unprocessed: &str, processed: &str) -> Option<PathBuf> {
     let unprocessed = Path::new(unprocessed);
     let relative = if unprocessed.as_os_str().is_empty() {

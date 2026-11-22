@@ -17,7 +17,7 @@
 //!   output.
 //!
 //! [`FileTransactionLogFactory`] is the default store: one line per entry in
-//! `<base>/imported_assets/log`, each flushed immediately. Tests inject their own
+//! `<base>/Library/imported_assets/log`, each flushed immediately. Tests inject their own
 //! [`ProcessorTransactionLogFactory`] through
 //! [`AssetProcessorData::set_log_factory`](super::AssetProcessorData::set_log_factory)
 //! so they never touch the filesystem.
@@ -138,8 +138,9 @@ pub struct FileTransactionLogFactory {
     pub file_path: PathBuf,
 }
 
-/// The log path relative to the base path, matching upstream.
-const LOG_PATH: &str = "imported_assets/log";
+/// The log path relative to the base path. It sits beside the processed root,
+/// which ADR 0017 moved under `Library/`.
+const LOG_PATH: &str = "Library/imported_assets/log";
 
 impl Default for FileTransactionLogFactory {
     fn default() -> Self {

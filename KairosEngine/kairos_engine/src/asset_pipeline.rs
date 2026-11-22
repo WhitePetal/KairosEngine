@@ -1,8 +1,8 @@
-//! Generating the processed assets under `imported_assets/Default`.
+//! Generating the processed assets under `Library/imported_assets/Default`.
 //!
 //! The runtime host runs in [`AssetMode::Unprocessed`] — layout ① — and reads
 //! the processed assets by path: the project tree pairs a source (`.glb` /
-//! `.png`) with the processed asset under `imported_assets/Default`, and that
+//! `.png`) with the processed asset under `Library/imported_assets/Default`, and that
 //! asset's `.meta` names the loader that decodes it (ADR 0002 / 0004,
 //! `ProjectWindow`). What was missing was the entry that *writes* that tree. The
 //! graphics [`Process`](kairos_asset::Process) implementations and their
@@ -53,7 +53,7 @@ fn bake_options() -> AssetOptions {
 /// The headless world the bake runs in, over `builders`.
 ///
 /// Passing [`AssetSourceBuilders::default`] leaves the roots at the process
-/// working directory as the source root and `imported_assets/Default` as the
+/// working directory as the source root and `Library/imported_assets/Default` as the
 /// processed one — the same roots the editor's host uses (ADR 0004). A host
 /// whose project root is elsewhere registers its source builder here, and the
 /// processed tree then mirrors that source instead.
@@ -95,7 +95,7 @@ fn run_bake(world: &World) {
     pollster::block_on(processor.run_initial_processing());
 }
 
-/// Regenerates `imported_assets/Default` from the project sources.
+/// Regenerates `Library/imported_assets/Default` from the project sources.
 ///
 /// This is the product-generation entry point: it is what turns the committed
 /// sources under `res/` into the processed assets the runtime host reads.

@@ -104,3 +104,5 @@ engine 选后者：运行时宿主继续跑布局①，离线 bake 用同一个�
   在 engine 侧退休）
 - [ADR 0005](./0005-kairos-asset-rewrite-strategy-and-deviations.md) — 偏离 12（成品子树排除）
 - [ADR 0006](./0006-asset-hot-reload-watcher-and-deviations.md) — watcher 与源事件面
+- [ADR 0017](./0017-processed-root-under-library.md) — 成品根位置（本决策未落地；现状位置已由 0017
+  定为 `Library/imported_assets/Default`）

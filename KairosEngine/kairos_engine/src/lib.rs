@@ -41,7 +41,7 @@ pub mod spatial;
 
 // The offline half of the asset pipeline: the entry that runs the engine's own
 // `AssetProcessor` over the project sources and writes the processed assets
-// under `imported_assets/Default`. The runtime host reads those assets; this
+// under `Library/imported_assets/Default`. The runtime host reads those assets; this
 // module is what produces them.
 pub mod asset_pipeline;
 

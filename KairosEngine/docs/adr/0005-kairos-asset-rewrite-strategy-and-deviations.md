@@ -4,6 +4,10 @@ Status: accepted
 
 # kairos_asset 照 bevy_asset 0.19.1 重写：策略与偏离清单
 
+> **位置修正（[ADR 0017](./0017-processed-root-under-library.md)）**：成品根已从
+> `imported_assets/Default` 搬到 `Library/imported_assets/Default`。本 ADR 的结论（源根 = 进程
+> cwd、成品根相对 cwd、嵌套时排除顶层目录）全部不变，只是被排除的顶层目录现在是 `Library`。
+
 ## 背景与决策
 
 旧的自研资产栈（`AssetsServer` / `AssetsSystem` / `AssetsHandler` / `AssetHandle` /

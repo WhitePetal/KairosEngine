@@ -272,12 +272,14 @@ impl KairosGame {
             .world
             .resource::<AssetServer>()
             .load::<Mesh>(PathBuf::from(
-                "imported_assets/Default/res/models/Plane.glb",
+                "Library/imported_assets/Default/res/models/Plane.glb",
             ));
         let ball_mesh_asset = engine
             .world
             .resource::<AssetServer>()
-            .load::<Mesh>(PathBuf::from("imported_assets/Default/res/models/Ball.glb"));
+            .load::<Mesh>(PathBuf::from(
+                "Library/imported_assets/Default/res/models/Ball.glb",
+            ));
         let plane_mesh = LODMesh::new(plan_mesh_asset);
         let ball_mesh = LODMesh::new(ball_mesh_asset);
 

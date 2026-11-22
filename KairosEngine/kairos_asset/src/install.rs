@@ -124,16 +124,18 @@ pub struct AssetOptions {
     /// feature set turns on through `file_watcher`.
     pub watch_for_changes_override: Option<bool>,
     /// The processed root, relative to the working directory. `None` keeps the
-    /// default `imported_assets/Default` (ADR 0004). Only consulted in
-    /// [`AssetMode::Processed`].
+    /// default `Library/imported_assets/Default` (ADR 0004 as amended by ADR 0017).
+    /// Only consulted in [`AssetMode::Processed`].
     pub processed_file_path: Option<String>,
 }
 
 impl AssetOptions {
     /// The default unprocessed root: the process working directory (ADR 0004).
     const DEFAULT_UNPROCESSED_FILE_PATH: &'static str = "";
-    /// The default processed root, relative to the working directory.
-    pub const DEFAULT_PROCESSED_FILE_PATH: &'static str = "imported_assets/Default";
+    /// The default processed root, relative to the working directory. It lives
+    /// inside `Library/` (ADR 0017) so the project browser treats every processed
+    /// asset as system output instead of project content.
+    pub const DEFAULT_PROCESSED_FILE_PATH: &'static str = "Library/imported_assets/Default";
 
     /// Options for the three stages, with bevy's defaults for everything else:
     /// unprocessed mode, `.meta` always checked, no processor, no watch
@@ -188,7 +190,7 @@ impl AssetOptions {
 
     /// Sets the processed root, relative to the working directory.
     ///
-    /// Defaults to `imported_assets/Default`; only consulted in
+    /// Defaults to `Library/imported_assets/Default`; only consulted in
     /// [`AssetMode::Processed`].
     pub fn with_processed_file_path(mut self, path: impl Into<String>) -> Self {
         self.processed_file_path = Some(path.into());

@@ -18,7 +18,7 @@ fn workspace_root() -> &'static Path {
 
 /// A committed sample model and its `.meta`, staged under a fresh temp tree whose
 /// source and processed roots both live inside it: the run never touches the
-/// tracked `res/` or `imported_assets/`.
+/// tracked `res/` or `Library/imported_assets/`.
 fn staged_source(name: &str) -> (tempfile::TempDir, AssetSourceBuilders) {
     let root = tempfile::TempDir::new().expect("a temp dir");
     let sources = root.path().join("res/models");
@@ -52,9 +52,10 @@ fn read_or_panic(path: &Path) -> Vec<u8> {
 
 /// The processed asset mirrors the source's path *relative to the source root*
 /// under the processed root: `<root>/res/models/Ball.glb` becomes
-/// `<root>/imported_assets/Default/models/Ball.glb`. Running the bake over the
-/// default (working-directory) source puts the same file at
-/// `imported_assets/Default/res/models/Ball.glb`.
+/// `<root>/imported_assets/Default/models/Ball.glb` — the processed root is whatever
+/// the caller passes, so these tests keep their own literals. Running the bake over
+/// the default (working-directory) source puts the same file at
+/// `Library/imported_assets/Default/res/models/Ball.glb` (ADR 0017).
 fn processed_path(root: &Path, name: &str) -> PathBuf {
     root.join("imported_assets/Default/models")
         .join(format!("{name}.glb"))

@@ -4,6 +4,10 @@ Status: accepted
 
 # 默认资产 source root = 进程工作目录（偏离 bevy 的 "assets"）
 
+> **位置修正（[ADR 0017](./0017-processed-root-under-library.md)）**：成品根已从
+> `imported_assets/Default` 搬到 `Library/imported_assets/Default`。本 ADR 的结论（源根 = 进程
+> cwd、成品根相对 cwd、嵌套时排除顶层目录）全部不变，只是被排除的顶层目录现在是 `Library`。
+
 ## 背景与决策
 
 kairos 现有资产路径全是**进程 cwd 相对**字面量（`res/models/Suzanne.mesh`、`Preferences/SublimeSyntax/rust_syntax.toml`），旧栈没有 source-root 抽象（`tokio::fs::read(path)` 直接解析）。照 bevy 引入 `AssetSource` 后，默认 source root 取 **进程工作目录（`""`）**，于是 `AssetPath::from("res/...")` 解析到与今天相同的文件。

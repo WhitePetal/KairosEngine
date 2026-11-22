@@ -4,6 +4,6 @@
 # Profiler captures written by `Profiler::save_capture` (runtime artifacts).
 /Library/Profiler
 # The asset processor's write-ahead log (the processed assets under
-# `imported_assets/Default` are committed; regenerate them from the project
-# sources with `cargo run --bin bake_assets`).
-/imported_assets/log
+# `Library/imported_assets/Default` are committed; regenerate them from the
+# project sources with `cargo run --bin bake_assets`).
+/Library/imported_assets/log
