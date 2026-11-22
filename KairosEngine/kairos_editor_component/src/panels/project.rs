@@ -69,6 +69,10 @@ pub(crate) struct ProjectPanel {
     /// The tree had keyboard focus last pass. The widget reports it, because only
     /// the widget knows whether the last click landed on a row.
     tree_focused: bool,
+    /// First pass of this panel instance: scroll the row core still has selected
+    /// into view. Closing the tab drops the panel (and its scroll position), not
+    /// the state; reopening must land where the user left off.
+    reveal_selection: bool,
 }
 
 impl Default for ProjectPanel {
@@ -79,6 +83,7 @@ impl Default for ProjectPanel {
             split: None,
             scroll_to: None,
             tree_focused: false,
+            reveal_selection: true,
         }
     }
 }
@@ -127,6 +132,7 @@ impl Panel for ProjectPanel {
             split,
             scroll_to,
             tree_focused,
+            reveal_selection,
         } = self;
 
         // The three bands are laid out from measured rects, so egui's automatic
@@ -162,6 +168,21 @@ impl Panel for ProjectPanel {
         // view, because the widget must be told the target before it draws.
         if *tree_focused {
             keyboard(ui, project, row_ids, scroll_to, out);
+        }
+        // Reopening the tab rebuilds this panel but core still holds the
+        // selection, so the first pass brings that row back into view. A keyboard
+        // move on the same pass wins, because it already set `scroll_to`.
+        if *reveal_selection {
+            *reveal_selection = false;
+            if scroll_to.is_none() {
+                *scroll_to = project
+                    .view
+                    .selection
+                    .iter()
+                    .next()
+                    .cloned()
+                    .or_else(|| project.view.active.clone());
+            }
         }
         let scroll_to_id = scroll_to.take().and_then(|path| project.tree.find(&path));
 
@@ -219,13 +240,26 @@ impl Panel for ProjectPanel {
                 &mut left_width,
                 total,
             );
-        if response.drag_stopped() && total > 0.0 {
-            out.push(Action::Project(ProjectAction::SetTreeSplit(
-                left_width / total,
-            )));
+        // The panes above were laid out from this pass's starting width, so a
+        // drag's result is carried to the next pass here (M2 acceptance fix:
+        // without this the boundary snapped back and the splitter looked
+        // undraggable even though it changed the cursor). The action still leaves
+        // once, on release (M2 定稿 补齐 3), so a drag is not sixty actions.
+        if total > 0.0 {
+            if response.changed() {
+                *split = Some(left_width / total);
+            }
+            if response.drag_stopped() {
+                out.push(Action::Project(ProjectAction::SetTreeSplit(
+                    left_width / total,
+                )));
+                // Follow core again once the action lands; holding the local
+                // value would mask an external change to the stored split.
+                *split = None;
+            }
         }
 
-        status_bar(ui, style, project, status_rect);
+        status_bar(ui, style, project, status_rect, boundary);
     }
 }
 
@@ -292,7 +326,6 @@ fn toolbar(ui: &mut Ui, style: &ProjectStyle, project: &ProjectState, out: &mut 
         let button_width = label_width(ui, style, label);
         let rect =
             Rect::from_min_size(pos2(x, row.top()), vec2(button_width, style.toolbar_height));
-        x = rect.right();
         let response = ui.put(
             rect,
             Button::new(label, &button_style)
@@ -304,6 +337,9 @@ fn toolbar(ui: &mut Ui, style: &ProjectStyle, project: &ProjectState, out: &mut 
         if response.clicked() {
             out.push(Action::Project(action));
         }
+        // The project's toolbars close every segment with a 1 px chrome rule
+        // (Console, Profiler); without one the labels read as plain text.
+        x = toolbar_separator(&painter, row, style, rect.right());
     }
 
     // Hidden files sits at the right edge, where Unity keeps its filters.
@@ -313,6 +349,8 @@ fn toolbar(ui: &mut Ui, style: &ProjectStyle, project: &ProjectState, out: &mut 
         pos2(row.right() - button_width, row.top()),
         vec2(button_width, style.toolbar_height),
     );
+    // A rule leads into the right-aligned group, like the Console's counts.
+    toolbar_separator(&painter, row, style, rect.left() - style.separator_width);
     let response = ui.put(
         rect,
         Button::new(label, &button_style)
@@ -329,6 +367,20 @@ fn toolbar(ui: &mut Ui, style: &ProjectStyle, project: &ProjectState, out: &mut 
     }
 
     row
+}
+
+/// Paint Unity's 1 px chrome separator at `x` and return where the next toolbar
+/// segment starts (the Console toolbar's rule).
+fn toolbar_separator(painter: &egui::Painter, row: Rect, style: &ProjectStyle, x: f32) -> f32 {
+    painter.rect_filled(
+        Rect::from_min_size(
+            pos2(x, row.top()),
+            vec2(style.separator_width, style.toolbar_height),
+        ),
+        CornerRadius::ZERO,
+        style.separator.to_egui(),
+    );
+    x + style.separator_width
 }
 
 /// Row interactions: the triangle toggles, a click selects, a double click opens.
@@ -451,13 +503,17 @@ fn keyboard(
     }
 }
 
-/// The item count, the selection and the scan's visible warnings.
+/// The row under the two panes, split where they meet.
 ///
-/// The count is the active directory's directly visible children — the number the
-/// user is looking at — not the visible rows and not the whole tree. Warnings
-/// outrank the selection path: a truncated scan or a read failure is the thing
-/// the user must notice.
-fn status_bar(ui: &Ui, style: &ProjectStyle, project: &ProjectState, rect: Rect) {
+/// The left half belongs to the hierarchy: it counts the active directory's
+/// directly visible children — the number the user is looking at, and the one a
+/// single click moves — and appends a truncation warning. The right half belongs
+/// to the content pane and is reserved for the icon-size slider M9 adds; until
+/// then it only reports a failed host action (an open, a scan), because a failure
+/// is the one thing that must not be silent. The selected path used to live there
+/// and is gone on purpose: the header now follows the click, so the path repeated
+/// what the breadcrumb already said.
+fn status_bar(ui: &Ui, style: &ProjectStyle, project: &ProjectState, rect: Rect, boundary: f32) {
     let painter = ui.painter();
     painter.rect_filled(rect, CornerRadius::ZERO, style.status_bg.to_egui());
     painter.rect_filled(
@@ -465,6 +521,20 @@ fn status_bar(ui: &Ui, style: &ProjectStyle, project: &ProjectState, rect: Rect)
         CornerRadius::ZERO,
         style.separator.to_egui(),
     );
+    // The rule under the column splitter: each half of the row belongs to the
+    // pane above it, so the boundary's own line continues through the status row.
+    // It uses the splitter's idle colour, not `separator`, because the status
+    // background already *is* `separator` in the dark skin.
+    if boundary > rect.left() && boundary < rect.right() {
+        painter.rect_filled(
+            Rect::from_min_size(
+                pos2(boundary, rect.top()),
+                vec2(style.separator_width, rect.height()),
+            ),
+            CornerRadius::ZERO,
+            style.splitter_idle.to_egui(),
+        );
+    }
 
     let text = TextStyle::sized(style.status_text.to_egui(), style.status_text_size);
 
@@ -499,17 +569,14 @@ fn status_bar(ui: &Ui, style: &ProjectStyle, project: &ProjectState, rect: Rect)
         left,
     );
 
-    let right = match (&project.error, project.view.selection.iter().next()) {
-        (Some(error), _) => error.to_string(),
-        (None, Some(path)) => path.to_string(),
-        (None, None) => String::from("no selection"),
-    };
-    text.paint(
-        ui,
-        pos2(rect.right() - 6.0, rect.center().y),
-        Align2::RIGHT_CENTER,
-        right,
-    );
+    if let Some(error) = &project.error {
+        text.paint(
+            ui,
+            pos2(rect.right() - 6.0, rect.center().y),
+            Align2::RIGHT_CENTER,
+            error.to_string(),
+        );
+    }
 }
 
 #[cfg(test)]
@@ -810,6 +877,7 @@ mod tests {
         assert!(
             painted.iter().any(|painted| painted.fill == separator
                 && (painted.rect.top() - top).abs() < 0.5
+                && painted.rect.left() < 1.0
                 && painted.rect.width() > 10.0),
             "the system directory needs a 1 px rule above it"
         );
@@ -843,7 +911,10 @@ mod tests {
             texts.iter().any(|text| text == "2 items"),
             "the root has res and Library: {texts:?}"
         );
-        assert!(texts.iter().any(|text| text == "no selection"));
+        assert!(
+            !texts.iter().any(|text| text == "no selection"),
+            "the selected path left the status bar on purpose: {texts:?}"
+        );
 
         // res/models holds one file, so the count follows the active directory
         // rather than the root's two children.
@@ -908,6 +979,158 @@ mod tests {
                 path: RelPath::new("res/readme.md")
             }
         ));
+    }
+
+    /// The content pane's header is its own chrome: a darker bar with a 1 px rule
+    /// under it, so the breadcrumb reads as a header and not as body text.
+    #[test]
+    fn the_content_header_paints_its_own_bar_and_rule() {
+        let style = ProjectStyle::dark();
+        let mut harness = ProjectHarness::new(&[]);
+        let painted = harness.painted(Vec::new());
+        let boundary = (harness.state.project.view.tree_split * CANVAS.x).round();
+        let top = 21.0;
+        assert!(
+            painted
+                .iter()
+                .any(|painted| painted.fill == style.header_bg.to_egui()
+                    && painted.rect.left() >= boundary - 0.5
+                    && (painted.rect.top() - top).abs() < 0.5
+                    && painted.rect.height() >= style.header_height - 0.5),
+            "the right pane's header must paint its own bar: {painted:?}"
+        );
+        assert!(
+            painted
+                .iter()
+                .any(|painted| painted.fill == style.separator.to_egui()
+                    && painted.rect.left() >= boundary - 0.5
+                    && (painted.rect.top() - (top + style.header_height)).abs() < 0.5),
+            "a 1 px rule closes the header"
+        );
+    }
+
+    /// The project's toolbars close each segment with a 1 px rule (Console,
+    /// Profiler); without them the labels read as plain text.
+    #[test]
+    fn the_toolbar_buttons_are_closed_by_chrome_rules() {
+        let style = ProjectStyle::dark();
+        let mut harness = ProjectHarness::new(&[]);
+        let painted = harness.painted(Vec::new());
+        let rules: Vec<_> = painted
+            .iter()
+            .filter(|painted| {
+                painted.fill == style.separator.to_egui()
+                    && painted.rect.width() <= style.separator_width + 0.5
+                    && painted.rect.top() < 1.0
+                    && painted.rect.bottom() <= 21.0
+            })
+            .collect();
+        assert!(
+            rules.len() >= 3,
+            "Collapse all, Refresh and the right-aligned group each need a rule: {rules:?}"
+        );
+    }
+
+    /// The status row is split where the panes meet: the count belongs to the
+    /// hierarchy half, the content half is reserved for the icon-size slider.
+    #[test]
+    fn the_status_bar_is_split_under_the_two_panes() {
+        let style = ProjectStyle::dark();
+        let mut harness = ProjectHarness::new(&[]);
+        let painted = harness.painted(Vec::new());
+        let boundary = (harness.state.project.view.tree_split * CANVAS.x).round();
+        let top = CANVAS.y - style.status_height;
+        assert!(
+            painted
+                .iter()
+                .any(|painted| painted.fill == style.splitter_idle.to_egui()
+                    && (painted.rect.left() - boundary).abs() < 0.5
+                    && (painted.rect.top() - top).abs() < 0.5
+                    && painted.rect.height() >= style.status_height - 0.5),
+            "the status row must be split at the column boundary"
+        );
+    }
+
+    /// Press the column splitter, drag right, release: the boundary must follow
+    /// the pointer and the drag must write exactly one split action carrying the
+    /// dragged fraction. Before the acceptance fix the mutated size was thrown
+    /// away, so the action carried the old fraction and the boundary snapped
+    /// back.
+    #[test]
+    fn dragging_the_column_splitter_moves_it_and_emits_one_action() {
+        let mut harness = ProjectHarness::new(&[]);
+        let boundary = 0.28 * CANVAS.x;
+        let dragged = boundary + 60.0;
+        let y = 200.0;
+
+        let _ = harness.actions(press(pos2(boundary, y)));
+        let _ = harness.actions(vec![Event::PointerMoved(pos2(dragged, y))]);
+
+        // The next pass lays both panes out at the dragged width: the content
+        // header starts where the splitter now is.
+        let style = ProjectStyle::dark();
+        let painted = harness.painted(Vec::new());
+        assert!(
+            painted
+                .iter()
+                .any(|painted| painted.fill == style.header_bg.to_egui()
+                    && (painted.rect.left() - dragged).abs() < 1.0),
+            "the panes must follow the drag, not snap back: {painted:?}"
+        );
+
+        let actions = harness.actions(release(pos2(dragged, y)));
+        let splits: Vec<f32> = actions
+            .iter()
+            .filter_map(|action| match action {
+                Action::Project(ProjectAction::SetTreeSplit(fraction)) => Some(*fraction),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(splits.len(), 1, "one action on release: {actions:?}");
+        assert!(
+            (splits[0] - dragged / CANVAS.x).abs() < 0.01,
+            "the action must carry the dragged fraction, got {splits:?}"
+        );
+    }
+
+    /// A state with more rows than the canvas can show, so scrolling matters.
+    fn tall_state(rows: usize) -> EditorState {
+        let mut state = EditorState::default();
+        state.project = ProjectState::at("D:/project");
+        let mut entries = vec![entry("res", true)];
+        for index in 0..rows {
+            entries.push(entry(&format!("res/item_{index:02}.png"), false));
+        }
+        state.project.tree.assemble(&entries, &[], false);
+        state.project.view.expanded.insert(RelPath::new("res"));
+        state
+    }
+
+    /// Closing and reopening the tab rebuilds the panel but core keeps the
+    /// selection; the fresh instance must scroll that row back into view.
+    #[test]
+    fn reopening_the_panel_reveals_the_selection() {
+        let mut harness = ProjectHarness::new(&[]);
+        harness.state = tall_state(80);
+        harness
+            .state
+            .project
+            .view
+            .selection
+            .insert(RelPath::new("res/item_75.png"));
+        // A reopened tab is a fresh panel instance with no scroll position.
+        harness.panel = ProjectPanel::default();
+
+        // The first pass queues the reveal; egui animates the scroll, so let the
+        // clock jump and drain the animation before painting the next frame.
+        let _ = harness.frame_output(Vec::new());
+        harness.time += 5.0;
+        let _ = harness.frame_output(Vec::new());
+        let texts = harness.painted_text(Vec::new());
+        assert!(
+            texts.iter().any(|text| text == "item_75.png"),
+            "reopening must scroll the selected row into view: {texts:?}"
+        );
     }
 
     #[test]

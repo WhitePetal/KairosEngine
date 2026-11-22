@@ -478,9 +478,96 @@ fn selecting_a_row_replaces_the_selection() {
         [RelPath::new("res/models/a.png")].into_iter().collect()
     );
     assert_eq!(
-        state.project.view.active, None,
-        "a click selects, it does not navigate"
+        state.project.view.active,
+        Some(RelPath::new("res/models")),
+        "a click moves the content pane to the picked item's directory"
     );
+}
+
+/// A click on a folder activates that folder: the content pane and the
+/// breadcrumb follow a single click (M2 acceptance fix).
+#[test]
+fn selecting_a_folder_activates_it() {
+    let mut state = scanned_state();
+
+    view_action(
+        &mut state,
+        ProjectAction::Select {
+            path: Some(RelPath::new("res/models")),
+        },
+    );
+
+    assert_eq!(
+        state.project.view.active,
+        Some(RelPath::new("res/models"))
+    );
+    assert_eq!(
+        state.project.view.selection,
+        [RelPath::new("res/models")].into_iter().collect()
+    );
+}
+
+/// A file has no contents of its own: selecting it shows the folder that holds
+/// it, which is what Unity does when an asset is picked in the tree.
+#[test]
+fn selecting_a_file_activates_its_parent() {
+    let mut state = scanned_state();
+
+    view_action(
+        &mut state,
+        ProjectAction::Select {
+            path: Some(RelPath::new("res/a.png")),
+        },
+    );
+
+    assert_eq!(state.project.view.active, Some(RelPath::new("res")));
+    assert_eq!(
+        state.project.view.selection,
+        [RelPath::new("res/a.png")].into_iter().collect()
+    );
+}
+
+/// A stale click empties the selection but must not move the panel off the
+/// directory the user is browsing.
+#[test]
+fn selecting_a_missing_path_keeps_the_active_directory() {
+    let mut state = scanned_state();
+    state.project.view.active = Some(RelPath::new("res/models"));
+
+    view_action(
+        &mut state,
+        ProjectAction::Select {
+            path: Some(RelPath::new("res/gone.png")),
+        },
+    );
+
+    assert!(state.project.view.selection.is_empty());
+    assert_eq!(
+        state.project.view.active,
+        Some(RelPath::new("res/models"))
+    );
+}
+
+/// The reducer's `Select` rule is `ProjectTree::content_dir`: a folder maps to
+/// itself, a file to its parent, a missing path to nothing.
+#[test]
+fn content_dir_maps_a_path_to_the_folder_the_panel_shows() {
+    let state = scanned_state();
+    let tree = &state.project.tree;
+
+    assert_eq!(
+        tree.content_dir(&RelPath::new("res/models")),
+        Some(RelPath::new("res/models"))
+    );
+    assert_eq!(
+        tree.content_dir(&RelPath::new("res/models/a.png")),
+        Some(RelPath::new("res/models"))
+    );
+    assert_eq!(
+        tree.content_dir(&RelPath::new("res/a.png")),
+        Some(RelPath::new("res"))
+    );
+    assert_eq!(tree.content_dir(&RelPath::new("res/gone.png")), None);
 }
 
 /// A path the tree does not have cannot be selected: a stale click clears the
@@ -505,11 +592,17 @@ fn selecting_a_missing_path_leaves_the_selection_empty() {
 fn select_none_clears_the_selection() {
     let mut state = scanned_state();
     state.project.view.selection.insert(RelPath::new("res/a.png"));
+    state.project.view.active = Some(RelPath::new("res"));
 
     let effects = view_action(&mut state, ProjectAction::Select { path: None });
 
     assert!(effects.is_empty());
     assert!(state.project.view.selection.is_empty());
+    assert_eq!(
+        state.project.view.active,
+        Some(RelPath::new("res")),
+        "clearing the selection leaves the content pane where it is"
+    );
 }
 
 #[test]

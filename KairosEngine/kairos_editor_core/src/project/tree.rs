@@ -269,6 +269,21 @@ impl ProjectTree {
         self.nodes.get(id.index()).map_or(&[], |node| &node.children)
     }
 
+    /// The directory the content pane shows when `path` is selected: a folder
+    /// shows itself, a file shows the folder that holds it (Unity's behaviour —
+    /// picking a file reveals its containing folder).
+    ///
+    /// `None` when `path` is not in the tree: a stale click says nothing about
+    /// where the panel is, so the caller keeps its current directory.
+    pub fn content_dir(&self, path: &RelPath) -> Option<RelPath> {
+        let node = self.get(path)?;
+        if node.is_folder() {
+            Some(path.clone())
+        } else {
+            Some(path.parent().unwrap_or_default())
+        }
+    }
+
     /// The snapshot's paths, in node-table order (root first).
     pub fn paths(&self) -> impl Iterator<Item = &RelPath> {
         self.nodes.iter().map(|node| &node.path)

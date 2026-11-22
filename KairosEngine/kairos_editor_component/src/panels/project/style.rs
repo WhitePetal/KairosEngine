@@ -76,7 +76,12 @@ pub struct ProjectStyle {
     /// Half-width of the draggable band around the splitter line.
     pub splitter_grab: f32,
 
-    // --- breadcrumb (right pane header) ---
+    // --- content header (the breadcrumb bar over the right pane) ---
+    /// Header background: a shade darker than the body so the bar reads as
+    /// chrome, like Unity/Tuanjie's Project browser header.
+    pub header_bg: Color,
+    /// Header height; the breadcrumb lives inside it and a 1 px rule closes it.
+    pub header_height: f32,
     pub breadcrumb_text: Color,
     pub breadcrumb_separator: Color,
 
@@ -211,6 +216,8 @@ impl Style for ProjectStyle {
             splitter_width: 1.0,
             splitter_grab: 3.0,
 
+            header_bg: Color::from_srgb8([0x2F, 0x2F, 0x2F, 255]),
+            header_height: 20.0,
             breadcrumb_text: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]),
             breadcrumb_separator: Color::from_srgb8([0x78, 0x78, 0x78, 255]),
             hint_text: Color::from_srgb8([0x78, 0x78, 0x78, 255]),
@@ -244,6 +251,7 @@ impl Style for ProjectStyle {
             splitter_idle: Color::from_srgb8([0xA6, 0xA6, 0xA6, 255]),
             splitter_hover: Color::from_srgb8([0x8A, 0x8A, 0x8A, 255]),
             splitter_active: Color::from_srgb8([0x5A, 0x5A, 0x5A, 255]),
+            header_bg: Color::from_srgb8([0xBD, 0xBD, 0xBD, 255]),
             breadcrumb_text: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
             breadcrumb_separator: Color::from_srgb8([0x6A, 0x6A, 0x6A, 255]),
             hint_text: Color::from_srgb8([0x6A, 0x6A, 0x6A, 255]),
@@ -286,6 +294,25 @@ mod tests {
                 style.tab_icon
             );
         }
+    }
+
+    /// The committed skin is the documented starting point, so it must carry
+    /// every token: adding one means updating `Preferences/Styles/ProjectStyle.ron`
+    /// as well (a missing field fails to parse; it does not fall back silently).
+    #[test]
+    fn the_committed_style_file_parses() {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let file = StyleFile::<ProjectStyle>::load_from(
+            &workspace.join(StyleFile::<ProjectStyle>::path()),
+        )
+        .expect("Preferences/Styles/ProjectStyle.ron parses");
+
+        assert!(file.dark.header_height > 0.0);
+        assert!(file.light.header_height > 0.0);
+        assert_ne!(
+            file.dark.header_bg, file.dark.background,
+            "the content header must read as chrome, not as body"
+        );
     }
 
     #[test]

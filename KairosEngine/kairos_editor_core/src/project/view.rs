@@ -24,7 +24,10 @@ pub enum SortKey {
 pub struct ProjectView {
     /// Folders the user opened. Files never appear here.
     pub expanded: BTreeSet<RelPath>,
-    /// The directory the breadcrumb and the right-hand pane show.
+    /// The directory the breadcrumb and the right-hand pane show: the selected
+    /// folder, or the parent of the selected file. `Navigate` sets it to the
+    /// folder it opens; `Select` sets it to the clicked item's directory, so a
+    /// single click moves the content pane (M2 acceptance fix).
     pub active: Option<RelPath>,
     /// Selected rows. v1 holds at most one entry; M3 grows it to a real
     /// multi-selection.

@@ -88,8 +88,14 @@ pub(super) fn reduce(state: &mut EditorState, action: ProjectAction) -> Vec<Effe
             // than a dangling path.
             project.view.selection.clear();
             if let Some(path) = path
-                && project.tree.find(&path).is_some()
+                && let Some(directory) = project.tree.content_dir(&path)
             {
+                // A click also moves the panel (M2 acceptance fix): Unity shows
+                // the picked item's directory in the content pane, so selecting
+                // a folder activates it and selecting a file activates its
+                // parent. `Navigate` still expands the ancestors; a click never
+                // changes what is expanded.
+                project.view.active = Some(directory);
                 project.view.selection.insert(path);
             }
             Vec::new()

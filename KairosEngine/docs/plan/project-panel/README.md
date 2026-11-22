@@ -1,6 +1,6 @@
 # ProjectPanel 迁移重构计划
 
-> **状态**：已拍板（D1–D12 全部落定，见 [§7](#7-决策记录已拍板)）。**M0 / M0.5 / M1 / M2 已落地**（M1 分 M1a core + M1b app 两刀，M2 分 M2a core+widget / M2b 面板两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。M2 已按「开工前复核定稿」定稿并开工（M2a/M2b 两刀，见 M2 一节）。
+> **状态**：已拍板（D1–D12 全部落定，见 [§7](#7-决策记录已拍板)）。**M0 / M0.5 / M1 / M2 已落地**（M1 分 M1a core + M1b app 两刀，M2 分 M2a core+widget / M2b 面板两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。M2 已按「开工前复核定稿」定稿并开工（M2a/M2b 两刀，见 M2 一节），交付后又按真机验收反馈做了 7 条修正（见 M2 一节末尾的「M2 验收修正」）。
 > **范围**：`kairos_editor_core`（项目领域）/ `kairos_editor_app`（扫描、监听、文件操作、持久化）/ `kairos_editor_component`（面板）/ `kairos_editor_widgets`（树控件）；旧 `kairos_editor` 只冻结，最后退役
 > **配套**：[ADR 0008](../../adr/0008-editor-ui-architecture.md)、[ADR 0009](../../adr/0009-editor-panel-host-and-viewport.md)、[rewrite-plan](../editor-ui-architecture/rewrite-plan.md)（Phase 0.5 写明「只迁 ProjectPanel 一页」）、[panel-viewport-design](../editor-ui-architecture/panel-viewport-design.md) §6.2 P1、[widget-layer](../editor-ui-architecture/widget-layer.md) §2.2/§5
 > **可抄的形状**：`prototypes/editor-ui/crates/editor-components/src/project_panel.rs`（派生函数 + 行渲染 + action 映射）、`prototypes/editor-ui/crates/editor-core/src/reduce/project.rs`（data-in / effects-out）
@@ -423,28 +423,28 @@ pub enum FsOpKind {
 D1 定稿：**左右两栏从第一天就存在**，右栏先只有面包屑 + 占位，网格/缩略图在 M9 补内容，布局本身不返工。
 
 ```
-┌ Project ────────────────────────────────────────────────────────────┐
-│ [折叠全部] [刷新]                              [隐藏文件] │ 工具栏 20px
-├──────────────────────────────┬──────────────────────────────────────┤
-│ ▾ res                        │ res / models /                       │ 面包屑 20px
-│   ▾ models                   │                                      │
-│     ▣ Suzanne.png      png   │          （内容区占位）               │ 分割条可拖
-│     ▣ readme.md        md    │      网格视图在 M9 填充              │
-│   ▸ shaders                  │                                      │
-│ ▸ scripts                    │                                      │
-│ ──────────────────────────── │                                      │ ← 分隔线
-│ ▸ Library                    │                                      │ 固定最下、默认折叠
-├──────────────────────────────┴──────────────────────────────────────┤
-│ 12 items · res/models/Suzanne.png · (truncated)                     │ 状态栏 18px
-└─────────────────────────────────────────────────────────────────────┘
+┌ Project ─────────────────────────────────────────────────────────────┐
+│ 折叠全部 │ 刷新 │                                │ 隐藏文件 │ 工具栏 20px
+├──────────────────────────────┬───────────────────────────────────────┤
+│ ▾ res                        │ KairosEngine / res / models           │ ← 内容头 20px
+│   ▾ models                   │                                       │   （独立灰底 + 下边线）
+│     ▣ Suzanne.png      png   │            （内容区占位）              │ 分割条可拖
+│     ▣ readme.md        md    │        网格视图在 M9 填充               │
+│   ▸ shaders                  │                                       │
+│ ▸ scripts                    │                                       │
+│ ──────────────────────────── │                                       │ ← 分组线（不可拖）
+│ ▸ Library                    │                                       │ 固定最下、默认折叠
+├──────────────────────────────┼───────────────────────────────────────┤
+│ 12 items · truncated         │                  （图标大小滑条 M9）    │ 状态栏 18px
+└──────────────────────────────┴───────────────────────────────────────┘
 ```
 
-- **工具栏 M2 只放真能用的三项**：`折叠全部` / `刷新` / `隐藏文件`（新建 ▾ / 删除等 M3 有真实动作再加，不做灰按钮占位）；
-- 分割条用现成的 `widgets::splitter`（两边宽度进 `ProjectView::tree_split`，M4 持久化）；
+- **工具栏 M2 只放真能用的三项**：`折叠全部` / `刷新` / `隐藏文件`（新建 ▾ / 删除等 M3 有真实动作再加，不做灰按钮占位）；每个控件后画 1 px chrome 线（Console/Profiler 工具栏同一规则），`隐藏文件` 组前另加一条——没有分割线，文字按钮读起来就是标签；
+- 分割条用现成的 `widgets::splitter`：拖拽中的宽度**面板本地持有**（`Option<f32>`，`None` = 跟随 `ProjectView::tree_split`），松手只发一条 `SetTreeSplit`；两边宽度进 `tree_split`（M4 持久化）；
 - **`Library` 固定排最后**（D2）：模型里它就是顶层的一个普通目录，只是 `ordered_children` 把它排到最后、面板在它前面画一条 1px 分隔线；默认折叠，展开状态同样进 `expanded`；不受忽略规则影响，但有独立节点预算；
 - 搜索**不进入 `Library`**：里面是引擎产物，搜出来只会是噪音（要查导入产物请直接展开它）；
-- 右栏 v1 是「面包屑 + 空状态」：面包屑可点任意一级跳转，空状态写明下一阶段做网格 —— 它已经能验证 `active` 这套导航状态是对的；
-- 状态栏跨两栏通栏：左半边是 `active` 目录的直接子项数、右半边选中路径、截断/错误告警优先（宁可挤掉路径）。
+- 右栏 v1 是「内容头 + 空状态」：内容头是**独立灰底**（`header_bg`）的 20 px 条 + 1 px 下边线，面包屑画在里面、每一级可点 = `Navigate`；显示目录 = `view.active`，而**单击树行就会更新它**（文件夹 → 自身，文件 → 父目录：`ProjectTree::content_dir`），双击只负责展开/打开，所以内容头不再等双击。空状态写明下一阶段做网格；
+- 状态栏按两栏**分割**（分割线在列分界处，用 splitter 的 idle 色——暗色皮肤下 `status_bg` 与 `separator` 同色，用 `separator` 会看不见）：左半边（Hierarchy）是当前 `active` 目录的直接子项数 + `truncated` 告警；右半边（Content）留给 M9 的图标大小滑条，现在只在报错时显示 error。**选中路径不再显示**：内容头已经跟着单击走，重复一遍没有信息量。
 
 **widget 契约**（`widgets/src/tree.rs`）：
 
@@ -510,11 +510,11 @@ impl<'a, Id: Copy + Eq + Hash> TreeView<'a, Id> {
 2. **行 id 来自 `Node.row_id`**（建树时算一次），不在绘制期做哈希。
 3. **不做 `PanelChrome`**：标题栏属于 dock（`Panel` trait 只管 body，见 `panel.rs:77`），面板 body 从工具栏开始 —— 和 Console 一致。
 
-**面板自己持有的视图状态**（关掉标签页就丢，这是对的）：搜索框文本、重命名 buffer、删除确认、拖拽中的路径、滚动定位。**core 持有**：`expanded`/`active`/`selection`/`sort`/`show_hidden`。判据：**关掉面板再打开还该在的 → core；只影响这一帧的 → 面板**。这条规则有硬理由：`PanelHost::sync` 的 `retain` 会直接 drop 关闭的面板实例（`panel/host.rs:52`），面板里存不住任何东西。
+**面板自己持有的视图状态**（关掉标签页就丢，这是对的）：搜索框文本、重命名 buffer、删除确认、拖拽中的路径、滚动定位。**core 持有**：`expanded`/`active`/`selection`/`sort`/`show_hidden`。判据：**关掉面板再打开还该在的 → core；只影响这一帧的 → 面板**。这条规则有硬理由：`PanelHost::sync` 的 `retain` 会直接 drop 关闭的面板实例（`panel/host.rs:52`），面板里存不住任何东西。滚动定位因此是面板态，但**重开标签页必须补回来**：新实例首帧把 `selection`（没有则 `active`）交给 `TreeView::scroll_to`，否则状态还在、视口却回到顶部。
 
 **绘制**：`TreeView` 只画行；重命名编辑器、右键菜单（`menu::submenu` + `menu_item_enabled`）、删除确认（`Popup`）都由面板画 —— 面板有 `&mut Ui` 和 `&mut UiOut`，widget 没有 `Action` 的概念。
 
-**交互规则（M2 定稿，照 Unity/Tuanjie）**：一行 = 三角（独立命中区）+ 图标 + 名字 + 后缀。**单击选中**（只写 `selection`，不动 `active`）、**双击打开**（文件夹 → `Navigate`，文件 → `OpenRequested`）、**三角只切换展开**（不选中、不导航）。键盘只在 `TreeOutput::focused` 为真时生效：↑↓ 移动选中、Home/End 首尾、`←` 已展开则折叠否则选父、`→` 未展开则展开否则选第一个子、Enter 打开。重命名/拖拽/右键菜单的通道 **M3 才加**，M2 不预留空变体（见 M2 定稿 N3）。
+**交互规则（M2 定稿，照 Unity/Tuanjie）**：一行 = 三角（独立命中区）+ 图标 + 名字 + 后缀。**单击选中并移动内容头**（写 `selection`，同时 `active` = 命中项的目录：文件夹 → 自身，文件 → 父目录；不展开、不导航）、**双击打开**（文件夹 → `Navigate`，文件 → `OpenRequested`）、**三角只切换展开**（不选中、不导航）。键盘只在 `TreeOutput::focused` 为真时生效：↑↓ 移动选中、Home/End 首尾、`←` 已展开则折叠否则选父、`→` 未展开则展开否则选第一个子、Enter 打开。重命名/拖拽/右键菜单的通道 **M3 才加**，M2 不预留空变体（见 M2 定稿 N3）。
 
 **视觉来源（N5）**：行图标取自本机 Tuanjie 编辑器资源包，Lanczos 缩到 64² 提交在 `Preferences/Textures/project/{,light/}`（`folder.png` / `folder_open.png` / `file.png`），重跑脚本 `scripts/extract_tuanjie_icons.py`。M2 文件行统一用泛型 `file` 图标；按类型的图标（texture/mesh/material/audio/...）在 M5 从同一个包抽。
 
@@ -826,7 +826,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 >
 > | # | 决定 | 为什么 |
 > |---|---|---|
-> | N1 | **导航照 Unity/Tuanjie**：行左端是**独立的展开/收起三角**；**单击 = 选中**（只写 `selection`，不动 `active`）；**双击 = 打开**（文件夹 → `Navigate` + 展开；文件 → 系统默认程序）。三角与行是两个命中区 | 参考编辑器的行为；「单击选、双击开」要求三角和行各管一件事，否则点一下就跳目录 |
+> | N1 | **导航照 Unity/Tuanjie**：行左端是**独立的展开/收起三角**；**单击 = 选中 + 内容头跟随**（写 `selection`，同时 `active` = 命中项的目录：文件夹 → 自身，文件 → 父目录）；**双击 = 打开**（文件夹 → `Navigate` + 展开；文件 → 系统默认程序）。三角与行是两个命中区 | 参考编辑器的行为；「单击选、双击开」要求三角和行各管一件事。单击移动内容头是 Unity 的浏览行为（验收修正 #3/#4），双击仍只负责展开/打开 |
 > | N2 | **可见行缓存归面板**（`Vec<NodeId>` + 失效键），core 只留 `visible_rows` 纯函数 | M6 的 query/scope 是面板视图状态，core 里的缓存服务不了它；放面板 = M6 不用搬 |
 > | N3 | **TreeView 用最小 API**：不做 `renaming` / `drag_started` / `dropped_on` / 右键菜单通道；F2/Delete 归 M3 | 没有消费者的通道不可测，M3 一定会按真实需求重画 |
 > | N4 | **M2 的打开 = 系统默认程序**（`open` crate）；IDE 探测 + `OpenWith` 分发 + `ui/ide_detection.rs` 搬迁归 M5 | `OpenWith` 是 `FileType` 的字段，M5 才有消费者；提前搬 311 行只会返工 |
@@ -836,10 +836,10 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 > **补齐的 8 处**（原文空白或自相矛盾，在这里定死）：
 >
 > 1. **TreeView 的视觉入口**：widgets 新增 `TreeStyle`（行高/缩进/三角/图标/字号/颜色/选中底色/分隔线），component 把 `ProjectStyle` 映射成它。仓库没有 `Theme`，也没有第二个画树的 widget——**不要**为此发明主题系统。
-> 2. **键盘焦点与滚动**：`TreeOutput::focused` 回答「树有没有键盘焦点」，面板只在 focused 时吃方向键；选中项移动后用 `TreeView::scroll_to(id)` 滚进可视区。
-> 3. **`tree_split` 的写回时机**：拖拽期间面板本地持有 `Option<f32>`（`None` = 跟随 core 值），`drag_stopped` 时发**一条** `SetTreeSplit`；reducer 里 clamp（0.15..=0.6，另有两侧像素下限）。**不要**每帧发 action。
+> 2. **键盘焦点与滚动**：`TreeOutput::focused` 回答「树有没有键盘焦点」，面板只在 focused 时吃方向键；选中项移动后用 `TreeView::scroll_to(id)` 滚进可视区。关标签页再打开时，新面板实例首帧也用它对 `selection`（没有则 `active`）做一次揭示（验收修正 #2）。
+> 3. **`tree_split` 的写回时机**：拖拽期间面板本地持有 `Option<f32>`（`None` = 跟随 core 值），且**每帧把 `Splitter` 改过的宽度存回它**——布局在 `show_in` 之前就算好了，不存回的话下一帧又用 core 的旧值重算，表现为「光标会变但拖不动」（验收修正 #1）；`drag_stopped` 时发**一条** `SetTreeSplit`，然后把本地值清回 `None` 跟随 core；reducer 里 clamp（0.15..=0.6，另有两侧像素下限）。**不要**每帧发 action。
 > 4. **系统目录分隔线**：面板问 `ProjectTree::is_system_dir(path)`，在那一行上方画 1px；`Library` 默认折叠 = 初始 `expanded` 不含它，不写特例。
-> 5. **状态栏语义**：`N items` = 当前 `active` 目录的**直接子项数**（不是可见行数，也不是全树节点数）；右半是选中路径；`truncated` 与 `error` 优先挤掉路径。
+> 5. **状态栏语义**：整行在列分界处**分割**（分割线用 splitter 的 idle 色；暗色皮肤下 `status_bg` 与 `separator` 同色）。左半边（Hierarchy）的 `N items` = 当前 `active` 目录的**直接子项数**（不是可见行数，也不是全树节点数）+ `truncated` 告警；右半边（Content）预留给 M9 的图标大小滑条，当前只在报错时显示 `error`。**不显示选中路径**（内容头已经跟着单击更新，重复）。
 > 6. **面包屑根**显示 `ProjectState.name`，每一段可点 = `Navigate`。
 > 7. **工具栏只放 M2 真能用的**：`折叠全部` / `刷新`（= `ScanRequested{Manual}`）/ `隐藏文件`。新建/删除等按钮等 M3 有真实动作再加，不做灰按钮占位。
 > 8. **面板 `scroll_bars()` 必须返回 `[false, false]`**：dock 默认会在面板外再套一层 `ScrollArea`（`docker.rs:1562`），而这里两栏各自滚动 + 通栏状态栏；Profiler/Preferences 是同一先例。
@@ -847,7 +847,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 **M2a — core + widgets + 纯映射（1.5–2 天，画面零变化）**
 
 - **core**（`ProjectAction` 新增，全部是纯状态迁移）：
-  - `Select { path: Option<RelPath> }` —— 替换选择集，`None` 清空；不在树里的路径忽略；
+  - `Select { path: Option<RelPath> }` —— 替换选择集，`None` 清空；不在树里的路径忽略；命中时把 `active` 设为该路径的目录（`ProjectTree::content_dir`：文件夹 → 自身，文件 → 父目录），所以单击就让内容头与状态栏跟随；
   - `ToggleFolder { path }` —— 三角 / `→` 的「展开」那一半；非文件夹或不存在则忽略；
   - `Navigate { path }` —— 双击文件夹 / 点面包屑：`active = path`、把 path 与其祖先放进 `expanded`、`selection = {path}`；
   - `OpenRequested { path }` —— 不改状态，只发 `ProjectEffect::Open { root, path }`；
@@ -862,32 +862,47 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 
 **M2b — 面板装配 + 皮肤 + 打开 + 键盘（2–3 天，可见）**
 
-- **component**：工具栏 20px（折叠全部 / 刷新 / 隐藏文件）→ `Splitter::horizontal` 分左右（比例来自 `view.tree_split`，有像素下限）→ 左树 `TreeView` / 右栏面包屑 + 空态 → 通栏状态栏 18px。`panels/project/style.rs` 的 `ProjectStyle`：
-  - 继承 `ProjectWindowStyle.toml [hierachy]` 的 6 个 token：`file_header_color #c8c8c8`（文件夹与文件同色，Unity 2022 同款；legacy 的 `directory_header_color #dcdcb4` 淡黄不沿用）、`selected_file_background_color #3c4b64`、`file_suffix_color #787878`、`file_header_size 11`（后缀字号）、`file_icon_size 18`、`selected_file_background_corner_radius 4`；旧 TOML 里**没有**的（行高 20、缩进 14、工具栏、状态栏、面包屑、hover、分隔线、splitter 三色）按 Console 的调色板与量测补齐；
+- **component**：工具栏 20px（折叠全部 / 刷新 / 隐藏文件，控件间 1 px chrome 线）→ `Splitter::vertical` 覆盖式分割左右（比例来自 `view.tree_split`，有像素下限）→ 左树 `TreeView` / 右栏内容头（独立灰底 20px + 面包屑）+ 空态 → 按两栏分割的状态栏 18px。`panels/project/style.rs` 的 `ProjectStyle`：
+  - 继承 `ProjectWindowStyle.toml [hierachy]` 的 6 个 token：`file_header_color #c8c8c8`（文件夹与文件同色，Unity 2022 同款；legacy 的 `directory_header_color #dcdcb4` 淡黄不沿用）、`selected_file_background_color #3c4b64`、`file_suffix_color #787878`、`file_header_size 11`（后缀字号）、`file_icon_size 18`、`selected_file_background_corner_radius 4`；旧 TOML 里**没有**的（行高 20、缩进 14、工具栏、状态栏、面包屑、hover、分隔线、splitter 三色、内容头灰底与高度 `header_bg`/`header_height`）按 Console 的调色板与量测补齐；
   - 新增 `icons: ProjectIcons { folder, folder_open, file }`（dark/light 两套路径）+ `tab_icon`（`Preferences/Textures/tab_icons/project.png`）；
   - `impl ProjectStyle { fn tree(&self) -> TreeStyle }`；`#[derive(StyleFields)]` 让 Preferences 自动可编辑；文件 `Preferences/Styles/ProjectStyle.ron`。
 - **app**：`ProjectEffect::Open` 实现（`open::that_detached`，失败 → `ProjectAction::Failed`），依赖 `open = "5.4.0"`（与旧 crate 同版本）；`describe()` 补新 action 文案；`is_quiet` 不需要新增（`SetTreeSplit` 每次拖拽只发一条）。
 - **键盘**（仅 `TreeOutput::focused`）：↑↓ 移动选中（可见行序）、Home/End 首尾、`←` 已展开则折叠否则选父、`→` 未展开则展开否则选第一个子、Enter 打开选中项。
 - **测试**：component 用 Console 的 harness 法（`Context::run` + 合成点击）断言「点行 → `Select`、点三角 → `ToggleFolder`、双击文件夹 → `Navigate`、双击文件 → `OpenRequested`」；`ProjectStyle` RON round-trip；空树 / 单行 / `Library` 分隔线三个装配 case。
 
-**验收（手动 smoke）**：单击 `res/models` → 只选中（状态栏出路径，右栏不动）→ 双击 → 右栏面包屑前进、左树同步展开 → 双击 `Suzanne.png` → 系统默认程序打开 → 拖分割条比例正确、右栏不溢出 → `Library` 排在最后、上方有 1px 分隔线，展开看到 `Library/imported_assets` → 勾选「隐藏文件」后 `.meta`/点文件出现 → 工具栏刷新 → 日志出现 `project scan requested (Manual)` → 关掉 Project 面板再打开，展开/选中还在 → 20 万行全展开拖动滚动条不卡（Profiler 看 UI 线程 < 8ms；widget 测试里另有「行回调 ≤ 可见行数」的硬断言）。
+**验收（手动 smoke）**：单击 `res/models` → 只选中，**内容头与左半状态栏立即跟到 `res/models`**（不展开、不导航）→ 双击 → 左树同步展开 → 双击 `Suzanne.png` → 系统默认程序打开 → 拖分割条比例正确、松手不回弹、右栏不溢出 → `Library` 排在最后、上方有 1px 分组线（**它只是分组线，不能拖**），展开看到 `Library/imported_assets` → 勾选「隐藏文件」后 `.meta`/点文件出现 → 工具栏刷新 → 日志出现 `project scan requested (Manual)` → 关掉 Project 面板再打开，展开/选中还在且树滚回选中行 → 20 万行全展开拖动滚动条不卡（Profiler 看 UI 线程 < 8ms；widget 测试里另有「行回调 ≤ 可见行数」的硬断言）。
 
 **风险**：`TreeView` API 被 M3 的改名/拖拽撑破。缓解（已改）：M2 不预留空通道，但 widget 保持「行内绘制 + 全行命中区 + 三角独立命中区」，M3 加通道只改 widget 内部和一个调用点。
 
-> **落地状态（M2 完成，验收逐条勾）**
+> **落地状态（M2 完成，验收逐条勾；含 2026-11-22 真机验收修正）**
 >
-> - **文件**：widgets 新增 `tree.rs`（虚拟化行控件 + 三角独立命中 + 焦点/滚动，11 条 headless 测试）；core 的 `ProjectAction` 新增 8 个变体 + `ProjectEffect::Open`，`reduce/project.rs` 8 个 arm，`tests/project.rs` +16 条；component 的 `panels/project.rs` 整篇替换（工具栏/分割/树/面包屑/状态栏/键盘）与 `panels/project/{style,rows,content}.rs`（27 条测试，含合成点击与绘制断言）；app 的 `ProjectEffect::Open` 真实实现（`open::that_detached`，失败回 `Failed` 落状态栏）+ `open = "5.4.4"`。
-> - **测试**：`cargo test-crate kairos_editor_core` 34（project 切片）+ 其余全绿；`kairos_editor_widgets` 152（tree 11）；`kairos_editor_component` 208 + 17 集成；`cargo check --workspace --all-targets` 通过。
-> - **运行（真机 smoke）**：启动日志 `project policy: 1 system dirs, 2 ignore rules` → `project scan #1: 1417 nodes (library 20) in 14 ms`；Project 面板显示工具栏三项、Unity 文件夹图标、面包屑、`34 items / no selection` 状态栏、可拖的垂直分割线。
+> - **文件**：widgets 新增 `tree.rs`（虚拟化行控件 + 三角独立命中 + 焦点/滚动，11 条 headless 测试）；core 的 `ProjectAction` 新增 8 个变体 + `ProjectEffect::Open`，`reduce/project.rs` 8 个 arm，`ProjectTree::content_dir`，`tests/project.rs` +20 条（16 + 验收修正 4）；component 的 `panels/project.rs` 整篇替换（工具栏/分割/树/内容头/状态栏/键盘）与 `panels/project/{style,rows,content}.rs`（32 条测试，含合成点击、拖拽与绘制断言）；app 的 `ProjectEffect::Open` 真实实现（`open::that_detached`，失败回 `Failed` 落状态栏）+ `open = "5.4.4"`。
+> - **测试**：`cargo test-crate kairos_editor_core` 38（project 切片）+ 其余全绿；`kairos_editor_widgets` 152（tree 11）；`kairos_editor_component` 214 + 17 集成；`cargo check --workspace --all-targets` 通过。
+> - **运行（真机 smoke）**：启动日志 `project policy: 1 system dirs, 2 ignore rules` → `project scan #1: 1417 nodes (library 20) in 14 ms`；Project 面板显示工具栏三项（控件间 chrome 线）、Unity 文件夹图标、灰底内容头、`34 items` 左半状态栏、可拖的垂直分割线。**验收轮复验（新构建）**：拖分割条 287 → 367 px 松手后保持；单击 `kairos_audio` → 内容头变 `KairosEngine / kairos_audio`、左半状态栏变 `2 items`；像素采样确认工具栏三条分割线、内容头 `#2F2F2F`、状态行分界线。
 > - **图标**：从本机 Tuanjie 2022.3 编辑器资源包抽 `d_Folder Icon` / `d_FolderOpened Icon` / `d_DefaultAsset Icon` 及 light 版，Lanczos 缩到 64²（<2 KB/张）提交在 `Preferences/Textures/project/`，重跑脚本 `scripts/extract_tuanjie_icons.py`，来源说明见该目录 README。**理由实测**：现存 `Preferences/Textures/*.png` 是 2048²，egui_extras 0.35 的加载器忽略 size hint（`ImageCrateLoader::load(..., _: SizeHint)`），一张就是 16 MB 纹理。
-> - **皮肤**：`Preferences/Styles/ProjectStyle.ron`（dark + light，31 个 token）首次启动就地 seed；`#[derive(StyleFields)]` 让 Preferences 面板自动可编辑。
+> - **皮肤**：`Preferences/Styles/ProjectStyle.ron`（dark + light，33 个 token）首次启动就地 seed；`#[derive(StyleFields)]` 让 Preferences 面板自动可编辑；「仓库里的 RON 必须能解析」有测试兜底（加 token 忘改 RON 会红）。
 > - 已知行为与偏离：
 >   1. legacy 的 `directory_header_color #dcdcb4`（淡黄文件夹文字）不沿用，文件夹与文件同色——Unity 2022 同款；M2b 的 token 说明已改。
->   2. `tree_split` 只在分割条 drag 结束时写一条 action；双击分割条复位未做（M4 持久化时一起定）。
+>   2. `tree_split` 只在分割条 `drag_stopped` 时写一条 action（拖拽中的宽度是面板本地态）；双击分割条复位未做（M4 持久化时一起定）。
 >   3. **egui 坑（记一笔）**：工具栏按钮用 `ui.put` 会把布局游标重锚到按钮高度（20）而不是预留的 21，所以面板 body 必须从工具栏返回的 row 下沿推导，不能用 `available_rect_before_wrap()`。测试里首帧也要先空跑一帧，egui 的命中测试依赖上一帧的 widget rect。
->   4. `Library` 排在根级最后、上方有 1px 分隔线（有测试覆盖）；它在可视区下方，需要滚动才看得到。
->   5. 手动 smoke 还剩四项要在真机点：双击文件用系统默认程序打开、拖分割条、隐藏文件开关、关面板再开后展开/选中仍在——启动 + 截图 + harness 测试已覆盖其余路径。
+>   4. `Library` 排在根级最后、上方有 1 px 分组线（有测试覆盖）；**它是 Unity/Tuanjie 的系统目录分组线，不是分割条，不能拖**。它在可视区下方，需要滚动才看得到。
+>   5. **面板重建（关标签页再打开）不保留滚动位置**，所以新实例首帧用 `selection`（没有则 `active`）喂 `TreeView::scroll_to` 补回；这条以前只在键盘移动时用。
+>   6. 手动 smoke 的 4 项已在 2026-11-22 真机验收轮点过，并引出下面的 7 条修正；修正后拖分割条、单击联动、关闭重开定位都有 harness 测试兜底。
 > - 未做（按计划）：M3 的建/改名/移动/删除、右键菜单与拖拽；M5 的类型图标与 IDE 打开；M6 搜索。
+>
+> **M2 验收修正（2026-11-22，真机 7 条反馈）**
+>
+> | # | 反馈 | 处理与验证 |
+> |---|---|---|
+> | 1a | 左右分栏的分割条：光标会变，但拖不动 | 布局在 `Splitter::show_in` 之前就算好，拖拽结果又被丢掉 → 每帧把改过的宽度存回面板 `split`；release 仍只发一条 `SetTreeSplit`。harness 测试「按下 → 拖 60 px → 松开」断言下一帧内容头左沿 = 拖到的位置、release 只有一条 0.355。 |
+> | 1b | `Library` 上方那条线拖不动 | 那是系统目录分组线（`separator_above`）；Unity/Tuanjie 同样不可拖，不是 bug（见已知行为 4）。 |
+> | 2 | 关掉面板再打开，状态在但没定位到上次选中行 | 面板加 `reveal_selection` 首帧标志：把 `selection`（没有则 `active`）交给 `TreeView::scroll_to`；80 行测试断言重开后深行回到视口。 |
+> | 3 | 单击选中不更新 Content Header 路径 | `ProjectTree::content_dir`（文件夹 → 自身，文件 → 父目录）+ reducer `Select` 写 `active`；core 4 条测试。 |
+> | 4 | 单击选中不更新左下 `x items` | 同 #3：计数本来就是 `active` 目录的直接子项数，`active` 跟随单击后自然跟着变。 |
+> | 5 | Content Header 与内容区同色，分不出 Header | 新增 `header_bg`（暗 `#2F2F2F` / 亮 `#BDBDBD`）+ `header_height 20`，底边 1 px chrome 线；绘制断言测试 + 像素采样确认。 |
+> | 6 | 右下角路径多余；状态行该按两栏分割 | 删除选中路径；状态行在列分界处分割（线用 `splitter_idle`——暗色下 `status_bg` 与 `separator` 同色会看不见）；右半预留给 M9 图标大小滑条，当前只显示 error。 |
+> | 7 | 工具栏三个按钮没有分割线、看不出是按钮 | 每个控件后 1 px chrome 线 + `Hidden files` 组前一条（Console/Profiler 工具栏同规则）；绘制断言测试 + 像素采样确认（x=85/141/925 三条）。 |
+
 ### M3 — 变更：建 / 改名 / 移动 / 删除（3–5 天）
 
 **目标**：面板可以完整编辑文件系统，每个失败都看得见。
