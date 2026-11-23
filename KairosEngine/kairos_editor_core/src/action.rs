@@ -102,8 +102,7 @@ pub enum StyleAction {
 /// a panel instance, so their files cannot travel through the panel-skin path
 /// above. They still share the same gesture boundary: set while dragging or
 /// typing, persist when the interaction ends. Reset replaces the live value
-/// with the code defaults and writes it in one go; Reload re-reads the file so
-/// a hand edit can be picked up without restarting the editor.
+/// with the code defaults and writes it in one go.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SharedStyleAction {
     /// One field of one shared style changed (live preview).
@@ -124,6 +123,4 @@ pub enum SharedStyleAction {
     Reset { style: SharedStyleId },
     /// The interaction ended: write the shared style's RON file.
     Commit { style: SharedStyleId },
-    /// Re-read the shared style's file into the live value.
-    Reload { style: SharedStyleId },
 }

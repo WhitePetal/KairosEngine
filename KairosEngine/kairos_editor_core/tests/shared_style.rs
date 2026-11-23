@@ -84,23 +84,6 @@ fn a_shared_reset_becomes_a_reset() {
     );
 }
 
-#[test]
-fn a_shared_reload_becomes_a_reload() {
-    let mut state = EditorState::new();
-
-    assert_eq!(
-        reduce(
-            &mut state,
-            Action::SharedStyle(SharedStyleAction::Reload {
-                style: COLOR_PICKER
-            })
-        ),
-        vec![Effect::SharedStyle(SharedStyleEffect::Reload {
-            style: COLOR_PICKER
-        })]
-    );
-}
-
 /// Shared styles live in the app's registry, not in the state tree.
 #[test]
 fn shared_style_edits_leave_the_state_tree_alone() {

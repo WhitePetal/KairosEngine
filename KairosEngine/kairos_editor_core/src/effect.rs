@@ -106,6 +106,4 @@ pub enum SharedStyleEffect {
     Reset { style: SharedStyleId },
     /// Persist the live shared style to its RON file.
     Persist { style: SharedStyleId },
-    /// Re-read the shared style's file into the live value.
-    Reload { style: SharedStyleId },
 }

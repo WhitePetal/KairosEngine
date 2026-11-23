@@ -3,9 +3,9 @@
 //! The composition root loads one value per registered style at boot and hands
 //! [`SharedStyles`] to every panel through [`Frame::shared`](crate::Frame). The
 //! registry is also the write target of the separate shared-style action path:
-//! `SetField` writes the live value, `Reset` restores the code defaults,
-//! `Persist` writes the RON file, and `Reload` re-reads it. `Reset` and
-//! `Reload` bump [`SharedStyles::revision`] so the page re-reads its table.
+//! `SetField` writes the live value, `Reset` restores the code defaults, and
+//! `Persist` writes the RON file. The app effect persists a reset in the same
+//! click; the Preferences page marks its own snapshot stale.
 
 use std::collections::BTreeMap;
 
@@ -40,13 +40,10 @@ struct SharedStyleEntry {
 /// One live value per registered shared style.
 ///
 /// The value is selected for the current theme at load time (the editor pins
-/// dark today). `revision` changes when a file is re-read or the style is
-/// reset, so the Preferences page can tell "my own field edit" from a
-/// wholesale replacement and refresh its local field copy only for the
-/// latter.
+/// dark today). The Preferences page keeps its own field snapshot, so a reset
+/// marks that page stale; the registry only changes the live value.
 pub struct SharedStyles {
     entries: BTreeMap<SharedStyleId, SharedStyleEntry>,
-    revision: u64,
 }
 
 impl SharedStyles {
@@ -63,10 +60,7 @@ impl SharedStyles {
                 },
             );
         }
-        Self {
-            entries,
-            revision: 0,
-        }
+        Self { entries }
     }
 
     /// Code defaults for every registered style, without touching the disk.
@@ -81,10 +75,7 @@ impl SharedStyles {
                 },
             );
         }
-        Self {
-            entries,
-            revision: 0,
-        }
+        Self { entries }
     }
 
     /// A process-lifetime default registry, so [`Frame::with_host`](crate::Frame::with_host)
@@ -92,11 +83,6 @@ impl SharedStyles {
     pub fn default_ref() -> &'static SharedStyles {
         static DEFAULT: std::sync::OnceLock<SharedStyles> = std::sync::OnceLock::new();
         DEFAULT.get_or_init(SharedStyles::default)
-    }
-
-    /// Changes when a shared style is re-read or reset to its defaults.
-    pub fn revision(&self) -> u64 {
-        self.revision
     }
 
     pub fn get<T: SharedStyle>(&self, id: SharedStyleId) -> Option<&T> {
@@ -179,8 +165,7 @@ impl SharedStyles {
         (entry.def.save)(&*entry.value, theme)
     }
 
-    /// Replace one live style with its code defaults for `theme`. Bumps the
-    /// revision so the Preferences page re-reads its field table.
+    /// Replace one live style with its code defaults for `theme`.
     ///
     /// Returns whether the id is registered. The caller persists the result;
     /// this method only changes the live value.
@@ -189,19 +174,6 @@ impl SharedStyles {
             return false;
         };
         entry.value = (entry.def.defaults)(theme);
-        self.revision = self.revision.wrapping_add(1);
-        true
-    }
-
-    /// Re-read one style's file into the live value. Returns whether the id is
-    /// registered; a broken file logs and falls back, like the initial load.
-    pub fn reload(&mut self, id: SharedStyleId, theme: egui::Theme) -> bool {
-        let Some(entry) = self.entries.get_mut(&id) else {
-            return false;
-        };
-        let load = entry.def.load;
-        entry.value = load(theme);
-        self.revision = self.revision.wrapping_add(1);
         true
     }
 
@@ -348,23 +320,17 @@ mod tests {
         );
     }
 
-    /// Reset restores the code defaults and bumps the revision, so the page
-    /// replaces the values it copied before the click.
+    /// Reset restores the code defaults; the Preferences page marks its own
+    /// snapshot stale so the next pass shows them.
     #[test]
     fn reset_restores_the_code_defaults() {
         let mut shared = SharedStyles::default();
         let default_height = shared.toolbar().expect("toolbar").height;
 
         assert!(shared.set_field(TOOLBAR, "height", &StyleValue::F32(99.0)));
-        let revision = shared.revision();
 
         assert!(shared.reset(TOOLBAR, egui::Theme::Dark));
         assert_eq!(shared.toolbar().expect("toolbar").height, default_height);
-        assert_ne!(
-            shared.revision(),
-            revision,
-            "a reset invalidates the page copy"
-        );
         assert!(
             !shared.reset(
                 kairos_editor_core::SharedStyleId("not-registered"),
@@ -374,10 +340,9 @@ mod tests {
         );
     }
 
-    /// Save writes the live value, reload reads it back and bumps the revision
-    /// the Preferences page uses to refresh its local field copy.
+    /// Save writes the live value to the style's RON file.
     #[test]
-    fn save_and_reload_round_trip_through_the_style_root() {
+    fn save_writes_the_live_style_to_its_file() {
         let root = std::env::temp_dir().join(format!(
             "kairos-shared-style-{}-{:?}",
             std::process::id(),
@@ -391,16 +356,10 @@ mod tests {
         shared
             .save(TOOLBAR, egui::Theme::Dark)
             .expect("save toolbar");
-        assert!(root.join("ToolBar.ron").is_file());
-
-        assert!(shared.set_field(TOOLBAR, "height", &StyleValue::F32(10.0)));
-        let revision = shared.revision();
-        assert!(shared.reload(TOOLBAR, egui::Theme::Dark));
-        assert_eq!(shared.toolbar().expect("toolbar").height, 30.0);
-        assert_ne!(
-            shared.revision(),
-            revision,
-            "a reload invalidates the page copy"
+        let text = std::fs::read_to_string(root.join("ToolBar.ron")).expect("read toolbar");
+        assert!(
+            text.contains("height: 30.0"),
+            "the saved value is on disk: {text}"
         );
 
         kairos_editor_widgets::style::set_style_root("Preferences/Styles");

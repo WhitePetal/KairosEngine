@@ -114,7 +114,11 @@ fn worth_a_rescan(path: &Path, root: &Path, ignore: &IgnoreRules, system_dirs: &
     };
     let relative = relative.to_string_lossy().replace('\\', "/");
     if relative.is_empty() {
-        return true;
+        // The root path is the directory's own metadata event, emitted by
+        // FSEvents alongside the child that actually changed. The child is
+        // what classifies the batch; a root-only metadata change cannot alter
+        // the tree.
+        return false;
     }
     let relative = RelPath::new(relative);
     if ignore.is_ignored_path(&relative) {

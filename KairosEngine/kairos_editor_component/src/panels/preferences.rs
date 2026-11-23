@@ -104,9 +104,6 @@ struct PageInfo<'a> {
     title: &'a str,
     file: &'static str,
     fields: &'a [StyleField],
-    /// Shared styles bump this when their file is re-read. A panel page is
-    /// always zero: its snapshot is the live style it just edited.
-    revision: u64,
 }
 
 fn nav_id(page: impl Into<PageKey>) -> Id {
@@ -202,9 +199,6 @@ struct FieldEdit {
 struct PageState {
     /// The page the fields belong to.
     key: Option<PageKey>,
-    /// Shared-style revision this snapshot came from. A reload or a reset
-    /// bumps the registry revision, and the next pass re-reads the field table.
-    revision: u64,
     /// Edited in place: a drag follows the pointer even though the owning
     /// panel's next snapshot is a frame behind.
     fields: Vec<StyleField>,
@@ -223,10 +217,10 @@ struct PageState {
     /// this offset fixed so a TextEdit focus inside the picker cannot scroll
     /// the page behind it.
     scroll_offset: egui::Vec2,
-    /// A structural list edit or a factory reset landed. The page's snapshot
-    /// is otherwise re-read only on a page change or a reload, so a new entry's
-    /// rows (or the reset values) would not exist until the user left the page:
-    /// the next pass re-reads it.
+    /// A structural list edit, an enum payload change, or a factory reset
+    /// landed. The page's snapshot is otherwise re-read only on a page change,
+    /// so a new entry's rows (or the reset values) would not exist until the
+    /// user left the page: the next pass re-reads it.
     stale: bool,
     /// Retained list chrome: the count editor and the reorder gesture.
     list_chrome: ListChromeState,
@@ -234,9 +228,9 @@ struct PageState {
 
 impl PageState {
     /// Show the selected page's field table, committing a pending edit on the
-    /// page being left. A shared page is re-read when its file was reloaded
-    /// (the registry revision changed); a panel page never is, because its
-    /// snapshot is the live value this editor just wrote.
+    /// page being left. A page re-reads its table on a page change, or when a
+    /// structural edit or reset marked it stale; ordinary value edits stay in
+    /// the local copy.
     fn select(&mut self, pages: &[PageInfo<'_>], selected: Option<PageKey>, out: &mut UiOut) {
         let page = selected.and_then(|key| pages.iter().find(|page| page.key == key));
 
@@ -244,34 +238,18 @@ impl PageState {
             let Some(page) = page else {
                 return;
             };
-            if self.stale {
-                // A list edit landed under this page: take the owner's new
-                // table (new rows, new count) and keep the foldout state, the
-                // selection and an in-flight count edit. The edit is keyed by
-                // path, and the count is the only field that can resize the
-                // list while being typed into.
-                self.fields = page.fields.to_vec();
-                self.title = page.title.to_owned();
-                self.file = page.file;
-                self.revision = page.revision;
-                self.stale = false;
+            if !self.stale {
                 return;
             }
-            if self.revision == page.revision {
-                return;
-            }
-            // The file was reloaded under this page: take the new values but
-            // keep the selection and foldout state, and drop a text edit whose
-            // original value no longer belongs to the new snapshot.
+            // A structural edit or reset landed under this page: take the
+            // owner's new table (new rows, new count, reset values) and keep
+            // the foldout state, the selection and an in-flight count edit.
+            // The edit is keyed by path, and the count is the only field that
+            // can resize the list while being typed into.
             self.fields = page.fields.to_vec();
             self.title = page.title.to_owned();
             self.file = page.file;
-            self.revision = page.revision;
-            self.edit = None;
-            self.list_chrome.clear();
-            // The reloaded file is now the truth; the discarded pre-reload
-            // edit must not be written by a later release pass.
-            self.dirty = false;
+            self.stale = false;
             return;
         }
 
@@ -282,13 +260,11 @@ impl PageState {
                 self.fields = page.fields.to_vec();
                 self.title = page.title.to_owned();
                 self.file = page.file;
-                self.revision = page.revision;
             }
             None => {
                 self.fields.clear();
                 self.title.clear();
                 self.file = "";
-                self.revision = 0;
             }
         }
         self.key = selected;
@@ -419,7 +395,6 @@ impl Panel for PreferencesPanel {
                 title: &skin.title,
                 file: skin.file,
                 fields: &skin.fields,
-                revision: 0,
             })
             .collect();
         pages.extend(shared_skins.iter().map(|skin| PageInfo {
@@ -427,7 +402,6 @@ impl Panel for PreferencesPanel {
             title: &skin.title,
             file: skin.file,
             fields: &skin.fields,
-            revision: frame.shared.revision(),
         }));
 
         let picker_style = frame.color_picker_style();

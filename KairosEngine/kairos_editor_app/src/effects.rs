@@ -147,9 +147,8 @@ impl<'a> EffectExecutor<'a> {
         }
     }
 
-    /// Shared-style edits: live write, then reset/persist/reload on the
-    /// app-owned registry. Same gesture boundary as a panel skin, different
-    /// owner.
+    /// Shared-style edits: live write, then reset/persist on the app-owned
+    /// registry. Same gesture boundary as a panel skin, different owner.
     fn apply_shared_style(&mut self, effect: SharedStyleEffect, ctx: &Context) {
         match effect {
             SharedStyleEffect::SetField { style, path, value } => {
@@ -184,15 +183,6 @@ impl<'a> EffectExecutor<'a> {
             SharedStyleEffect::Persist { style } => {
                 if let Err(error) = self.shared.save(style, ctx.theme()) {
                     kairos_log::warn!(target: "kairos_editor", "shared skin {style}: {error}");
-                }
-                self.shared.preload(ctx);
-            }
-            SharedStyleEffect::Reload { style } => {
-                if !self.shared.reload(style, ctx.theme()) {
-                    kairos_log::warn!(
-                        target: "kairos_editor",
-                        "shared skin {style}: not registered"
-                    );
                 }
                 self.shared.preload(ctx);
             }

@@ -105,3 +105,20 @@ fn a_change_under_a_system_directory_is_not_reported() {
         "the editor's own log writes must not trigger a project rescan"
     );
 }
+
+/// The backend reports the root itself alongside the child that changed. The
+/// root's own metadata event is not a tree change; the child classifies the
+/// batch.
+#[test]
+fn the_root_directory_itself_is_not_a_change() {
+    let dir = tempfile::TempDir::new().expect("a temp dir");
+    let root = std::fs::canonicalize(dir.path()).expect("canonical root");
+    let policy = ScanPolicy::default();
+
+    assert!(!super::worth_a_rescan(
+        &root,
+        &root,
+        &policy.ignore,
+        &policy.system_dirs
+    ));
+}

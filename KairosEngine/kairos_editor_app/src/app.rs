@@ -521,7 +521,6 @@ fn describe(action: &Action) -> String {
                 format!("reset {style} shared skin to defaults")
             }
             SharedStyleAction::Commit { style } => format!("save {style} shared skin"),
-            SharedStyleAction::Reload { style } => format!("reload {style} shared skin"),
         },
     }
 }
@@ -1019,12 +1018,6 @@ mod tests {
                 style: COLOR_PICKER
             })),
             "save color_picker shared skin"
-        );
-        assert_eq!(
-            describe(&Action::SharedStyle(SharedStyleAction::Reload {
-                style: COLOR_PICKER
-            })),
-            "reload color_picker shared skin"
         );
         assert_eq!(
             describe(&Action::Project(ProjectAction::ScanRequested {

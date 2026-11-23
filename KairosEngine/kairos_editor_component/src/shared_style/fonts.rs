@@ -166,7 +166,7 @@ impl EditorFonts {
 
 impl SharedStyle for EditorFonts {
     /// Install the list into the context. Runs after the boot load, after a
-    /// reload, and after a committed edit; a missing file is logged and leaves
+    /// reset, and after a committed edit; a missing file is logged and leaves
     /// egui on its previous fonts rather than failing the frame.
     fn preload(&self, ctx: &Context) {
         if let Err(error) = self.config().install(ctx) {

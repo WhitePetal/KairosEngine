@@ -73,7 +73,7 @@ L2 与总架构（MVU）的关系：总架构里的 `Panel`/component 就是这�
 > `SharedStyleDef`（对应 `#[panel]` 的 `PanelDef`），app 启动时
 > `SharedStyles::load(&StyleCatalog::builtin(), theme)` 一次，`Frame::shared`
 > 下发给所有面板；Preferences 固定追加它们的页，写路径是独立的
-> `SharedStyleAction`/`SharedStyleEffect`（含显式 `Reload`）。面板样式仍是 per-instance、
+> `SharedStyleAction`/`SharedStyleEffect`。面板样式仍是 per-instance、
 > `Panel::init` 加载，两者不混用。
 >
 > **2026-11-20 补充**：字体表并入 shared style，没有引入第三层概念：`EditorFonts` 就是普通 shared

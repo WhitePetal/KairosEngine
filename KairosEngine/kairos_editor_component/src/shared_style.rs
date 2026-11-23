@@ -72,8 +72,8 @@ use crate::skin::StyleFields;
 pub trait SharedStyle:
     crate::__sealed::SharedStyleSealed + StyleFields + Send + Sync + 'static
 {
-    /// Warm runtime images this style points at. Called after load and reload;
-    /// the widgets also load lazily, so this is a lifecycle hook, not a
-    /// correctness requirement.
+    /// Warm runtime images this style points at. Called after the boot load, a
+    /// reset, and a committed edit; the widgets also load lazily, so this is a
+    /// lifecycle hook, not a correctness requirement.
     fn preload(&self, _ctx: &Context) {}
 }
