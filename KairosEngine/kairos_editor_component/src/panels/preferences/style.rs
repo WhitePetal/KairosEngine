@@ -53,6 +53,9 @@ pub struct PreferencesPanelStyle {
     /// Selected outline, active slider fill, and the page-list stripe.
     pub accent: Color,
 
+    pub accent_width: f32,
+    pub devider_width: f32,
+
     pub title_size: f32,
     pub body_size: f32,
     pub group_size: f32,
@@ -63,6 +66,7 @@ pub struct PreferencesPanelStyle {
     pub nav_width: f32,
     pub nav_row_height: f32,
     pub nav_corner_radius: f32,
+    pub nav_shrink: f32,
     /// Gap between the page list and the page body.
     pub column_gap: f32,
     /// Space above and below the rule under a page heading.
@@ -134,6 +138,9 @@ impl Style for PreferencesPanelStyle {
 
             accent: Color::from_srgb8([0x4A, 0x90, 0xD9, 255]),
 
+            accent_width: 2.0,
+            devider_width: 1.3,
+
             title_size: 15.0,
             body_size: 12.0,
             group_size: 12.0,
@@ -142,6 +149,7 @@ impl Style for PreferencesPanelStyle {
             nav_width: 118.0,
             nav_row_height: 24.0,
             nav_corner_radius: 2.0,
+            nav_shrink: 4.0,
             column_gap: 14.0,
             section_spacing: 8.0,
             row_gap: 0.0,

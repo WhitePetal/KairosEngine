@@ -55,8 +55,7 @@ use kairos_editor_core::{
 };
 use kairos_editor_widgets::button::Button;
 use kairos_editor_widgets::color_picker::{
-    ColorField, ColorPickerStyle, ColorProperty, any_color_picker_open, close_all_color_pickers,
-    eyedropper, is_color_picker_open,
+    ColorField, ColorPickerStyle, ColorProperty, eyedropper, is_color_picker_open,
 };
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::field::{
@@ -213,10 +212,6 @@ struct PageState {
     collapsed: HashSet<String>,
     /// A numeric token being edited as text.
     edit: Option<FieldEdit>,
-    /// Last page scroll offset. While a floating color picker is open we keep
-    /// this offset fixed so a TextEdit focus inside the picker cannot scroll
-    /// the page behind it.
-    scroll_offset: egui::Vec2,
     /// A structural list edit, an enum payload change, or a factory reset
     /// landed. The page's snapshot is otherwise re-read only on a page change,
     /// so a new entry's rows (or the reset values) would not exist until the
@@ -312,9 +307,6 @@ pub struct PreferencesPanel {
     /// Page list selection; falls back to the first available page.
     selected: Option<PageKey>,
     page: PageState,
-    /// A color popup was open when the panel closed; close it on the next
-    /// draw so reopening Preferences does not resurrect it.
-    close_popups: bool,
 }
 
 impl PreferencesPanel {
@@ -324,7 +316,6 @@ impl PreferencesPanel {
             style: PreferencesPanelStyle::default(),
             selected: None,
             page: PageState::default(),
-            close_popups: false,
         }
     }
 }
@@ -364,17 +355,11 @@ impl Panel for PreferencesPanel {
             style,
             selected,
             page,
-            close_popups,
         } = self;
 
         // The dock builds a body Ui from the context style, so the app's
         // "chrome is not selectable" switch does not reach this panel.
         ui.style_mut().interaction.selectable_labels = false;
-        if *close_popups {
-            egui::Popup::close_all(ui.ctx());
-            close_all_color_pickers(ui.ctx());
-            *close_popups = false;
-        }
 
         // The dock paints a body colour behind every tab; a floating window uses
         // the panel's own. Painting it here keeps both cases identical.
@@ -422,17 +407,22 @@ impl Panel for PreferencesPanel {
                 let body_height = (available.y - style.footer_gap - style.footer_height).max(0.0);
                 let (body, _) =
                     ui.allocate_exact_size(vec2(available.x, body_height), Sense::hover());
-                let (footer_rect, _) =
-                    ui.allocate_exact_size(vec2(available.x, style.footer_height), Sense::hover());
-
-                // The footer is pinned: the page scrolls, the action never does.
-                let rule_y = footer_rect.top() - style.footer_gap * 0.5;
+                let (rule_y, _) =
+                    ui.allocate_exact_size(vec2(available.x, style.footer_gap), Sense::hover());
                 Divider::horizontal()
                     .color(style.divider.to_egui())
                     .paint_in(
                         ui,
-                        Rect::from_min_size(pos2(body.left(), rule_y), vec2(body.width(), 1.0)),
+                        Rect::from_min_size(
+                            rule_y.min + vec2(0.0, style.footer_gap * 0.5),
+                            vec2(
+                                rule_y.width(),
+                                style.devider_width.min(style.footer_gap * 0.5),
+                            ),
+                        ),
                     );
+                let (footer_rect, _) =
+                    ui.allocate_exact_size(vec2(available.x, style.footer_height), Sense::hover());
 
                 let nav_rect = Rect::from_min_size(
                     body.min,
@@ -455,22 +445,21 @@ impl Panel for PreferencesPanel {
                         ui,
                         Rect::from_min_size(
                             pos2(nav_rect.right() + style.column_gap * 0.5, body.top()),
-                            vec2(1.0, body.height()),
+                            vec2(
+                                style.devider_width.min(style.column_gap * 0.5),
+                                body.height(),
+                            ),
                         ),
                     );
 
-                ui.scope_builder(UiBuilder::new().max_rect(nav_rect.shrink(4.0)), |ui| {
-                    current = page_list(ui, style, &pages, current);
-                });
+                ui.scope_builder(
+                    UiBuilder::new().max_rect(nav_rect.shrink(style.nav_shrink)),
+                    |ui| {
+                        current = page_list(ui, style, &pages, current);
+                    },
+                );
 
-                let previous_page = page.key;
                 page.select(&pages, current, out);
-                if previous_page.is_some() && page.key != previous_page {
-                    // A color popup belongs to the page that opened it; leaving
-                    // the page must not leave it floating over the new one.
-                    egui::Popup::close_all(ui.ctx());
-                    close_all_color_pickers(ui.ctx());
-                }
 
                 ui.scope_builder(UiBuilder::new().max_rect(page_rect), |ui| {
                     page_body(
@@ -511,13 +500,18 @@ impl Panel for PreferencesPanel {
     /// saves it before the panel goes away.
     fn on_close(&mut self, _frame: &Frame, out: &mut UiOut) -> bool {
         self.page.commit(out);
-        self.close_popups = true;
         true
     }
 }
 
 /// The page list: one entry per panel with an editable skin, then the shared
 /// styles (toolbar, color picker), which are always present.
+///
+/// Rows sit on a fixed pitch: the rule between two entries is allocated like
+/// any other widget, so its height is part of the list instead of a hidden
+/// `item_spacing` gap that would shift every later entry down. The list also
+/// scrolls inside the nav column, so a growing page count cannot paint over
+/// the page body or the footer.
 fn page_list(
     ui: &mut Ui,
     style: &PreferencesPanelStyle,
@@ -525,31 +519,48 @@ fn page_list(
     selected: Option<PageKey>,
 ) -> Option<PageKey> {
     let mut chosen = selected;
-    ui.spacing_mut().item_spacing = vec2(0.0, 1.0);
-    let width = ui.available_width();
     let nav = style.nav_style();
 
-    for page in pages {
-        let is_current = Some(page.key) == selected;
-        let response = ui.add(
-            Button::new(page.title, &nav)
-                .width(width)
-                .selected(is_current)
-                .id(nav_id(page.key)),
-        );
-        if is_current {
-            // A 2 px accent stripe reads as "this page" even when the pointer
-            // is hovering another entry.
-            ui.painter().rect_filled(
-                Rect::from_min_size(response.rect.min, vec2(2.0, response.rect.height())),
-                CornerRadius::ZERO,
-                style.accent.to_egui(),
-            );
-        }
-        if response.clicked() {
-            chosen = Some(page.key);
-        }
-    }
+    egui::ScrollArea::vertical()
+        .id_salt("kairos-preferences-pages")
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+            let width = ui.available_width();
+
+            for (index, page) in pages.iter().enumerate() {
+                if index > 0 {
+                    ui.add(
+                        Divider::horizontal()
+                            .thickness(style.devider_width)
+                            .color(style.divider.to_egui()),
+                    );
+                }
+
+                let is_current = Some(page.key) == selected;
+                let response = ui.add(
+                    Button::new(page.title, &nav)
+                        .width(width)
+                        .selected(is_current)
+                        .id(nav_id(page.key)),
+                );
+                if is_current {
+                    // A 2 px accent stripe reads as "this page" even when the pointer
+                    // is hovering another entry.
+                    ui.painter().rect_filled(
+                        Rect::from_min_size(
+                            response.rect.min,
+                            vec2(style.accent_width.min(width), response.rect.height()),
+                        ),
+                        CornerRadius::ZERO,
+                        style.accent.to_egui(),
+                    );
+                }
+                if response.clicked() {
+                    chosen = Some(page.key);
+                }
+            }
+        });
 
     chosen
 }
@@ -565,9 +576,8 @@ fn page_body(
     page: &mut PageState,
     out: &mut UiOut,
 ) {
-    let picker_before = any_color_picker_open(ui.ctx());
     let page_key = page.key;
-    let mut scroll = egui::ScrollArea::vertical()
+    egui::ScrollArea::vertical()
         .id_salt("kairos-preferences-page")
         .auto_shrink([false, false])
         .show(ui, |ui| {
@@ -610,16 +620,6 @@ fn page_body(
             };
             writer.rows(ui);
         });
-    let picker_after = any_color_picker_open(ui.ctx());
-    if picker_before || picker_after {
-        // Keep the page under the floating picker still. A TextEdit focus in
-        // the picker emits scroll_to_rect, and this ScrollArea would otherwise
-        // consume it and slide the Preferences page while the user types.
-        scroll.state.offset = page.scroll_offset;
-        scroll.state.store(ui.ctx(), scroll.id);
-    } else {
-        page.scroll_offset = scroll.state.offset;
-    }
 }
 
 /// Draws one page's field tree.
@@ -1978,10 +1978,6 @@ fn footer(
                 )
                 .clicked()
             {
-                // A picker or menu opened from the old values would be stale
-                // over the reset page; close it before asking for the defaults.
-                egui::Popup::close_all(ui.ctx());
-                close_all_color_pickers(ui.ctx());
                 page.reset();
                 match key {
                     PageKey::Panel(panel) => {
@@ -2005,7 +2001,9 @@ mod tests {
     use egui::{Color32 as EguiColor32, Key, Modifiers};
     use kairos_color::Color;
     use kairos_editor_core::EditorState;
-    use kairos_editor_widgets::color_picker::color_swatch_id;
+    use kairos_editor_widgets::color_picker::{
+        color_hex_id, color_mode_id, color_swatch_id,
+    };
     use kairos_editor_widgets::field::enum_item_id;
     use kairos_editor_widgets::style::Style;
 
@@ -2055,6 +2053,29 @@ mod tests {
         ]
     }
 
+    /// One skin per built-in panel, enough page-list rows to overflow the nav
+    /// column at a docked Preferences height.
+    fn every_panel() -> Vec<PanelSkin> {
+        [
+            panels::ABOUT,
+            panels::CONSOLE,
+            panels::HIERARCHY,
+            panels::INSPECTOR,
+            panels::PREFERENCES,
+            panels::PROFILER,
+            panels::PROJECT,
+            panels::SCENE,
+        ]
+        .into_iter()
+        .map(|panel| PanelSkin {
+            panel,
+            title: format!("Panel {}", panel.0),
+            file: "Test.ron",
+            fields: Vec::new(),
+        })
+        .collect()
+    }
+
     fn color_fields() -> Vec<StyleField> {
         vec![
             StyleField::new(
@@ -2076,6 +2097,25 @@ mod tests {
             title: "Console".to_owned(),
             file: "ConsoleStyle.ron",
             fields: color_fields(),
+        }]
+    }
+
+    /// A long page whose first field is a color: the picker opens near the top
+    /// of the page while its own lower rows sit outside the page viewport.
+    fn long_color_skin() -> Vec<PanelSkin> {
+        let mut fields = color_fields();
+        for index in 0..40 {
+            fields.push(StyleField::new(
+                format!("token_{index}"),
+                format!("Token {index}"),
+                StyleValue::F32(index as f32),
+            ));
+        }
+        vec![PanelSkin {
+            panel: panels::CONSOLE,
+            title: "Console".to_owned(),
+            file: "ConsoleStyle.ron",
+            fields,
         }]
     }
 
@@ -2136,7 +2176,10 @@ mod tests {
     /// output.
     struct Harness {
         ctx: Context,
+        /// The panel's rect; the screen can be larger so a floating picker has
+        /// room outside the panel, like it does in the editor.
         size: egui::Vec2,
+        screen: egui::Vec2,
         state: EditorState,
         skins: Vec<PanelSkin>,
         /// The live shared skins this pass reads; tests may edit one to prove
@@ -2153,9 +2196,14 @@ mod tests {
         }
 
         fn with_size(skins: Vec<PanelSkin>, size: egui::Vec2) -> Self {
+            Self::with_screen(skins, size, size)
+        }
+
+        fn with_screen(skins: Vec<PanelSkin>, size: egui::Vec2, screen: egui::Vec2) -> Self {
             Self {
                 ctx: Context::default(),
                 size,
+                screen,
                 state: EditorState::new(),
                 skins,
                 shared: SharedStyles::default(),
@@ -2165,7 +2213,7 @@ mod tests {
 
         fn frame(&mut self, events: Vec<egui::Event>) -> (egui::FullOutput, Vec<Action>) {
             let input = egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, self.size)),
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, self.screen)),
                 events,
                 ..Default::default()
             };
@@ -2173,17 +2221,28 @@ mod tests {
             let host = NoHost;
             let Self {
                 ctx,
+                size,
+                screen,
                 state,
                 skins,
                 shared,
                 panel,
-                ..
             } = self;
             let frame = Frame::with_host(state, &host)
                 .with_skins(skins)
                 .with_shared(shared);
             let mut out = UiOut::new();
-            let output = ctx.run_ui(input, |ui| panel.ui(ui, &frame, &mut out));
+            let output = ctx.run_ui(input, |ui| {
+                if screen == size {
+                    panel.ui(ui, &frame, &mut out);
+                } else {
+                    let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, *size);
+                    let mut panel_ui =
+                        ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(*ui.layout()));
+                    panel_ui.set_clip_rect(rect);
+                    panel.ui(&mut panel_ui, &frame, &mut out);
+                }
+            });
             (output, out.take())
         }
 
@@ -2365,6 +2424,73 @@ mod tests {
         );
     }
 
+    /// A row owns exactly its own height: the rule between two entries is a
+    /// widget, so it cannot hide a per-row gap that shifts every later entry
+    /// down until one lands outside the nav column.
+    #[test]
+    fn the_page_list_rows_are_separated_by_an_allocated_rule() {
+        let mut harness = Harness::new(skins());
+        let (output, _) = harness.frame(Vec::new());
+
+        let console = harness.rect_of(nav_id(panels::CONSOLE));
+        let profiler = harness.rect_of(nav_id(panels::PROFILER));
+        let style = PreferencesPanelStyle::dark();
+
+        let rule = painted_rects(&output)
+            .into_iter()
+            .find(|painted| {
+                painted.fill == style.divider.to_egui()
+                    && approx(painted.rect.width(), console.width())
+                    && painted.rect.top() >= console.bottom() - 0.5
+                    && painted.rect.bottom() <= profiler.top() + 0.5
+                    && painted.rect.height() > 0.5
+            })
+            .expect("a rule is painted between the two entries");
+        assert!(
+            approx(profiler.top() - console.bottom(), rule.rect.height()),
+            "the whole gap between entries is the painted rule, not item_spacing: gap {}, rule {:?}: console {console:?}, profiler {profiler:?}",
+            profiler.top() - console.bottom(),
+            rule.rect
+        );
+        assert!(
+            approx(rule.rect.left(), console.left()) && approx(rule.rect.right(), console.right()),
+            "the rule spans the entry: rule {:?}, entry {console:?}",
+            rule.rect
+        );
+    }
+
+    /// A long list is clipped to the nav column and scrolls, instead of painting
+    /// entries over the page body and the footer.
+    #[test]
+    fn a_page_list_too_long_for_the_nav_column_scrolls_inside_it() {
+        let mut harness = Harness::with_size(every_panel(), vec2(460.0, 180.0));
+        let (output, _) = harness.frame(Vec::new());
+        let style = PreferencesPanelStyle::dark();
+        let nav = painted_rects(&output)
+            .into_iter()
+            .find(|painted| painted.fill == style.nav_background.to_egui())
+            .expect("the nav column is painted")
+            .rect;
+
+        // The shared styles sort after the panel pages, and Toolbar is the last
+        // shared id; it is the entry that would land under the footer without a
+        // scroll viewport.
+        let last = painted_clipped_texts(&output)
+            .into_iter()
+            .find(|run| run.text == "Toolbar")
+            .expect("the last shared page is laid out");
+        assert!(
+            last.rect.top() > nav.bottom(),
+            "the last entry is below the column: entry {:?}, nav {nav:?}",
+            last.rect
+        );
+        assert!(
+            last.clip.bottom() <= nav.bottom() + 0.01,
+            "the list is clipped at the column instead of spilling into the footer: clip {:?}, nav {nav:?}",
+            last.clip
+        );
+    }
+
     #[test]
     fn clicking_another_panel_shows_its_file() {
         let mut harness = Harness::new(skins());
@@ -2479,6 +2605,64 @@ mod tests {
         assert!(
             !harness.panel.page.dirty,
             "a reset discards the pending edit instead of committing it"
+        );
+    }
+
+    /// Reset is an ordinary outside click: the picker must close itself even
+    /// while one of its own menus is open, with no close call in the panel.
+    #[test]
+    fn reset_closes_a_picker_whose_mode_menu_is_open() {
+        let mut harness = Harness::with_size(color_skins(), vec2(700.0, 800.0));
+        harness.frame(Vec::new());
+        let field = field_id(panels::CONSOLE, "background");
+        harness.click(field);
+        harness.frame(Vec::new());
+        let mode = color_mode_id(field);
+        harness.click(mode);
+        harness.frame(Vec::new());
+
+        let (_, actions) = harness.click(reset_id(panels::CONSOLE));
+        assert_eq!(
+            actions,
+            vec![Action::Style(StyleAction::Reset {
+                panel: panels::CONSOLE
+            })]
+        );
+    }
+
+    /// The picker's own text edits must not scroll the page behind it. The
+    /// picker owns its scroll-to-cursor requests, so the page ScrollArea never
+    /// sees them; the panel does not pin the offset.
+    #[test]
+    fn typing_in_the_picker_does_not_scroll_the_page() {
+        let mut harness =
+            Harness::with_screen(long_color_skin(), vec2(537.0, 316.0), vec2(900.0, 900.0));
+        harness.frame(Vec::new());
+
+        let field = field_id(panels::CONSOLE, "background");
+        harness.click(field);
+        harness.frame(Vec::new());
+        let hex = color_hex_id(field);
+        harness.click(hex);
+        // The click seeds the edit; one more pass lets the TextEdit take focus.
+        harness.frame(Vec::new());
+        assert!(
+            harness.ctx.memory(|memory| memory.has_focus(hex)),
+            "hex not focused"
+        );
+
+        let probe = field_id(panels::CONSOLE, "token_0");
+        let before = harness.rect_of(probe);
+        let (_, actions) = harness.frame(vec![egui::Event::Text("#00FF00".to_owned())]);
+        assert!(!actions.is_empty(), "typing did not reach the page");
+        // A leaked scroll target animates in over the following frames.
+        for _ in 0..20 {
+            harness.frame(Vec::new());
+        }
+        let after = harness.rect_of(probe);
+        assert_eq!(
+            before, after,
+            "typing in the picker moved the page under it"
         );
     }
 
@@ -2692,6 +2876,27 @@ mod tests {
             Some("background"),
             "working inside the popup keeps the row selected"
         );
+    }
+
+    /// The picker ignores the outside press while its own menu is open, so the
+    /// tab click can move the page while the picker is still in temp data. The
+    /// picker's own lifecycle must drop it, so it cannot pin the new page or
+    /// reopen on the page it left.
+    #[test]
+    fn switching_pages_closes_a_picker_whose_mode_menu_is_open() {
+        let mut harness = Harness::with_size(color_skins(), vec2(700.0, 800.0));
+        harness.frame(Vec::new());
+
+        let field = field_id(panels::CONSOLE, "background");
+        harness.click(field);
+        harness.frame(Vec::new());
+        let mode = color_mode_id(field);
+        assert!(harness.ctx.read_response(mode).is_some());
+        harness.click(mode);
+        harness.frame(Vec::new());
+
+        harness.click(nav_id(FONTS));
+        assert_eq!(harness.panel.selected, Some(PageKey::Shared(FONTS)));
     }
 
     #[test]

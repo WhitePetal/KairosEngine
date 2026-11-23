@@ -16,23 +16,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use egui::{Context, FontData, FontDefinitions, FontFamily};
-use kairos_color::Color;
 use serde::{Deserialize, Serialize};
-
-/// The runtime payload of [FontPriority::Push].
-///
-/// The Preferences page edits the component's mirror type and projects it
-/// onto this value at install time; this is the install structure, not the
-/// serde skin.
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TestEnumStruct {
-    pub fvalue: f32,
-    pub ivalue: i32,
-    pub svalue: String,
-    pub cvalue: Color,
-}
-
-impl Eq for TestEnumStruct {}
 
 /// Where a font sits in the fallback list, as the installer consumes it.
 ///
@@ -46,7 +30,7 @@ pub enum FontPriority {
     #[default]
     First,
     /// Appends to its family, so it is a fallback for glyphs the front lacks.
-    Push(TestEnumStruct),
+    Push,
 }
 
 /// One font file to load and register.
@@ -88,7 +72,7 @@ impl FontsConfig {
                 let entries = definitions.families.entry(family.clone()).or_default();
                 match file.priority {
                     FontPriority::First => entries.insert(0, file.name.clone()),
-                    FontPriority::Push(_) => entries.push(file.name.clone()),
+                    FontPriority::Push => entries.push(file.name.clone()),
                 }
             }
         }
@@ -129,7 +113,7 @@ mod tests {
             proportional: vec![
                 workspace_font("Inter", "Inter-Regular.otf"),
                 FontFile {
-                    priority: FontPriority::Push(TestEnumStruct::default()),
+                    priority: FontPriority::Push,
                     ..workspace_font("Inter Medium", "Inter-Medium.otf")
                 },
             ],

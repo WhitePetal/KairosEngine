@@ -26,8 +26,7 @@
 use std::path::PathBuf;
 
 use egui::Context;
-use kairos_color::Color;
-use kairos_editor_widgets::fonts::{FontFile, FontPriority, FontsConfig, TestEnumStruct};
+use kairos_editor_widgets::fonts::{FontFile, FontPriority, FontsConfig};
 use kairos_editor_widgets::style::Style;
 use serde::{Deserialize, Serialize};
 
@@ -84,21 +83,7 @@ pub enum EditorFontPriority {
     ///
     /// The tuple payload is transparent: its struct fields are this enum's own
     /// payload rows, with no named header between the menu row and them.
-    Push(EditorTestEnumStruct),
-}
-
-/// The style-token mirror of the widget crate's TestEnumStruct.
-///
-/// The widget's runtime type is not a style token (it lives below this crate),
-/// so the page edits this struct and [EditorFontPriority::priority] converts.
-/// Every field is an ordinary token kind, which is what makes a struct payload
-/// display under the variant row.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, StyleFields)]
-pub struct EditorTestEnumStruct {
-    pub fvalue: f32,
-    pub ivalue: i32,
-    pub svalue: String,
-    pub cvalue: Color,
+    Push,
 }
 
 impl EditorFontPriority {
@@ -106,12 +91,7 @@ impl EditorFontPriority {
     pub fn priority(&self) -> FontPriority {
         match self {
             Self::First => FontPriority::First,
-            Self::Push(payload) => FontPriority::Push(TestEnumStruct {
-                fvalue: payload.fvalue,
-                ivalue: payload.ivalue,
-                svalue: payload.svalue.clone(),
-                cvalue: payload.cvalue,
-            }),
+            Self::Push => FontPriority::Push,
         }
     }
 }
@@ -140,7 +120,7 @@ impl Style for EditorFonts {
                 FontEntry {
                     name: "Inter Medium".to_owned(),
                     path: "Preferences/Fonts/Inter-Medium.otf".to_owned(),
-                    priority: EditorFontPriority::Push(EditorTestEnumStruct::default()),
+                    priority: EditorFontPriority::Push,
                 },
             ],
             monospace: Vec::new(),
@@ -250,7 +230,7 @@ mod tests {
         let mut fonts = EditorFonts::dark();
         assert_eq!(
             fonts.proportional[1].priority,
-            EditorFontPriority::Push(EditorTestEnumStruct::default())
+            EditorFontPriority::Push
         );
 
         assert!(fonts.set_style_field(
@@ -285,12 +265,9 @@ mod tests {
             &StyleValue::Text("payload".to_owned()),
         ));
         assert!(fonts.set_style_field("proportional.1.priority.ivalue", &StyleValue::I32(-3),));
-        let EditorFontPriority::Push(payload) = &fonts.proportional[1].priority else {
+        let EditorFontPriority::Push = &fonts.proportional[1].priority else {
             panic!("entry 1 is Push");
         };
-        assert_eq!(payload.fvalue, 2.5);
-        assert_eq!(payload.ivalue, -3, "the payload integer is signed");
-        assert_eq!(payload.svalue, "payload");
         assert!(
             !fonts.set_style_field("proportional.0.priority.fvalue", &StyleValue::F32(2.5),),
             "First has no payload: the path does not exist"
@@ -338,7 +315,7 @@ mod tests {
         assert_eq!(config.proportional[0].priority, FontPriority::First);
         assert_eq!(
             config.proportional[1].priority,
-            FontPriority::Push(TestEnumStruct::default())
+            FontPriority::Push
         );
         assert_eq!(
             config.proportional[0].path,

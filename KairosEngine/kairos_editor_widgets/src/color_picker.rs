@@ -410,6 +410,16 @@ struct OpenPicker {
     pos: Pos2,
     anchor: Rect,
     rect: Rect,
+    /// The window plus its floating menus and editors, in screen space. An
+    /// outside click is tested against this, so a menu click does not count
+    /// as a click outside the picker.
+    hit_rect: Rect,
+    /// The pass that opened or last drew the window. The lifecycle plugin
+    /// below removes a picker that a later pass did not draw again, the same
+    /// rule egui uses for a popup that is no longer shown.
+    last_shown_pass: u64,
+    /// The viewport the window is drawn in; pass numbers are per-viewport.
+    viewport: egui::ViewportId,
 }
 
 fn open_picker_id() -> Id {
@@ -424,19 +434,27 @@ pub fn is_color_picker_open(ctx: &egui::Context, field: Id) -> bool {
     })
 }
 
-/// Whether any color picker is open.
-pub fn any_color_picker_open(ctx: &egui::Context) -> bool {
-    ctx.data(|data| data.get_temp::<OpenPicker>(open_picker_id()).is_some())
-}
-
 /// Close the floating picker, if one is open.
 pub fn close_color_picker(ctx: &egui::Context) {
-    ctx.data_mut(|data| data.remove::<OpenPicker>(open_picker_id()));
+    let field = ctx.data_mut(|data| {
+        let field = data
+            .get_temp::<OpenPicker>(open_picker_id())
+            .map(|open| open.field);
+        if field.is_some() {
+            data.remove::<OpenPicker>(open_picker_id());
+        }
+        field
+    });
+    if let Some(field) = field {
+        end_pick(ctx, field);
+    }
 }
 
-/// Alias used by panels that close every transient popup when leaving a page.
-pub fn close_all_color_pickers(ctx: &egui::Context) {
-    close_color_picker(ctx);
+/// Stop a pick whose field just lost its window; the host must stop sampling.
+fn end_pick(ctx: &egui::Context, field: Id) {
+    if eyedropper::active(ctx, field) {
+        eyedropper::clear(ctx);
+    }
 }
 
 /// Host-driven screen picking for the eyedropper ("取色器").
@@ -743,6 +761,8 @@ fn picker_position(ctx: &egui::Context, anchor: Rect, style: &ColorPickerStyle) 
 
 fn open_picker(ctx: &egui::Context, field: Id, anchor: Rect, style: &ColorPickerStyle) {
     let pos = picker_position(ctx, anchor, style);
+    let last_shown_pass = ctx.cumulative_pass_nr();
+    let viewport = ctx.viewport_id();
     ctx.data_mut(|data| {
         data.insert_temp(
             open_picker_id(),
@@ -751,10 +771,51 @@ fn open_picker(ctx: &egui::Context, field: Id, anchor: Rect, style: &ColorPicker
                 pos,
                 anchor,
                 rect: Rect::NOTHING,
+                hit_rect: Rect::NOTHING,
+                last_shown_pass,
+                viewport,
             },
         );
     });
+    // The picker is drawn by its field, not by an Area of its own, so it needs
+    // the end-of-pass cleanup that egui gives a popup. Registering is
+    // idempotent; the plugin is already in place after the first open.
+    ctx.add_plugin(ColorPickerLifecycle);
     ctx.request_repaint();
+}
+
+/// Drops the floating picker when its owning field was not drawn for a pass.
+///
+/// The picker is a floating window drawn from the field's widget, not an Area
+/// egui owns, so it does not get the popup lifecycle for free. This plugin
+/// supplies the missing half: show_color_picker stamps the pass it drew on, and
+/// a picker whose stamp is not the current pass is stale (the page changed,
+/// the foldout closed, or the panel closed).
+struct ColorPickerLifecycle;
+
+impl egui::plugin::Plugin for ColorPickerLifecycle {
+    fn debug_name(&self) -> &'static str {
+        "kairos.color_picker.lifecycle"
+    }
+
+    fn on_end_pass(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx();
+        let pass = ctx.cumulative_pass_nr();
+        let viewport = ctx.viewport_id();
+        let stale_field = ctx.data_mut(|data| {
+            let open = data.get_temp::<OpenPicker>(open_picker_id())?;
+            if open.viewport != viewport || open.last_shown_pass == pass {
+                return None;
+            }
+            data.remove::<OpenPicker>(open_picker_id());
+            Some(open.field)
+        });
+        // A pick started from the picker must not outlive it: with no window to
+        // cancel it, the host would keep sampling the desktop for the timeout.
+        if let Some(field) = stale_field {
+            end_pick(ctx, field);
+        }
+    }
 }
 
 /// The inline color field: a swatch plus the eyedropper slot.
@@ -1332,10 +1393,6 @@ impl SwatchStore {
         }
     }
 
-    pub fn test_mut(&mut self) {
-
-    }
-
     /// Borrow the book, loading it on the first call.
     ///
     /// The lock is held for the duration of the closure: do not call
@@ -1483,6 +1540,9 @@ struct PickerState {
     show_swatches: bool,
     group_menu_open: bool,
     group_edit: Option<GroupEdit>,
+    /// The floating chrome drawn this pass, accumulated for the click-outside
+    /// test. Reset at the start of each picker pass.
+    chrome_rect: Rect,
 }
 
 impl Default for PickerState {
@@ -1502,6 +1562,7 @@ impl Default for PickerState {
             show_swatches: true,
             group_menu_open: false,
             group_edit: None,
+            chrome_rect: Rect::NOTHING,
         }
     }
 }
@@ -1817,12 +1878,23 @@ fn hsv_color(h: f32) -> Color32 {
 }
 
 /// What one picker pass produced.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 struct PickerResponse {
     changed: bool,
     close: bool,
-    /// A small editor (new/rename group) is open outside the window rect.
-    keep_open: bool,
+    /// The mode menu and the group menu/editor, in screen space. They float
+    /// outside the window but still count as inside the picker for clicks.
+    chrome: Rect,
+}
+
+impl Default for PickerResponse {
+    fn default() -> Self {
+        Self {
+            changed: false,
+            close: false,
+            chrome: Rect::NOTHING,
+        }
+    }
 }
 
 fn show_color_picker(
@@ -1876,7 +1948,20 @@ fn show_color_picker(
             .show(ui, |ui| {
                 ui.set_width((style.window_width - 2.0 * style.padding).max(80.0));
                 ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-                color_picker(ui, field, value, style, swatches, was_open)
+                // A TextEdit in the picker asks the nearest ScrollArea to keep
+                // its cursor visible. The page behind the picker also has one,
+                // so without a nearer owner that request slides the page. This
+                // scroll area owns those requests; it neither scrolls by hand
+                // nor lets them reach the page.
+                egui::ScrollArea::vertical()
+                    .id_salt(("kairos.color_picker.body", field))
+                    .scroll_source(egui::scroll_area::ScrollSource::NONE)
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        color_picker(ui, field, value, style, swatches, was_open)
+                    })
+                    .inner
             })
             .inner
     }) else {
@@ -1886,7 +1971,10 @@ fn show_color_picker(
     let picker = window_response.inner.unwrap_or_default();
     let changed = picker.changed;
     open.rect = window_response.response.rect;
+    open.hit_rect = open.rect.union(picker.chrome);
     open.pos = window_response.response.rect.min + drag_delta;
+    open.last_shown_pass = ui.ctx().cumulative_pass_nr();
+    open.viewport = ui.ctx().viewport_id();
     let screen = ui.ctx().content_rect();
     open.pos.x = open.pos.x.clamp(
         screen.left() + 2.0,
@@ -1896,15 +1984,13 @@ fn show_color_picker(
 
     let mut close = header_close || picker.close;
     if !close
-        && !picker.keep_open
         // A pick hands the pointer to the host: the host's click confirms it, so
         // it must not also dismiss the window.
         && !eyedropper::any_active(ui.ctx())
         && ui.input(|input| input.pointer.any_pressed())
         && let Some(pos) = ui.input(|input| input.pointer.interact_pos())
-        && !open.rect.contains(pos)
+        && !open.hit_rect.contains(pos)
         && !open.anchor.contains(pos)
-        && !egui::Popup::is_any_open(ui.ctx())
     {
         close = true;
     }
@@ -1957,15 +2043,16 @@ fn color_picker(
     let menu_at_start = egui::Popup::is_any_open(ui.ctx());
     let group_menu_at_start = state.group_menu_open;
     let group_editing_at_start = state.group_edit.is_some();
+    state.chrome_rect = Rect::NOTHING;
+    let changed = picker_ui_body(ui, field, value, style, &mut state, swatches);
     let mut response = PickerResponse {
-        changed: picker_ui_body(ui, field, value, style, &mut state, swatches),
+        changed,
         close: false,
-        keep_open: false,
+        chrome: state.chrome_rect,
     };
     let menu_open = menu_at_start || egui::Popup::is_any_open(ui.ctx());
     let group_editing = group_editing_at_start || state.group_edit.is_some();
     let group_menu_open = group_menu_at_start || state.group_menu_open;
-    response.keep_open = group_editing || menu_open || group_menu_open;
 
     if ui.input(|input| input.key_pressed(Key::Escape))
         && !editing_at_start
@@ -1987,6 +2074,9 @@ fn color_picker(
             response.close = true;
         }
     } else if ui.input(|input| input.key_pressed(Key::Enter))
+        // Enter belongs to an open value editor: it commits the edit, and
+        // closing the picker on the same key would lose the editor's frame.
+        && !editing_at_start
         && !group_editing
         && !menu_open
         && !group_menu_open
@@ -2522,7 +2612,7 @@ fn mode_row(
                     color: Color32::from_black_alpha(128),
                 }),
         );
-    popup.show(|ui| {
+    let shown = popup.show(|ui| {
         ui.set_width(style.mode_width - 2.0);
         ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
         for (index, mode) in ChannelMode::options(value.is_hdr()).iter().enumerate() {
@@ -2568,6 +2658,9 @@ fn mode_row(
             }
         }
     });
+    if let Some(shown) = shown {
+        state.chrome_rect = state.chrome_rect.union(shown.response.rect);
+    }
     changed
 }
 
@@ -3369,6 +3462,7 @@ fn swatches_row(
                     });
             });
         let menu_rect = area.response.rect;
+        state.chrome_rect = state.chrome_rect.union(menu_rect);
         if ui.input(|input| input.pointer.any_pressed())
             && let Some(pos) = ui.input(|input| input.pointer.interact_pos())
             && !menu_rect.contains(pos)
@@ -3391,7 +3485,7 @@ fn swatches_row(
             screen.left() + 4.0,
             (screen.right() - EDIT_WIDTH - 4.0).max(screen.left() + 4.0),
         );
-        egui::Area::new(field.with("group-edit"))
+        let editor = egui::Area::new(field.with("group-edit"))
             .order(egui::Order::Foreground)
             .fixed_pos(pos2(x, group_button_rect.bottom() + 1.0))
             .constrain_to(screen)
@@ -3473,6 +3567,7 @@ fn swatches_row(
                         });
                     });
             });
+        state.chrome_rect = state.chrome_rect.union(editor.response.rect);
         if ui.input(|input| input.key_pressed(Key::Enter)) {
             confirmed = true;
         }
@@ -3788,6 +3883,9 @@ mod tests {
         swatches: ColorSwatches,
         /// Use the context-wide store instead of the explicit `swatches` book.
         global_swatches: bool,
+        /// Draw the owning swatch; false simulates a page switch or a closed
+        /// panel, where the picker's field is no longer in the UI.
+        show_field: bool,
         /// Whether the last frame reported the eyedropper's end of gesture,
         /// as a panel that saves on release would read it.
         committed: bool,
@@ -3802,6 +3900,7 @@ mod tests {
                 field: Id::new("color-field"),
                 swatches: ColorSwatches::default(),
                 global_swatches: false,
+                show_field: true,
                 committed: false,
             }
         }
@@ -3822,19 +3921,22 @@ mod tests {
                 field,
                 swatches,
                 global_swatches,
+                show_field,
                 committed,
             } = self;
             *committed = false;
             ctx.run_ui(input, |ui| {
                 ui.add_space(20.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(20.0);
-                    let mut field = ColorField::new(*field, value, style).height(18.0);
-                    if !*global_swatches {
-                        field = field.swatches(swatches);
-                    }
-                    ui.add_sized(vec2(240.0, 18.0), field);
-                });
+                if *show_field {
+                    ui.horizontal(|ui| {
+                        ui.add_space(20.0);
+                        let mut field = ColorField::new(*field, value, style).height(18.0);
+                        if !*global_swatches {
+                            field = field.swatches(swatches);
+                        }
+                        ui.add_sized(vec2(240.0, 18.0), field);
+                    });
+                }
                 *committed = eyedropper::take_committed(ui.ctx());
             })
         }
@@ -4131,6 +4233,10 @@ mod tests {
 
         let red = harness.value.color.to_srgb8()[0];
         assert!((127..=128).contains(&red), "{red}: {:?}", harness.value);
+        assert!(
+            is_color_picker_open(&harness.ctx, harness.field),
+            "Enter commits the number edit; it must not close the picker"
+        );
     }
 
     #[test]
@@ -4232,6 +4338,10 @@ mod tests {
 
         let [r, g, b, _] = harness.value.color.to_srgb8();
         assert_eq!((r, g, b), (0, 255, 0));
+        assert!(
+            is_color_picker_open(&harness.ctx, harness.field),
+            "Enter commits the hex edit; it must not close the picker"
+        );
     }
 
     #[test]
@@ -4370,6 +4480,70 @@ mod tests {
 
         harness.click_at(pos2(500.0, 740.0));
         assert!(!is_color_picker_open(&harness.ctx, harness.field));
+    }
+
+    /// A click outside the picker is outside its mode menu too. The menu must
+    /// not turn every outside press into a reason to keep the window open.
+    #[test]
+    fn clicking_outside_while_the_mode_menu_is_open_closes_the_picker() {
+        let mut harness = Harness::new(ColorProperty::ldr(Color::from_srgb8([20, 140, 220, 255])));
+        harness.open();
+        harness.frame(Vec::new());
+
+        harness.click(color_mode_id(harness.field));
+        harness.frame(Vec::new());
+        assert!(egui::Popup::is_any_open(&harness.ctx));
+
+        harness.click_at(pos2(500.0, 740.0));
+        assert!(!is_color_picker_open(&harness.ctx, harness.field));
+        assert!(!egui::Popup::is_any_open(&harness.ctx));
+    }
+
+    /// The picker is drawn from the field's widget, so it gets no automatic
+    /// cleanup from egui. A pass that does not draw the field (a page switch,
+    /// a folded group, a closed panel) must drop it, or it resurrects later.
+    #[test]
+    fn a_picker_closes_when_its_field_is_not_drawn() {
+        let mut harness = Harness::new(ColorProperty::ldr(Color::from_srgb8([20, 140, 220, 255])));
+        harness.open();
+        harness.frame(Vec::new());
+        assert!(is_color_picker_open(&harness.ctx, harness.field));
+
+        harness.show_field = false;
+        harness.frame(Vec::new());
+        assert!(
+            !is_color_picker_open(&harness.ctx, harness.field),
+            "a picker whose field left the UI is stale"
+        );
+
+        harness.show_field = true;
+        harness.frame(Vec::new());
+        assert!(
+            !is_color_picker_open(&harness.ctx, harness.field),
+            "returning the field must not resurrect the old picker"
+        );
+    }
+
+    #[test]
+    fn a_picker_that_vanishes_ends_its_eyedropper_pick() {
+        let mut harness = Harness::new(ColorProperty::ldr(Color::from_srgb8([20, 140, 220, 255])));
+        eyedropper::set_supported(&harness.ctx, true);
+        harness.open();
+        harness.frame(Vec::new());
+
+        harness.click(color_picker_eye_id(harness.field));
+        assert!(
+            eyedropper::any_active(&harness.ctx),
+            "the picker's eye starts a pick"
+        );
+
+        harness.show_field = false;
+        harness.frame(Vec::new());
+        assert!(!is_color_picker_open(&harness.ctx, harness.field));
+        assert!(
+            !eyedropper::any_active(&harness.ctx),
+            "a pick whose picker vanished must not keep the host sampling"
+        );
     }
 
     #[test]
