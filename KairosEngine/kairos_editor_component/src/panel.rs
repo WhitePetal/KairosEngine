@@ -148,6 +148,16 @@ pub trait Panel: PanelRegister {
         false
     }
 
+    /// Replace this panel's live skin with its code defaults for the active
+    /// theme. Returns whether the panel has an editable skin.
+    ///
+    /// The app follows a successful reset with [`Panel::save_skin`], so the
+    /// factory values reach the file in the same click. The default is "this
+    /// panel has no skin file".
+    fn reset_skin(&mut self, _ctx: &Context) -> bool {
+        false
+    }
+
     /// Persist this panel's live style to its skin file.
     ///
     /// Called when the user finishes an edit (pointer release, page change,

@@ -141,6 +141,15 @@ impl PanelHost {
             .is_some_and(|instance| instance.edit_skin_list(path, edit))
     }
 
+    /// Replace one live panel's skin with its code defaults. `false` when the
+    /// panel is not open or has no editable skin.
+    pub fn reset_skin(&mut self, panel: PanelId, ctx: &egui::Context) -> bool {
+        self.instances
+            .values_mut()
+            .find(|instance| instance.kind() == panel)
+            .is_some_and(|instance| instance.reset_skin(ctx))
+    }
+
     /// Persist one live panel's skin to its RON file.
     pub fn save_skin(&self, panel: PanelId, ctx: &egui::Context) -> Result<(), String> {
         let Some(instance) = self

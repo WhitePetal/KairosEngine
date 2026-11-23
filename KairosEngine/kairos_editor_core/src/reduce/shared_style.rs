@@ -24,6 +24,9 @@ pub(super) fn reduce(_state: &mut EditorState, action: SharedStyleAction) -> Vec
                 edit,
             })]
         }
+        SharedStyleAction::Reset { style } => {
+            vec![Effect::SharedStyle(SharedStyleEffect::Reset { style })]
+        }
         SharedStyleAction::Commit { style } => {
             vec![Effect::SharedStyle(SharedStyleEffect::Persist { style })]
         }

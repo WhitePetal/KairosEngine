@@ -83,9 +83,9 @@
 
 ### 2.1 落点：一个 Panel
 
-- `#[crate::panel(PREFERENCES = "preferences", skin = PreferencesPanelStyle)]` 声明在 `panels/preferences.rs` 的 `impl Panel` 上：id 常量、`PanelRegister`、工厂、`inventory` 提交和三个 skin 方法都由这一行生成（`panels::catalog()` 收集）。页面标题取自 `Panel::title`，不再手写。
+- `#[crate::panel(PREFERENCES = "preferences", skin = PreferencesPanelStyle)]` 声明在 `panels/preferences.rs` 的 `impl Panel` 上：id 常量、`PanelRegister`、工厂、`inventory` 提交和五个 skin 方法（`skin` / `set_skin_field` / `edit_skin_list` / `reset_skin` / `save_skin`）都由这一行生成（`panels::catalog()` 收集）。页面标题取自 `Panel::title`，不再手写。
 - **打开**：工具栏 “Edit → Preferences” → `LayoutAction::ShowPanel { PREFERENCES }` → dock 无 tab 时浮成窗口（与 About 同一条路）。
-- **关闭**：body 的 Close → `LayoutAction::ClosePanel`；tab × 走 `Panel::on_close`（先提交未保存编辑，再发同一个 action）。
+- **关闭**：dock 的 tab × / 浮动窗关闭走 `Panel::on_close`（先提交未保存编辑，再发 `LayoutAction::ClosePanel`）；页脚不再重复一个 Close 按钮。
 
 ### 2.2 字段从哪来：`#[derive(StyleFields)]`
 
@@ -126,11 +126,12 @@ StyleFields::set_style_field(path, value)
 拖动一帧:  SetField  → Effect::Style(SetField)     只改内存
 抬起指针:  Commit    → Effect::Style(Persist)      Panel::save_skin → Preferences/Styles/*.ron
 切页/关窗: Commit（由面板发）                      同上
+页脚 Reset: Reset    → Effect::…(Reset)             代码默认值 + 立即写盘
 ```
 
 - 面板的规则：**有未保存编辑 + 指针抬起** → 发 `Commit`；切页前、关闭前各提交一次（`Panel::on_close` 兜底键盘输入）。
 - `Panel::save_skin` 只写**当前主题那一半**：先读文件的另一半，替换本半再写回，所以编辑 dark 不会丢掉手改过的 light；文件不存在就用代码默认值补一份。
-- shared 样式（Toolbar / Color Picker）走同一套手势边界，但 effect 是 `Effect::SharedStyle`：`SetField` 写 `SharedStyles` 的 live 值，`Persist` 写 `<Style>.ron`，`Reload` 重读文件并 bump revision。它们没有面板实例，所以 action 的目标是 `SharedStyleId` 而不是 `PanelId`。
+- shared 样式（Toolbar / Color Picker）走同一套手势边界，但 effect 是 `Effect::SharedStyle`：`SetField` 写 `SharedStyles` 的 live 值，`Reset` 换回代码默认值并立即写 `<Style>.ron`（同样 bump revision），`Persist` 写 `<Style>.ron`，`Reload` 重读文件并 bump revision。它们没有面板实例，所以 action 的目标是 `SharedStyleId` 而不是 `PanelId`。
 - `SetField` 不写 console 日志（一次拖动 60 行），`Commit` 写；`describe` 仍为每个 action 提供人读文本。
 
 ### 2.5 共享样式页：Toolbar / Color Picker / Field
@@ -141,7 +142,7 @@ StyleFields::set_style_field(path, value)
 - `ToolBarStyle` 与 `ColorPickerSkin` 在 `#[derive(StyleFields)]` 上加 `#[SharedStyle(TOOLBAR = "toolbar", title = "Toolbar")]`：宏生成 id 常量、sealed erasure impl 和 `inventory` 提交；类型只写 `impl SharedStyle for <Style> { fn preload(...) }`，`as_any` 不再手写。文件仍是 `Preferences/Styles/ToolBar.ron` / `ColorPicker.ron`（dark + light）。取色器的 42 个运行期 token 先落成 serde 友好的 `ColorPickerSkin`，再由 `tokens()` 投影到 widget 层。值框同理：`EditorFieldStyle`（`shared_style/field.rs`，文件 `Preferences/Styles/EditorField.ron`，标题 Field）持有文字/名称/选中名称/底色/悬停/描边三态/边框宽/圆角/内边距/高度/checkbox 边长，`tokens()` 投影成 widget 的 `FieldStyle`；任何画字段的面板（Preferences，将来的对象 Inspector）都读同一份。列表 chrome 同样独立成 `ListStyle`（`shared_style/list.rs`，文件 `Preferences/Styles/List.ron`，标题 List），页面从 `Frame::list_style()` 取；值框仍读 `EditorFieldStyle`。
 - app 在 `EditorApp::new` 的 `set_theme(Dark)` 之后 `SharedStyles::load(&StyleCatalog::builtin(), theme)` 一次；`Frame::shared` 把 live 值下发给所有面板，工具栏用 `frame.toolbar_style()`，取色器用 `frame.color_picker_style()`，字段用 `frame.field_style()`。
 - Preferences 在面板页之后固定追加 shared 页（Toolbar、Color Picker）；字段表来自 `SharedStyles::skins()`，不依赖任何面板实例，所以没有打开面板时也能编辑。
-- 写路径是独立的 `Action::SharedStyle(SharedStyleAction::{SetField, EditList, Commit, Reload})` → `Effect::SharedStyle` → `SharedStyles::{set_field, edit_list, save, reload}`。`Commit` 仍然一次手势写一次文件；`Reload` 是显式刷新（页脚 Reload 按钮），reload 会 bump `SharedStyles::revision`，Preferences 下一帧重新取字段表。
+- 写路径是独立的 `Action::SharedStyle(SharedStyleAction::{SetField, EditList, Reset, Commit, Reload})` → `Effect::SharedStyle` → `SharedStyles::{set_field, edit_list, reset, save, reload}`。`Commit` 仍然一次手势写一次文件；`Reset` 是页脚按钮，换回当前主题的代码默认值并立即 `save`；`Reload` 仍保留给外部改文件的刷新路径，reload 会 bump `SharedStyles::revision`，Preferences 下一帧重新取字段表。
 - 取色器的 `window_controls`（红黄绿）不进 `ColorPicker.ron`：继续用共享的 `WindowControlsStyle::default()`，和 dock 浮动窗一致，直到 window-controls 自己有 skin。
 
 > **2026-11-20 补充**：字体页 `Fonts` 进 shared 页列表（排在 Color Picker 之后、Toolbar 之前，按 id 排序）。
@@ -252,7 +253,7 @@ StyleFields::set_style_field(path, value)
 │                  │ ▼ Textures                             │
 │                  │   Tint      [Preferences/…/tint.png]   │
 ├──────────────────┴────────────────────────────────────────┤
-│                                                  [Close]  │
+│                                                  [Reset]  │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -269,11 +270,11 @@ StyleFields::set_style_field(path, value)
 - **取色器（自有 widget）**：不是 dock panel，而是字段拥有的浮动工具窗；固定宽 260、高度随内容、标题栏可拖、同时只开一个；标题栏 28 px 与 dock 浮动窗口一致，标题随值类型为 `Color` / `HDR Color` 并在标题栏居中；标题栏左侧是 dock 同款三个 macOS traffic-light 圆点，由共享的 `kairos_editor_widgets::window_controls` widget 绘制（dock 浮动窗也用它）：关闭红色可用，收起/最大化在本窗没有动作，按 Unity 保留为灰色且不接收点击，悬停可用按钮才显示字形。这三个按钮是 egui 自绘 chrome，不是 NSWindow/Win32 原生 caption button；dock 的 `WindowStyle` 本来就刻意全平台统一 macOS 外观，所以切到 Windows 仍是红黄绿，要变成 Windows 右上角原生按钮需要真实 OS 窗口或单独的 Windows skin；232 px 色相环（26 px 环宽，程序生成抗锯齿纹理）+ 约 116 px SV 方块（128² HSV 纹理，消除四顶点网格的 45° 斜线）、通道滑杆与可键入数值、Hexadecimal、HDR 的 Intensity 与 `-2/-1/0/+1/+2` 预设、Swatches 调色板。LDR 模式为 `RGB 0-255` / `RGB 0-1.0` / `HSV`，HDR 为 `RGB 0-255` / `RGB 0-Inf` / `HSV`；HSV 的标签是 H/S/V，S/V/Alpha 用 0–100。LDR 不显示 Intensity，HDR 不显示 Hexadecimal。通道模式按钮与 Swatches 组按钮共用 Unity popup field 样式：`field` 灰底 + 1 px 边框 + 左对齐文字 + 右端 caret，不再是透明文字式 `Button`；通道滑杆 14 px 高、184 px 宽、thumb 7×18，点击某行后 label 用柔和的 `label_active` 蓝、value 框变 accent 描边，数值左对齐并保留 5 px 内边距。编辑数值时选中文字是接近 Unity 的实心蓝蒙版（160/255），并强制用 `selection.stroke` 保留白色数字，不能因为 `Stroke::NONE` 把数字一起隐掉；蒙版重但 value 始终可读。拖动实时 `SetField`，指针抬起/Enter/Esc 时 `Commit`；Esc 先还原到打开时的颜色再关闭，点外部或标题栏左侧关闭圆点关闭。
 - **HDR 曝光基准**：Intensity 使用 Unity 的 191/255 基准（`ColorProperty::HDR_BASE_MAX`），最大通道 4.0 打开时约为 2.42 stops，而不是 2.0；`RGB 0-Inf` 直接编辑绝对 linear 通道。
 - **吸管**：swatch 右侧与 picker 左上使用从本机 Unity/Tuanjie 包提取的 `EyeDropper.Large` 图标（运行时资源 `Preferences/Textures/color_picker/eyedropper.png`，按皮肤 tint）。点吸管进入拾取态：桌面任意位置（包括编辑器窗口外）实时采样，光标旁跟随一个置顶、点击穿透的放大镜浮层（15×15 像素约 8× 放大，中心格高亮，显示 `#hex` 与 RGB 色块），左键确认、Esc/右键取消；HDR 字段只改基色、保留 Intensity。拾取期间宿主用低层鼠标钩子屏蔽整个桌面的鼠标按键与滚轮（光标移动照常，标题栏的缩小/放大/关闭也不响应，键盘不遮罩），所以确认点击不会误触任何窗口；确认那一下也不会到 egui，字段用 `eyedropper::take_committed` 上报拾取结束，Preferences 立即写盘而不是等下一次指针抬起。宿主实现见 `kairos_editor_app/src/eyedropper/`：Windows 用 `GetCursorPos` + `BitBlt` + GDI 浮层 + `WH_MOUSE_LL` 遮罩；macOS 用 ScreenCaptureKit 取 15×15 像素、每块屏幕一个 AppKit 透明浮层（hex/RGB/色块，左键确认、右键/Esc 取消，字段逐帧跟随），首次使用弹系统屏幕录制授权；无权限、旧系统或采集失败时回退 `NSColorSampler`（无需权限，但只在确认时给色、无右键取消）。Linux 在 X11 下用私有的 `QueryPointer`/`GetImage` + override-redirect 浮层 + `GrabPointer` 遮罩；Wayland（含 XWayland）没有全局指针与跨窗口像素，保留「not available」提示。
-- **Swatches**：共享一份 `ColorSwatches`，存在 `Library/ColorSwatches.ron`（运行时用户数据，不随样式文件走）。标题行是折叠箭头 + `Swatches`，右侧是 `Default v` 组菜单按钮，按钮与模式按钮同款 Unity popup field。点击后在按钮下方、向右展开浮层菜单（组列表 + New/Rename/Delete），菜单用 `egui::Area` 而不占 header 布局，因此不会把下方 swatch rect 推下去；每个 action 独占 20 px 一行，选中/悬停使用项目菜单的 Unity 蓝 `#2C5D87`。Rename/New 的输入框也是浮层对话框，不改变网格位置。网格 14 px、1 px gap，末尾 New tile 保存当前颜色，空组显示 `Click to add new preset`。菜单打开时页面滚动偏移保持不变，避免 Rename 输入框触发背景滚动。
+- **Swatches**：共享一份 `ColorSwatches`，存在 `Library/ColorSwatches.ron`（运行时用户数据，不随样式文件走）。2026-11-23 起这份书归 color picker widget 的 context-wide `SwatchStore` 所有：app 启动时 `install_swatches` 只记 project root 路径，首次打开 picker 时同步加载，picker 每次绘制后 `save_if_dirty`；Preferences 不再拥有/加载/保存 swatches。标题行是折叠箭头 + `Swatches`，右侧是 `Default v` 组菜单按钮，按钮与模式按钮同款 Unity popup field。点击后在按钮下方、向右展开浮层菜单（组列表 + New/Rename/Delete），菜单用 `egui::Area` 而不占 header 布局，因此不会把下方 swatch rect 推下去；每个 action 独占 20 px 一行，选中/悬停使用项目菜单的 Unity 蓝 `#2C5D87`。Rename/New 的输入框也是浮层对话框，不改变网格位置。网格 14 px、1 px gap，末尾 New tile 保存当前颜色，空组显示 `Click to add new preset`。菜单打开时页面滚动偏移保持不变，避免 Rename 输入框触发背景滚动。
 - **选中态**：点字段名或值框都会选中该行——字段名变 `label_active`（Unity 的蓝色 label），值框画 `accent` 1 px 外框。点页面空白或标题清除选中；点组头只折叠，不改变选中。
 - **滚动条间距**：页面右侧预留 `scrollbar_gap`；值框的右边界停在它左边，图标路径这类长值不会压到 scrollbar 上（有测试）。
 - **字体层级**：标题 15（strong）、正文与组头 12、文件路径 12；组头用更亮的 `group` 色 + 全宽底色区分，不依赖粗体（编辑器字体没有单独注册的 bold family）。
-- **没有 Apply/Cancel**：每个交互结束即写，文件就是记录；Close 只关窗。
+- **没有 Apply/Cancel**：每个交互结束即写，文件就是记录；关闭只走 dock 的 tab × / 窗口关闭。页脚唯一的按钮是 Reset：把当前页的 live style 换回当前主题的代码默认值并立即写盘。
 
 ---
 
@@ -284,12 +285,12 @@ StyleFields::set_style_field(path, value)
 | `kairos_editor_component/macros/`（新 crate） | 新增 | `#[derive(StyleFields)]`：从结构体字段生成字段表与按路径写入；`#[SharedStyle(...)]` 生成 id 常量、sealed erasure 和 `SharedStyleDef` 提交 |
 | `kairos_editor_component/src/skin.rs` | 新增 | `StyleValue` 桥接、`StyleField`（`variants`/`range` 元数据）、`StyleNode`/`StyleFields` 与叶子类型实现、`PanelSkin`、`save_skin`、`humanize` |
 | `kairos_editor_core/src/style.rs` | 新增 | `StyleValue` + `SharedStyleId`（core 只认识值，不认识 egui） |
-| `kairos_editor_core/src/action.rs` / `effect.rs` / `reduce/{style,shared_style}.rs` | 改/新增 | `Action::Style`、`StyleAction::{SetField,Commit}`、`Effect::Style`、`StyleEffect::{SetField,Persist}`；shared 样式另有 `SharedStyleAction::{SetField,Commit,Reload}` / `SharedStyleEffect::{SetField,Persist,Reload}` |
-| `kairos_editor_component/src/panel.rs` | 改 | `Panel::{skin,set_skin_field,save_skin}`（默认无皮肤） |
-| `kairos_editor_component/src/panel/host.rs` | 改 | `skins`/`set_skin_field`/`save_skin` |
+| `kairos_editor_core/src/action.rs` / `effect.rs` / `reduce/{style,shared_style}.rs` | 改/新增 | `Action::Style`、`StyleAction::{SetField,EditList,Reset,Commit}`、`Effect::Style`、`StyleEffect::{SetField,EditList,Reset,Persist}`；shared 样式另有 `SharedStyleAction::{SetField,EditList,Reset,Commit,Reload}` / `SharedStyleEffect::{SetField,EditList,Reset,Persist,Reload}` |
+| `kairos_editor_component/src/panel.rs` | 改 | `Panel::{skin,set_skin_field,edit_skin_list,reset_skin,save_skin}`（默认无皮肤） |
+| `kairos_editor_component/src/panel/host.rs` | 改 | `skins`/`set_skin_field`/`edit_skin_list`/`reset_skin`/`save_skin` |
 | `kairos_editor_component/src/shared_style.rs` + `shared_style/{catalog,registry,color_picker}.rs` | 新增 | `SharedStyle`；`SharedStyleDef` / `StyleCatalog`；`SharedStyles` / `SharedSkin`；`ColorPickerSkin`（serde + `StyleFields` + `tokens()` 投影） |
 | `kairos_editor_component/src/frame.rs` | 改 | `Frame::skins` + `with_skins`；`Frame::shared` + `with_shared`；`toolbar_style()` / `color_picker_style()` / `field_style()` / `list_style()` / `modal_style()` |
-| `kairos_editor_component/src/panels/preferences.rs` | 新增/改 | 页面列表（面板页 + 固定 shared 页）、页、分组行、字段表到 field widget 的映射、保存边界、shared 页的 Reload、单测 |
+| `kairos_editor_component/src/panels/preferences.rs` | 新增/改 | 页面列表（面板页 + 固定 shared 页）、页、分组行、字段表到 field widget 的映射、保存边界、页脚 Reset、单测 |
 | `kairos_editor_component/src/panels/preferences/style.rs` | 新增/改 | `PreferencesPanelStyle`（自身也 derive，可编辑自己）+ 参考皮肤往返测试；不再投影 `ColorPickerStyle` |
 | `kairos_editor_widgets/src/color_picker.rs` | 新增 | 自有的 Unity 风格 LDR/HDR 颜色字段与取色器：色相环、SV 方块、通道滑杆、hex、Intensity、Swatches |
 | `kairos_editor_widgets/src/field/` | 新增 | 可复用值框 widget，一控件一文件：`style`（FieldStyle + menu-button token，菜单本身用共享 `MenuStyle`）/ `paint` / `edit`（行内编辑器与 62% 选中蒙版）/ `number`（Number trait + NumberField）/ `text` / `toggle` / `enum_field`（EnumField 可变借用枚举，strum 读变体；VariantMenu 给 style token；`Button` 触发 + `Popup::menu`）/ `label`（FieldLabel，数字的 scrub handle） |
@@ -323,7 +324,7 @@ StyleFields::set_style_field(path, value)
 | `type_name::<T>()` 页面名 | `Panel::title`（“Console”），由宏写进 `PanelSkin` | 用户文案，单一真源 |
 | 字段名手写、无说明 | 字段名 humanize + 类型决定控件 | M4 消解 |
 | 只有 `egui::Grid`（首帧 discard） | 手排的两栏 + `ScrollArea` | 多 pass 安全 |
-| 只有 tab × | body 的 Close + tab × | M2 消解 |
+| 只有 tab × | 页脚不再重复 Close，关闭只走 tab × / 窗口关闭 | M2 消解 |
 | 皮肤文件缺失 → panic | `load_or_default` + `warn!` | B5 消解 |
 | 窗口尺寸可在自己的页里改 | 不可编辑；尺寸归 dock | B6/B7 消解 |
 | 无测试 | 见 §5 | M8 消解 |
@@ -334,8 +335,8 @@ StyleFields::set_style_field(path, value)
 
 **core（12 个 + shared）**
 
-1. `SetField` → 恰好一条 `Effect::Style(SetField)`；`Commit` → `Persist`；两个 action 都不改 `EditorState`。
-1b. `SharedStyleAction::{SetField,Commit,Reload}` → 对应 `Effect::SharedStyle`；同样不改 `EditorState`。
+1. `SetField` → 恰好一条 `Effect::Style(SetField)`；`Reset` → `Reset`；`Commit` → `Persist`；这些 action 都不改 `EditorState`。
+1b. `SharedStyleAction::{SetField,Reset,Commit,Reload}` → 对应 `Effect::SharedStyle`；同样不改 `EditorState`。
 
 **component**
 
@@ -344,12 +345,12 @@ StyleFields::set_style_field(path, value)
 3. 三个真实样式（About/Console/Profiler/Preferences）都能列出字段，且字段路径可达（`toolbar_height`、`icons.info`、…）。
 4. 面板：页面列表显示所有活着的皮肤、首屏画第一页的文件路径与字段；点另一个面板换页且**不产生 action**。
 5. 点 toggle → 恰好 `[SetField, Commit]`（同一个 release pass），页面本地值同步更新。
-6. 切页/关窗时把未保存编辑提交一次；Close 按钮 → `ClosePanel`；没有皮肤时给出说明；180 px 高的窗口里 Close 仍在面板内。
+6. 切页/关窗时把未保存编辑提交一次；页脚 Reset → 该页的 `Reset` action，丢弃未保存编辑并让下一页重读字段表；没有皮肤时给出说明；180 px 高的窗口里 Reset 仍在面板内。
 7. Preferences 自己的 `skin()` 可列出 `nav_width`、`row_odd` 等 token（可编辑自己）。
 8. host：`skins()` 只包含活着的面板；未知路径/错误类型被拒绝；写入后快照反映新值；未打开的面板没有皮肤。
 9. 参考皮肤 `PreferencesPanel.ron` 与代码默认值逐字段相等。
 9b. `StyleCatalog::builtin()` 注册 Toolbar / Color Picker；`SharedStyles::skins()` 给出两页字段表；`ColorPicker.ron` 与 `ColorPickerSkin` 默认值逐字段相等；`tokens()` 保持 0.7 边框、13 px 标题和共享 traffic lights。
-9c. 所有面板关闭时 shared 页仍然存在且可编辑；shared 编辑发 `Action::SharedStyle(SetField)`/`Commit`；Reload 按钮发 `Reload`，reload 后 `revision` 让页面重新取字段表。
+9c. 所有面板关闭时 shared 页仍然存在且可编辑；shared 编辑发 `Action::SharedStyle(SetField)`/`Commit`；页脚 Reset 发 `Reset`，registry 换回代码默认值、立即写文件并 bump `revision`，页面重新取字段表。
 10. foldout：每个嵌套 struct 是整行可点的组头；点 `icons` 只隐藏该组，点 `icons.textures` 只隐藏 Tint，动作列表为空。
 11. Zebra：叶子行按 `row_odd` / `row_even` 交替；组头用 `group_background`，不参与交替；enum 行与载荷行（有载荷时）不另加底色或线框，继续按所在容器的斑马纹排列；元素块里则是 `band_fill` / `band_alt` 在自己的立体背景上交替。
 12. 对齐：不同宽度的 root 标签左边缘一致；组内标签按 `group_indent` 逐级缩进；值列左边缘不随深度改变；enum 的载荷行从 menu button 的左边缘开始（在按钮列内再分标签/值），不是回到整行左标签列；窄面板仍是两列且在窗口内。
@@ -367,7 +368,7 @@ StyleFields::set_style_field(path, value)
 
 **app**
 
-21. Preferences 通过 `ShowPanel` 浮成第二个 surface；打开时 `app.skins` 含 Console/Profiler/Preferences，不含未打开的 About；关闭时不快照。shared 样式在 `EditorApp::new` 里 load + preload；`Effect::SharedStyle` 的 SetField 写进 `SharedStyles`，Commit 写 `ColorPicker.ron`/`ToolBar.ron`。
+21. Preferences 通过 `ShowPanel` 浮成第二个 surface；打开时 `app.skins` 含 Console/Profiler/Preferences，不含未打开的 About；关闭时不快照。shared 样式在 `EditorApp::new` 里 load + preload；`Effect::SharedStyle` 的 SetField 写进 `SharedStyles`，Commit 写 `ColorPicker.ron`/`ToolBar.ron`，Reset 换回代码默认值并在同一个 effect 里写文件。
 22. `SetField{console, toolbar_height, 30.0}` → Console 的 live style 变成 30；**不写文件**；`Commit` 后 `ConsoleStyle.ron` 里出现 `toolbar_height: 30.0`。
 
 **静态门**：`cargo check --workspace --all-targets` 干净；四个 crate 的 `fmt --check` 干净；clippy 无新增告警。

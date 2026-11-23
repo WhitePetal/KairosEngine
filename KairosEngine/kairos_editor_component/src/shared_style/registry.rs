@@ -3,8 +3,9 @@
 //! The composition root loads one value per registered style at boot and hands
 //! [`SharedStyles`] to every panel through [`Frame::shared`](crate::Frame). The
 //! registry is also the write target of the separate shared-style action path:
-//! `SetField` writes the live value, `Persist` writes the RON file, `Reload`
-//! re-reads it and bumps [`SharedStyles::revision`].
+//! `SetField` writes the live value, `Reset` restores the code defaults,
+//! `Persist` writes the RON file, and `Reload` re-reads it. `Reset` and
+//! `Reload` bump [`SharedStyles::revision`] so the page re-reads its table.
 
 use std::collections::BTreeMap;
 
@@ -39,9 +40,10 @@ struct SharedStyleEntry {
 /// One live value per registered shared style.
 ///
 /// The value is selected for the current theme at load time (the editor pins
-/// dark today). `revision` changes only when a file is re-read, so the
-/// Preferences page can tell "my own edit" from "the file changed under me"
-/// and refresh its local field copy only for the latter.
+/// dark today). `revision` changes when a file is re-read or the style is
+/// reset, so the Preferences page can tell "my own field edit" from a
+/// wholesale replacement and refresh its local field copy only for the
+/// latter.
 pub struct SharedStyles {
     entries: BTreeMap<SharedStyleId, SharedStyleEntry>,
     revision: u64,
@@ -92,7 +94,7 @@ impl SharedStyles {
         DEFAULT.get_or_init(SharedStyles::default)
     }
 
-    /// Changes when a shared style file is re-read.
+    /// Changes when a shared style is re-read or reset to its defaults.
     pub fn revision(&self) -> u64 {
         self.revision
     }
@@ -175,6 +177,20 @@ impl SharedStyles {
             return Err(format!("shared style {id} is not registered"));
         };
         (entry.def.save)(&*entry.value, theme)
+    }
+
+    /// Replace one live style with its code defaults for `theme`. Bumps the
+    /// revision so the Preferences page re-reads its field table.
+    ///
+    /// Returns whether the id is registered. The caller persists the result;
+    /// this method only changes the live value.
+    pub fn reset(&mut self, id: SharedStyleId, theme: egui::Theme) -> bool {
+        let Some(entry) = self.entries.get_mut(&id) else {
+            return false;
+        };
+        entry.value = (entry.def.defaults)(theme);
+        self.revision = self.revision.wrapping_add(1);
+        true
     }
 
     /// Re-read one style's file into the live value. Returns whether the id is
@@ -329,6 +345,32 @@ mod tests {
         assert!(
             !shared.set_field(TOOLBAR, "accent", &StyleValue::Color(accent)),
             "a path from another style does not match"
+        );
+    }
+
+    /// Reset restores the code defaults and bumps the revision, so the page
+    /// replaces the values it copied before the click.
+    #[test]
+    fn reset_restores_the_code_defaults() {
+        let mut shared = SharedStyles::default();
+        let default_height = shared.toolbar().expect("toolbar").height;
+
+        assert!(shared.set_field(TOOLBAR, "height", &StyleValue::F32(99.0)));
+        let revision = shared.revision();
+
+        assert!(shared.reset(TOOLBAR, egui::Theme::Dark));
+        assert_eq!(shared.toolbar().expect("toolbar").height, default_height);
+        assert_ne!(
+            shared.revision(),
+            revision,
+            "a reset invalidates the page copy"
+        );
+        assert!(
+            !shared.reset(
+                kairos_editor_core::SharedStyleId("not-registered"),
+                egui::Theme::Dark
+            ),
+            "an unknown id is a no-op"
         );
     }
 

@@ -68,6 +68,23 @@ fn a_shared_commit_becomes_a_persist() {
 }
 
 #[test]
+fn a_shared_reset_becomes_a_reset() {
+    let mut state = EditorState::new();
+
+    assert_eq!(
+        reduce(
+            &mut state,
+            Action::SharedStyle(SharedStyleAction::Reset {
+                style: COLOR_PICKER
+            })
+        ),
+        vec![Effect::SharedStyle(SharedStyleEffect::Reset {
+            style: COLOR_PICKER
+        })]
+    );
+}
+
+#[test]
 fn a_shared_reload_becomes_a_reload() {
     let mut state = EditorState::new();
 

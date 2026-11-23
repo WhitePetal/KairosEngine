@@ -50,6 +50,21 @@ fn a_list_edit_becomes_a_list_write() {
     );
 }
 
+/// Reset is its own effect, not a pile of field writes: the host knows how
+/// to restore its own type's defaults, and the click also persists them.
+#[test]
+fn a_reset_becomes_a_reset() {
+    let mut state = EditorState::new();
+
+    assert_eq!(
+        reduce(
+            &mut state,
+            Action::Style(StyleAction::Reset { panel: CONSOLE })
+        ),
+        vec![Effect::Style(StyleEffect::Reset { panel: CONSOLE })]
+    );
+}
+
 #[test]
 fn a_commit_becomes_a_persist() {
     let mut state = EditorState::new();

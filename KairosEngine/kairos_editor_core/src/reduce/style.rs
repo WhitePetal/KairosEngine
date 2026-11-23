@@ -23,6 +23,7 @@ pub(super) fn reduce(_state: &mut EditorState, action: StyleAction) -> Vec<Effec
         StyleAction::EditList { panel, path, edit } => {
             vec![Effect::Style(StyleEffect::EditList { panel, path, edit })]
         }
+        StyleAction::Reset { panel } => vec![Effect::Style(StyleEffect::Reset { panel })],
         StyleAction::Commit { panel } => vec![Effect::Style(StyleEffect::Persist { panel })],
     }
 }

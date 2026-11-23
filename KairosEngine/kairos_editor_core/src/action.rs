@@ -88,6 +88,10 @@ pub enum StyleAction {
         path: String,
         edit: ListEdit,
     },
+    /// Replace the panel's live skin with its code defaults for the active
+    /// theme, then write the file. One click, one write: this is the factory
+    /// reset, not a field edit followed by a commit.
+    Reset { panel: PanelId },
     /// The interaction that started the edit ended: write the panel's skin file.
     Commit { panel: PanelId },
 }
@@ -97,8 +101,9 @@ pub enum StyleAction {
 /// The toolbar and the color picker are loaded once by the editor shell, not by
 /// a panel instance, so their files cannot travel through the panel-skin path
 /// above. They still share the same gesture boundary: set while dragging or
-/// typing, persist when the interaction ends. Reload re-reads the file so a
-/// hand edit can be picked up without restarting the editor.
+/// typing, persist when the interaction ends. Reset replaces the live value
+/// with the code defaults and writes it in one go; Reload re-reads the file so
+/// a hand edit can be picked up without restarting the editor.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SharedStyleAction {
     /// One field of one shared style changed (live preview).
@@ -114,6 +119,9 @@ pub enum SharedStyleAction {
         path: String,
         edit: ListEdit,
     },
+    /// Replace the shared style's live value with its code defaults for the
+    /// active theme, then write the file.
+    Reset { style: SharedStyleId },
     /// The interaction ended: write the shared style's RON file.
     Commit { style: SharedStyleId },
     /// Re-read the shared style's file into the live value.

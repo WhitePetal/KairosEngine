@@ -43,7 +43,13 @@ impl Watcher {
     /// caller logs it and the tree then only follows the editor's own edits.
     pub(crate) fn new(root: &Path, policy: &ScanPolicy) -> Result<Self, String> {
         let (sender, changed) = std::sync::mpsc::channel();
-        let watched_root = root.to_path_buf();
+        // Resolve symlinks once so the filter can compare event paths with the
+        // watched root. macOS reports FSEvents paths under /private/var while
+        // TempDir hands out /var, and Windows canonical paths carry a \\?\
+        // prefix; strip_prefix on the unresolved forms would classify every
+        // event as "outside the root" and rescan even ignored directories.
+        let watched_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+        let filter_root = watched_root.clone();
         let ignore = policy.ignore.clone();
         let system_dirs = policy.system_dirs.clone();
         let mut backend = new_debouncer(
@@ -56,9 +62,10 @@ impl Watcher {
                     // One notification per batch that contains at least one path
                     // worth rescanning. A batch of only ignored changes is not.
                     let worth = events.iter().any(|event| {
-                        event.paths.iter().any(|path| {
-                            worth_a_rescan(path, &watched_root, &ignore, &system_dirs)
-                        })
+                        event
+                            .paths
+                            .iter()
+                            .any(|path| worth_a_rescan(path, &filter_root, &ignore, &system_dirs))
                     });
                     if worth {
                         // `send` cannot block (unbounded) and a failure only means
@@ -75,7 +82,7 @@ impl Watcher {
         )
         .map_err(|error| error.to_string())?;
         backend
-            .watch(root, RecursiveMode::Recursive)
+            .watch(&watched_root, RecursiveMode::Recursive)
             .map_err(|error| error.to_string())?;
         Ok(Self {
             _backend: backend,
@@ -101,13 +108,8 @@ impl Watcher {
 ///
 /// Unfamiliar paths rescan: a change the editor cannot classify is still a change
 /// it cannot rule out. Only paths it can prove irrelevant are dropped.
-fn worth_a_rescan(
-    path: &Path,
-    root: &Path,
-    ignore: &IgnoreRules,
-    system_dirs: &[String],
-) -> bool {
-    let Ok(relative) = path.strip_prefix(root) else {
+fn worth_a_rescan(path: &Path, root: &Path, ignore: &IgnoreRules, system_dirs: &[String]) -> bool {
+    let Some(relative) = relative_to_root(path, root) else {
         return true;
     };
     let relative = relative.to_string_lossy().replace('\\', "/");
@@ -122,6 +124,20 @@ fn worth_a_rescan(
         return false;
     }
     true
+}
+
+/// The event path relative to the watched root.
+///
+/// The direct strip is the common case: the root was canonicalized once and the
+/// backend reports paths in the same form. The fallback resolves the event path
+/// when a backend hands out the watched form for one and a canonical form for
+/// the other; if that fails too, the change is conservatively worth a rescan.
+fn relative_to_root(path: &Path, root: &Path) -> Option<std::path::PathBuf> {
+    if let Ok(relative) = path.strip_prefix(root) {
+        return Some(relative.to_path_buf());
+    }
+    let path = std::fs::canonicalize(path).ok()?;
+    path.strip_prefix(root).ok().map(Path::to_path_buf)
 }
 
 /// First path segment names a system directory.

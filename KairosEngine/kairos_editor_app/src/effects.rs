@@ -127,6 +127,18 @@ impl<'a> EffectExecutor<'a> {
                     );
                 }
             }
+            StyleEffect::Reset { panel } => {
+                if !self.host.reset_skin(panel, ctx) {
+                    kairos_log::warn!(
+                        target: "kairos_editor",
+                        "skin {panel}: no editable style to reset"
+                    );
+                    return;
+                }
+                if let Err(error) = self.host.save_skin(panel, ctx) {
+                    kairos_log::warn!(target: "kairos_editor", "skin {panel}: {error}");
+                }
+            }
             StyleEffect::Persist { panel } => {
                 if let Err(error) = self.host.save_skin(panel, ctx) {
                     kairos_log::warn!(target: "kairos_editor", "skin {panel}: {error}");
@@ -135,8 +147,9 @@ impl<'a> EffectExecutor<'a> {
         }
     }
 
-    /// Shared-style edits: live write, then persist/reload on the app-owned
-    /// registry. Same gesture boundary as a panel skin, different owner.
+    /// Shared-style edits: live write, then reset/persist/reload on the
+    /// app-owned registry. Same gesture boundary as a panel skin, different
+    /// owner.
     fn apply_shared_style(&mut self, effect: SharedStyleEffect, ctx: &Context) {
         match effect {
             SharedStyleEffect::SetField { style, path, value } => {
@@ -154,6 +167,19 @@ impl<'a> EffectExecutor<'a> {
                         "shared skin {style}: no list {path}"
                     );
                 }
+            }
+            SharedStyleEffect::Reset { style } => {
+                if !self.shared.reset(style, ctx.theme()) {
+                    kairos_log::warn!(
+                        target: "kairos_editor",
+                        "shared skin {style}: not registered"
+                    );
+                    return;
+                }
+                if let Err(error) = self.shared.save(style, ctx.theme()) {
+                    kairos_log::warn!(target: "kairos_editor", "shared skin {style}: {error}");
+                }
+                self.shared.preload(ctx);
             }
             SharedStyleEffect::Persist { style } => {
                 if let Err(error) = self.shared.save(style, ctx.theme()) {

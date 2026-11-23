@@ -78,14 +78,16 @@ pub enum StyleEffect {
         path: String,
         edit: ListEdit,
     },
+    /// Replace the panel's live style with its code defaults and persist it.
+    Reset { panel: PanelId },
     /// Persist the panel's live style to its RON file.
     Persist { panel: PanelId },
 }
 
 /// Host work for the editor's shared styles.
 ///
-/// These are the same three steps as a panel skin, but the value lives in the
-/// app's shared-style registry instead of a panel instance.
+/// These are the same steps as a panel skin, but the value lives in the app's
+/// shared-style registry instead of a panel instance.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SharedStyleEffect {
     /// Write one field on the live shared style.
@@ -100,6 +102,8 @@ pub enum SharedStyleEffect {
         path: String,
         edit: ListEdit,
     },
+    /// Replace the live shared style with its code defaults and persist it.
+    Reset { style: SharedStyleId },
     /// Persist the live shared style to its RON file.
     Persist { style: SharedStyleId },
     /// Re-read the shared style's file into the live value.

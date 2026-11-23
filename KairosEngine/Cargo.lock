@@ -2730,6 +2730,7 @@ version = "0.2.0"
 dependencies = [
  "egui",
  "kairos_color",
+ "kairos_log",
  "ron",
  "serde",
  "strum 0.28.0",

@@ -176,7 +176,11 @@ fn a_cancelled_walk_stops_before_it_starts() {
 /// Names that cannot round-trip through UTF-8 are kept with a lossy name; the
 /// tree detects the resulting collision. This pins that the walk itself never
 /// panics on such a name.
-#[cfg(unix)]
+///
+/// APFS/HFS+ rejects a filename that is not valid UTF-8 (EILSEQ), so macOS
+/// cannot create the fixture; the lossy-name path is exercised on filesystems
+/// that allow arbitrary bytes.
+#[cfg(all(unix, not(target_os = "macos")))]
 #[test]
 fn a_non_utf8_name_does_not_break_the_walk() {
     use std::ffi::OsString;

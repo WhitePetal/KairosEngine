@@ -228,6 +228,15 @@ impl EditorApp {
         let shared = SharedStyles::load(&StyleCatalog::builtin(), egui_ctx.theme());
         shared.preload(egui_ctx);
 
+        // The swatch book is a context-wide widget resource: the store only
+        // records the project-relative path, and the first picker that opens
+        // loads it. Installing it here keeps the path out of the widget and out
+        // of the working directory.
+        kairos_editor_widgets::color_picker::install_swatches(
+            egui_ctx,
+            root.join("Library/ColorSwatches.ron"),
+        );
+
         let state = boot_state(root.clone());
         let mut host = PanelHost::new(panels::catalog(), PanelContext::new(editor_info()));
         host.sync(&state.layout, egui_ctx);
@@ -498,6 +507,7 @@ fn describe(action: &Action) -> String {
             StyleAction::EditList { panel, path, edit } => {
                 format!("edit {panel} skin list: {path} {edit:?}")
             }
+            StyleAction::Reset { panel } => format!("reset {panel} skin to defaults"),
             StyleAction::Commit { panel } => format!("save {panel} skin"),
         },
         Action::SharedStyle(action) => match action {
@@ -506,6 +516,9 @@ fn describe(action: &Action) -> String {
             }
             SharedStyleAction::EditList { style, path, edit } => {
                 format!("edit {style} shared skin list: {path} {edit:?}")
+            }
+            SharedStyleAction::Reset { style } => {
+                format!("reset {style} shared skin to defaults")
             }
             SharedStyleAction::Commit { style } => format!("save {style} shared skin"),
             SharedStyleAction::Reload { style } => format!("reload {style} shared skin"),
@@ -621,7 +634,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use kairos_editor_component::shared_style::COLOR_PICKER;
+    use kairos_editor_component::shared_style::{COLOR_PICKER, TOOLBAR};
     use kairos_editor_core::StyleValue;
     use kairos_editor_core::project::ScanReason;
     use kairos_editor_docking::viewer::TabViewer;
@@ -629,6 +642,10 @@ mod tests {
     /// Puffin's frame collector is process-global even though each app owns its
     /// recorder, so only one capture test may run a UI pass while recording.
     static UI_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Skin-file tests share the process-wide style root; serialize the writes
+    /// so one test cannot read another's edited value.
+    static SKIN_FILE_LOCK: Mutex<()> = Mutex::new(());
 
     fn raw_input() -> egui::RawInput {
         let mut input = egui::RawInput::default();
@@ -681,9 +698,13 @@ mod tests {
     fn build_with_root(root: std::path::PathBuf) -> EditorApp {
         scratch_style_root();
 
+        let ctx = egui::Context::default();
+        kairos_editor_widgets::color_picker::install_swatches(
+            &ctx,
+            root.join("Library/ColorSwatches.ron"),
+        );
         let state = boot_state(root);
         let mut host = PanelHost::new(panels::catalog(), PanelContext::new(editor_info()));
-        let ctx = egui::Context::default();
         host.sync(&state.layout, &ctx);
         let dock = default_dock(&host);
         let tool_bar = ToolBar::new();
@@ -968,6 +989,12 @@ mod tests {
             "set console skin: toolbar_height"
         );
         assert_eq!(
+            describe(&Action::Style(StyleAction::Reset {
+                panel: panels::CONSOLE
+            })),
+            "reset console skin to defaults"
+        );
+        assert_eq!(
             describe(&Action::Style(StyleAction::Commit {
                 panel: panels::CONSOLE
             })),
@@ -980,6 +1007,12 @@ mod tests {
                 value: StyleValue::F32(0.9),
             })),
             "set color_picker shared skin: border_width"
+        );
+        assert_eq!(
+            describe(&Action::SharedStyle(SharedStyleAction::Reset {
+                style: COLOR_PICKER
+            })),
+            "reset color_picker shared skin to defaults"
         );
         assert_eq!(
             describe(&Action::SharedStyle(SharedStyleAction::Commit {
@@ -1055,6 +1088,9 @@ mod tests {
     /// The separate Commit path writes the shared file, not a panel's.
     #[test]
     fn a_shared_skin_commit_writes_its_file() {
+        let _guard = SKIN_FILE_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let root = scratch_style_root();
         let mut app = build();
         let ctx = egui::Context::default();
@@ -1405,6 +1441,9 @@ mod tests {
     /// panel's RON file with the new value.
     #[test]
     fn a_skin_commit_writes_the_panel_file() {
+        let _guard = SKIN_FILE_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let mut app = build();
         let dir = scratch_style_root().to_path_buf();
         let ctx = egui::Context::default();
@@ -1436,6 +1475,112 @@ mod tests {
         let text = std::fs::read_to_string(&file).expect("the commit writes the skin");
         assert!(text.contains("toolbar_height: 30.0"), "{text}");
     }
+
+    /// Reset is a complete action: it restores the code default and writes it
+    /// in the same click, with no separate Commit.
+    #[test]
+    fn a_skin_reset_restores_defaults_and_writes_the_file() {
+        let _guard = SKIN_FILE_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut app = build();
+        let dir = scratch_style_root().to_path_buf();
+        let ctx = egui::Context::default();
+
+        // The scratch root is shared by the suite and may hold an earlier
+        // test's edit; reset once so the captured value is the code default.
+        apply(
+            &mut app,
+            Action::Style(StyleAction::Reset {
+                panel: panels::CONSOLE,
+            }),
+            &ctx,
+        );
+        let default = console_height(&app);
+
+        apply(
+            &mut app,
+            Action::Style(StyleAction::SetField {
+                panel: panels::CONSOLE,
+                path: "toolbar_height".to_owned(),
+                value: StyleValue::F32(30.0),
+            }),
+            &ctx,
+        );
+        assert_eq!(console_height(&app), StyleValue::F32(30.0));
+
+        apply(
+            &mut app,
+            Action::Style(StyleAction::Reset {
+                panel: panels::CONSOLE,
+            }),
+            &ctx,
+        );
+
+        assert_eq!(
+            console_height(&app),
+            default,
+            "the live style is back to its code default"
+        );
+        let text = std::fs::read_to_string(dir.join("ConsoleStyle.ron"))
+            .expect("reset writes the panel skin");
+        assert!(
+            !text.contains("toolbar_height: 30.0"),
+            "reset persists the default, not the discarded edit: {text}"
+        );
+    }
+
+    /// Shared styles reset through the registry, and the same click persists
+    /// the code default.
+    #[test]
+    fn a_shared_skin_reset_restores_defaults_and_writes_the_file() {
+        let _guard = SKIN_FILE_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut app = build();
+        let dir = scratch_style_root().to_path_buf();
+        let ctx = egui::Context::default();
+        let default = app.shared.toolbar().expect("toolbar").height;
+
+        apply(
+            &mut app,
+            Action::SharedStyle(SharedStyleAction::SetField {
+                style: TOOLBAR,
+                path: "height".to_owned(),
+                value: StyleValue::F32(99.0),
+            }),
+            &ctx,
+        );
+        assert_eq!(app.shared.toolbar().expect("toolbar").height, 99.0);
+
+        apply(
+            &mut app,
+            Action::SharedStyle(SharedStyleAction::Reset { style: TOOLBAR }),
+            &ctx,
+        );
+
+        assert_eq!(app.shared.toolbar().expect("toolbar").height, default);
+        let text =
+            std::fs::read_to_string(dir.join("ToolBar.ron")).expect("reset writes the shared skin");
+        assert!(
+            !text.contains("height: 99.0"),
+            "reset persists the default, not the discarded edit: {text}"
+        );
+    }
+
+    fn console_height(app: &EditorApp) -> StyleValue {
+        app.host
+            .skins(&app.state)
+            .into_iter()
+            .find(|skin| skin.panel == panels::CONSOLE)
+            .expect("console skin")
+            .fields
+            .into_iter()
+            .find(|field| field.path == "toolbar_height")
+            .expect("toolbar_height")
+            .value
+    }
+
     /// The field cursors survive the real dock: a numeric row publishes the
     /// scrub cursor over its name and the text cursor over its box. The rows
     /// live below the fold of the Console skin, so the pass scrolls first and

@@ -18,7 +18,8 @@
 //! an `egui::Response` whose `changed()` the caller maps to its own action.
 
 use std::f32::consts::TAU;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
 use egui::{
@@ -801,9 +802,10 @@ impl<'a> ColorField<'a> {
         self
     }
 
-    /// Use the panel-owned preset book. Without one the picker still opens,
-    /// but the Swatches section is omitted rather than keeping private,
-    /// non-persistent state per field.
+    /// Use an explicit preset book instead of the context-wide store.
+    ///
+    /// Tests and previews pass their own book; the app omits this and lets every
+    /// picker share the store installed by [install_swatches].
     pub fn swatches(mut self, swatches: &'a mut ColorSwatches) -> Self {
         self.swatches = Some(swatches);
         self
@@ -902,14 +904,21 @@ impl Widget for ColorField<'_> {
         if is_color_picker_open(ui.ctx(), id) {
             // Accumulate: a pick and a wheel drag can both move the value in one
             // frame, and the caller must hear about either.
-            changed |= show_color_picker(
-                ui,
-                id,
-                value,
-                style,
-                swatches,
-                was_open && !swatch_response.clicked(),
-            );
+            let keep_open = was_open && !swatch_response.clicked();
+            if let Some(swatches) = swatches {
+                changed |= show_color_picker(ui, id, value, style, Some(swatches), keep_open);
+            } else {
+                // No explicit book (the app's normal path): share the
+                // context-wide store. The first open loads the file, and every
+                // later picker reuses it.
+                let store = swatch_store(ui.ctx());
+                changed |= store.with_mut(|swatches| {
+                    show_color_picker(ui, id, value, style, Some(swatches), keep_open)
+                });
+                if let Err(error) = store.save_if_dirty() {
+                    kairos_log::warn!(target: "kairos_editor", "color swatches: {error}");
+                }
+            }
         }
         if changed {
             swatch_response.mark_changed();
@@ -1130,8 +1139,9 @@ fn default_swatches() -> Vec<ColorSwatchGroup> {
 
 /// The shared, persisted preset book used by every color picker.
 ///
-/// The widget layer owns the data and its RON format; the host owns the file
-/// path (Library/ColorSwatches.ron in the editor). The path is skipped by
+/// The widget layer owns the data and its RON format; the host installs the
+/// file path on the context-wide [SwatchStore] (Library/ColorSwatches.ron in
+/// the editor). The path is skipped by
 /// serde so a book loaded from disk stays portable; dirty tracks whether the
 /// next save_if_dirty has work to do.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1291,6 +1301,142 @@ impl ColorSwatches {
         }
         self.active = self.active.min(self.groups.len() - 1);
     }
+}
+
+/// The context-wide swatch book every color picker shares.
+///
+/// The app installs one with [install_swatches], which records the file path
+/// without reading it. The first picker that opens loads the file; later
+/// pickers reuse the same book, so a group added in one panel is visible in
+/// every other panel. Without an installed store the picker uses an in-memory
+/// default, which keeps widget tests and previews off the disk.
+pub struct SwatchStore {
+    path: Option<PathBuf>,
+    book: Mutex<Option<ColorSwatches>>,
+}
+
+impl SwatchStore {
+    /// A store backed by path; the file is read on first use.
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self {
+            path: Some(path.into()),
+            book: Mutex::new(None),
+        }
+    }
+
+    /// A store that never touches the disk.
+    pub fn in_memory() -> Self {
+        Self {
+            path: None,
+            book: Mutex::new(None),
+        }
+    }
+
+    pub fn test_mut(&mut self) {
+
+    }
+
+    /// Borrow the book, loading it on the first call.
+    ///
+    /// The lock is held for the duration of the closure: do not call
+    /// with_mut, reload or save_if_dirty from inside it.
+    pub fn with_mut<R>(&self, f: impl FnOnce(&mut ColorSwatches) -> R) -> R {
+        let mut slot = self
+            .book
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if slot.is_none() {
+            let book = match load_swatch_book(self.path.as_deref()) {
+                Ok(book) => book,
+                Err(error) => {
+                    kairos_log::warn!(target: "kairos_editor", "color swatches: {error}");
+                    default_swatch_book(self.path.as_deref())
+                }
+            };
+            *slot = Some(book);
+        }
+        f(slot.as_mut().expect("the book was just loaded"))
+    }
+
+    /// Persist pending edits. A no-op until the book has been loaded.
+    pub fn save_if_dirty(&self) -> Result<(), String> {
+        let mut slot = self
+            .book
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match slot.as_mut() {
+            Some(book) => book.save_if_dirty(),
+            None => Ok(()),
+        }
+    }
+
+    /// Re-read the file. Pending edits are saved first; a broken file keeps the
+    /// current book instead of discarding it.
+    pub fn reload(&self) -> Result<(), String> {
+        let Some(path) = self.path.as_deref() else {
+            return Ok(());
+        };
+        let mut slot = self
+            .book
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(book) = slot.as_mut() {
+            book.save_if_dirty()?;
+        }
+        *slot = Some(load_swatch_book(Some(path))?);
+        Ok(())
+    }
+}
+
+/// Install the context-wide swatch book the pickers use.
+///
+/// The path is the project-relative Library/ColorSwatches.ron. Nothing is read
+/// here: the first picker that opens loads it. Calling this again replaces the
+/// store (the app does it once at boot).
+pub fn install_swatches(ctx: &egui::Context, path: impl Into<PathBuf>) {
+    let store = Arc::new(SwatchStore::new(path));
+    ctx.data_mut(|data| {
+        data.insert_temp(swatches_id(), store);
+    });
+}
+
+fn swatches_id() -> Id {
+    Id::new("kairos.color_picker.swatches")
+}
+
+/// The context-wide swatch store, if one has been installed or created.
+///
+/// The app uses this for an explicit reload. Do not call it while a picker is
+/// inside [SwatchStore::with_mut] (that would deadlock on the same store).
+pub fn swatches(ctx: &egui::Context) -> Option<Arc<SwatchStore>> {
+    ctx.data(|data| data.get_temp::<Arc<SwatchStore>>(swatches_id()))
+}
+
+fn swatch_store(ctx: &egui::Context) -> Arc<SwatchStore> {
+    ctx.data_mut(|data| {
+        if let Some(store) = data.get_temp::<Arc<SwatchStore>>(swatches_id()) {
+            store
+        } else {
+            let store = Arc::new(SwatchStore::in_memory());
+            data.insert_temp(swatches_id(), store.clone());
+            store
+        }
+    })
+}
+
+fn load_swatch_book(path: Option<&Path>) -> Result<ColorSwatches, String> {
+    match path {
+        Some(path) => ColorSwatches::load(path),
+        None => Ok(ColorSwatches::default()),
+    }
+}
+
+fn default_swatch_book(path: Option<&Path>) -> ColorSwatches {
+    let mut book = ColorSwatches::default();
+    if let Some(path) = path {
+        book.set_path(path);
+    }
+    book
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -3640,6 +3786,8 @@ mod tests {
         style: ColorPickerStyle,
         field: Id,
         swatches: ColorSwatches,
+        /// Use the context-wide store instead of the explicit `swatches` book.
+        global_swatches: bool,
         /// Whether the last frame reported the eyedropper's end of gesture,
         /// as a panel that saves on release would read it.
         committed: bool,
@@ -3653,6 +3801,7 @@ mod tests {
                 style: ColorPickerStyle::dark(),
                 field: Id::new("color-field"),
                 swatches: ColorSwatches::default(),
+                global_swatches: false,
                 committed: false,
             }
         }
@@ -3672,6 +3821,7 @@ mod tests {
                 style,
                 field,
                 swatches,
+                global_swatches,
                 committed,
             } = self;
             *committed = false;
@@ -3679,12 +3829,11 @@ mod tests {
                 ui.add_space(20.0);
                 ui.horizontal(|ui| {
                     ui.add_space(20.0);
-                    ui.add_sized(
-                        vec2(240.0, 18.0),
-                        ColorField::new(*field, value, style)
-                            .height(18.0)
-                            .swatches(swatches),
-                    );
+                    let mut field = ColorField::new(*field, value, style).height(18.0);
+                    if !*global_swatches {
+                        field = field.swatches(swatches);
+                    }
+                    ui.add_sized(vec2(240.0, 18.0), field);
                 });
                 *committed = eyedropper::take_committed(ui.ctx());
             })
@@ -4621,6 +4770,111 @@ mod tests {
         let loaded = ColorSwatches::load(&path).expect("load swatches");
         assert_eq!(loaded.groups, book.groups);
         assert_eq!(loaded.active, book.active);
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn temp_swatches_path(suffix: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "kairos-color-swatches-{}-{suffix}-{}.ron",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn the_store_loads_lazily_and_persists_edits() {
+        let path = temp_swatches_path("store");
+        let store = SwatchStore::new(path.clone());
+
+        store.with_mut(|book| {
+            assert_eq!(book.active_group().name, "Default");
+            assert!(book.create_group("Warm"));
+            assert!(book.add_color(Color::from_srgb8([255, 80, 20, 255])));
+        });
+        store.save_if_dirty().expect("save swatches");
+
+        let reopened = SwatchStore::new(path.clone());
+        reopened.with_mut(|book| {
+            let warm = book
+                .groups
+                .iter()
+                .find(|group| group.name == "Warm")
+                .expect("the saved group");
+            assert_eq!(warm.colors, vec![Color::from_srgb8([255, 80, 20, 255])]);
+        });
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn an_in_memory_store_never_touches_the_disk() {
+        let store = SwatchStore::in_memory();
+        store.with_mut(|book| {
+            assert!(book.add_color(Color::from_srgb8([1, 2, 3, 255])));
+        });
+        store.save_if_dirty().expect("an in-memory save is a no-op");
+    }
+
+    #[test]
+    fn the_context_store_is_shared_by_every_picker() {
+        let ctx = egui::Context::default();
+        let path = temp_swatches_path("shared");
+        install_swatches(&ctx, path.clone());
+
+        let first = swatches(&ctx).expect("the installed store");
+        first.with_mut(|book| {
+            assert!(book.create_group("Warm"));
+        });
+        first.save_if_dirty().expect("save swatches");
+
+        let second = swatches(&ctx).expect("the installed store");
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        second.with_mut(|book| {
+            assert!(
+                book.groups.iter().any(|group| group.name == "Warm"),
+                "both pickers must see the same book"
+            );
+        });
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn the_picker_uses_the_context_store_without_an_explicit_book() {
+        let path = temp_swatches_path("picker");
+        let mut harness = Harness::new(ColorProperty::ldr(Color::from_srgb8([12, 34, 56, 255])));
+        install_swatches(&harness.ctx, path.clone());
+        harness.global_swatches = true;
+        harness.open();
+        harness.frame(Vec::new());
+
+        let output = harness.frame(Vec::new());
+        assert!(
+            painted_texts(&output)
+                .iter()
+                .any(|text| text.contains("Swatches")),
+            "the picker paints the shared book"
+        );
+        let before = swatches(&harness.ctx)
+            .expect("the picker installed the store")
+            .with_mut(|book| book.active_group().colors.len());
+        harness.click(color_new_swatch_id(harness.field));
+        harness.frame(Vec::new());
+        let after = swatches(&harness.ctx)
+            .expect("the picker installed the store")
+            .with_mut(|book| book.active_group().colors.len());
+        assert_eq!(after, before + 1, "the new tile edits the shared store");
+
+        let reopened = SwatchStore::new(path.clone());
+        reopened.with_mut(|book| {
+            assert!(
+                book.active_group()
+                    .colors
+                    .contains(&Color::from_srgb8([12, 34, 56, 255])),
+                "the picker persisted the edit through the store"
+            );
+        });
         let _ = std::fs::remove_file(path);
     }
 

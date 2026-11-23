@@ -6,7 +6,7 @@
 //!
 //! * [`macro@panel`] on `impl Panel for YourPanel` declares the panel's id,
 //!   registers it (`PanelRegister` + `inventory` submission), generates the
-//!   factory and — when the panel has a skin — the three `Panel::skin` methods.
+//!   factory and — when the panel has a skin — the `Panel` skin methods.
 //! * `#[derive(StyleFields)]` makes a style struct describe itself field by
 //!   field, which is what the Preferences panel edits. The optional
 //!   `#[SharedStyle(...)]` helper declaration additionally seals the type as a
@@ -49,10 +49,11 @@ use syn::{
 /// * the factory: `Default::default()`, or the function named by
 ///   `create = path` (`fn(&PanelContext) -> Self`) for a panel that needs the
 ///   injected identity;
-/// * with `skin = StyleType`, the three `Panel` methods that let Preferences
+/// * with `skin = StyleType`, the `Panel` methods that let Preferences
 ///   edit this panel's `Preferences/Styles/*.ron` file: `skin` (the field
 ///   table, titled by the panel's own `title`), `set_skin_field` (live
-///   write) and `save_skin` (persist). The style is expected in a field named
+///   write), `reset_skin` (restore the theme's code defaults) and
+///   `save_skin` (persist). The style is expected in a field named
 ///   `style`; the type must implement `Style + StyleFields`.
 ///
 /// Putting the attribute on the impl rather than the struct is what lets it
@@ -246,6 +247,16 @@ fn expand_panel(args: TokenStream2, mut item: ItemImpl) -> syn::Result<TokenStre
                     path,
                     edit,
                 )
+            }
+        });
+        item.items.push(parse_quote! {
+            fn reset_skin(&mut self, ctx: &::egui::Context) -> bool {
+                self.style = if ctx.theme() == ::egui::Theme::Light {
+                    <#style as ::kairos_editor_widgets::style::Style>::light()
+                } else {
+                    <#style as ::kairos_editor_widgets::style::Style>::dark()
+                };
+                true
             }
         });
         item.items.push(parse_quote! {

@@ -2,7 +2,7 @@
 //!
 //! Every panel's `impl Panel` block carries the `#[panel]` attribute, which
 //! declares its id, implements `PanelRegister`, submits its `PanelDef` and (with
-//! `skin = StyleType`) writes the three skin methods into the impl; `catalog()`
+//! `skin = StyleType`) writes the five skin methods into the impl; `catalog()`
 //! collects the submissions from the link-section table. Nothing here names a
 //! panel's factory, and there is no table to keep in sync with the files.
 //!

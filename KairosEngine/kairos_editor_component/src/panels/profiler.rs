@@ -2655,7 +2655,19 @@ mod probe {
                 egui::Shape::Text(text) if text.galley.text().starts_with(prefix) => Some(text.pos),
                 _ => None,
             })
-            .unwrap_or_else(|| panic!("no text starting with {prefix:?} painted"))
+            .unwrap_or_else(|| {
+                let painted = output
+                    .shapes
+                    .iter()
+                    .filter_map(|clipped| match &clipped.shape {
+                        egui::Shape::Text(text) => Some(text.galley.text().to_owned()),
+                        _ => None,
+                    });
+                panic!(
+                    "no text starting with {prefix:?} painted; painted: {:?}",
+                    painted.collect::<Vec<_>>()
+                )
+            })
     }
 
     /// Centre of the first painted text equal to `text`.
@@ -2706,10 +2718,26 @@ mod probe {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// Put the test harness thread first in the timeline's lane list.
+    ///
+    /// The profiler sink is process-global: tests that run in parallel draw
+    /// egui panels, and egui emits its own profiler scopes, so a capture can
+    /// contain those tests' threads. The fixtures register the harness thread
+    /// as a lane so their marker's row is the first one (and stays on screen)
+    /// regardless of what else was captured.
+    fn register_test_thread_lane(profiler: &Profiler) {
+        let name = std::thread::current()
+            .name()
+            .unwrap_or("profiler-test")
+            .to_owned();
+        profiler.register_thread_lane(name);
+    }
+
     /// Capture one committed frame that lasts a few milliseconds, so the module
     /// clock axis has whole-millisecond ticks to label.
     fn slow_captured_profiler() -> Profiler {
         let profiler = Profiler::new();
+        register_test_thread_lane(&profiler);
         profiler.set_recording(true);
         profiler.begin_frame();
         {
@@ -2728,6 +2756,7 @@ mod probe {
     /// Capture one committed frame with two nested scopes on this thread.
     fn captured_profiler() -> Profiler {
         let profiler = Profiler::new();
+        register_test_thread_lane(&profiler);
         profiler.set_recording(true);
         profiler.begin_frame();
         {
@@ -2747,14 +2776,20 @@ mod probe {
 
     /// Capture one frame in which `profiler.test.repeat` runs three times on
     /// this thread, so the details box has accumulated time to report.
+    ///
+    /// Each block sleeps 10 ms rather than 1 ms: the timeline only paints a
+    /// block's label when the bar is at least 34 px wide, and tests running in
+    /// parallel can stretch the frame's overhead enough that 1 ms blocks fall
+    /// below that threshold. 10 ms keeps them labelled under parallel load.
     fn repeated_marker_profiler() -> Profiler {
         let profiler = Profiler::new();
+        register_test_thread_lane(&profiler);
         profiler.set_recording(true);
         profiler.begin_frame();
         for _ in 0..3 {
             {
                 kairos_profile::scope!(Category::Others, "profiler.test.repeat");
-                std::thread::sleep(std::time::Duration::from_millis(1));
+                std::thread::sleep(std::time::Duration::from_millis(10));
             }
         }
         profiler.end_frame(true);

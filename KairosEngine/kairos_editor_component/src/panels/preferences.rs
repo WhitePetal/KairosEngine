@@ -19,7 +19,7 @@
 //! Editor-shell styles (the toolbar and the color picker) have no panel
 //! instance. They live in the app's crate::shared_style registry and are
 //! appended as fixed pages after the panel pages; their writes travel through
-//! the separate SharedStyleAction path, including an explicit Reload.
+//! the separate SharedStyleAction path, including a Reset to code defaults.
 //!
 //! # The field tree
 //!
@@ -35,9 +35,10 @@
 //! into the owning panel's live style, so the next pass draws with the new
 //! value — that is what makes the edit immediate. The file is written once, on
 //! StyleAction::Commit: pointer release, the end of a typed edit, page switch,
-//! or closing this panel. The legacy window instead pushed the whole page back
-//! every frame and let the owning window write its TOML, about 60 times a
-//! second.
+//! or closing this panel. A Reset is the other write: it replaces the whole
+//! style with the theme's code defaults and saves it in the same click. The
+//! legacy window instead pushed the whole page back every frame and let the
+//! owning window write its TOML, about 60 times a second.
 
 pub mod style;
 
@@ -50,13 +51,12 @@ use egui::{
 };
 use kairos_color::{Color, ColorUsage};
 use kairos_editor_core::{
-    Action, LayoutAction, ListEdit, PanelId, SharedStyleAction, SharedStyleId, StyleAction,
-    StyleValue,
+    Action, ListEdit, PanelId, SharedStyleAction, SharedStyleId, StyleAction, StyleValue,
 };
 use kairos_editor_widgets::button::Button;
 use kairos_editor_widgets::color_picker::{
-    ColorField, ColorPickerStyle, ColorProperty, ColorSwatches, any_color_picker_open,
-    close_all_color_pickers, eyedropper, is_color_picker_open,
+    ColorField, ColorPickerStyle, ColorProperty, any_color_picker_open, close_all_color_pickers,
+    eyedropper, is_color_picker_open,
 };
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::field::{
@@ -185,12 +185,8 @@ fn set_field_action(page: PageKey, path: &str, value: &StyleValue) -> Action {
     }
 }
 
-fn close_id() -> Id {
-    Id::new("kairos.preferences.close")
-}
-
-fn reload_id(style: SharedStyleId) -> Id {
-    Id::new(("kairos.preferences.reload", style))
+fn reset_id(page: impl Into<PageKey>) -> Id {
+    Id::new(("kairos.preferences.reset", page.into()))
 }
 
 /// A number box being typed into: the field it belongs to, and the widget
@@ -206,8 +202,8 @@ struct FieldEdit {
 struct PageState {
     /// The page the fields belong to.
     key: Option<PageKey>,
-    /// Shared-style revision this snapshot came from. A reload bumps the
-    /// registry revision, and the next pass re-reads the field table.
+    /// Shared-style revision this snapshot came from. A reload or a reset
+    /// bumps the registry revision, and the next pass re-reads the field table.
     revision: u64,
     /// Edited in place: a drag follows the pointer even though the owning
     /// panel's next snapshot is a frame behind.
@@ -227,9 +223,10 @@ struct PageState {
     /// this offset fixed so a TextEdit focus inside the picker cannot scroll
     /// the page behind it.
     scroll_offset: egui::Vec2,
-    /// A structural list edit was pushed. The page's snapshot is otherwise
-    /// re-read only on a page change or a reload, so a new entry's rows would
-    /// not exist until the user left the page: the next pass re-reads it.
+    /// A structural list edit or a factory reset landed. The page's snapshot
+    /// is otherwise re-read only on a page change or a reload, so a new entry's
+    /// rows (or the reset values) would not exist until the user left the page:
+    /// the next pass re-reads it.
     stale: bool,
     /// Retained list chrome: the count editor and the reorder gesture.
     list_chrome: ListChromeState,
@@ -304,6 +301,16 @@ impl PageState {
         self.stale = false;
     }
 
+    /// The owner replaced the whole style. Drop an in-flight edit (its value
+    /// no longer belongs to the new table) and re-read the owner's field table
+    /// on the next pass.
+    fn reset(&mut self) {
+        self.edit = None;
+        self.dirty = false;
+        self.list_chrome.clear();
+        self.stale = true;
+    }
+
     /// Ask the app to persist the page being left, if it has an edit that was
     /// never released (typed text, arrow keys).
     fn commit(&mut self, out: &mut UiOut) {
@@ -332,9 +339,6 @@ pub struct PreferencesPanel {
     /// A color popup was open when the panel closed; close it on the next
     /// draw so reopening Preferences does not resurrect it.
     close_popups: bool,
-    /// Shared swatch groups. Loaded from Library/ColorSwatches.ron in init and
-    /// saved by the picker whenever a group or swatch changes.
-    swatches: ColorSwatches,
 }
 
 impl PreferencesPanel {
@@ -345,7 +349,6 @@ impl PreferencesPanel {
             selected: None,
             page: PageState::default(),
             close_popups: false,
-            swatches: ColorSwatches::default(),
         }
     }
 }
@@ -378,13 +381,6 @@ impl Panel for PreferencesPanel {
                 kairos_log::warn!(target: "kairos_editor", "preferences style: {error}");
             }
         }
-        match ColorSwatches::load("Library/ColorSwatches.ron") {
-            Ok(book) => self.swatches = book,
-            Err(error) => {
-                kairos_log::warn!(target: "kairos_editor", "color swatches: {error}");
-                self.swatches.set_path("Library/ColorSwatches.ron");
-            }
-        }
     }
 
     fn ui(&mut self, ui: &mut Ui, frame: &Frame, out: &mut UiOut) {
@@ -393,7 +389,6 @@ impl Panel for PreferencesPanel {
             selected,
             page,
             close_popups,
-            swatches,
         } = self;
 
         // The dock builds a body Ui from the context style, so the app's
@@ -511,12 +506,11 @@ impl Panel for PreferencesPanel {
                         list_style,
                         &picker_style,
                         page,
-                        swatches,
                         out,
                     );
                 });
 
-                footer(ui, style, footer_rect, page.key, out);
+                footer(ui, style, footer_rect, page, out);
             });
 
         // A click ends the interaction: one write per gesture, however many
@@ -543,9 +537,6 @@ impl Panel for PreferencesPanel {
     /// saves it before the panel goes away.
     fn on_close(&mut self, _frame: &Frame, out: &mut UiOut) -> bool {
         self.page.commit(out);
-        if let Err(error) = self.swatches.save_if_dirty() {
-            kairos_log::warn!(target: "kairos_editor", "color swatches: {error}");
-        }
         self.close_popups = true;
         true
     }
@@ -598,7 +589,6 @@ fn page_body(
     list_style: &ListStyle,
     picker_style: &ColorPickerStyle,
     page: &mut PageState,
-    swatches: &mut ColorSwatches,
     out: &mut UiOut,
 ) {
     let picker_before = any_color_picker_open(ui.ctx());
@@ -639,7 +629,6 @@ fn page_body(
                 key: page_key.expect("a page body is only drawn for a selected page"),
                 picker: picker_style,
                 page,
-                swatches,
                 out,
                 clicked: false,
                 active_shift: None,
@@ -669,7 +658,6 @@ struct PageWriter<'a> {
     key: PageKey,
     picker: &'a ColorPickerStyle,
     page: &'a mut PageState,
-    swatches: &'a mut ColorSwatches,
     out: &'a mut UiOut,
     /// A row, a field name or a foldout consumed this pass's click. Without
     /// one, a click elsewhere on the page ends the current selection.
@@ -1519,7 +1507,6 @@ impl PageWriter<'_> {
             field,
             selected,
             edit,
-            self.swatches,
             &mut self.clicked,
             value_rect,
             Some(&label_response),
@@ -1594,7 +1581,6 @@ fn draw_value(
     field: &mut StyleField,
     selected: &mut Option<String>,
     edit: &mut Option<FieldEdit>,
-    swatches: &mut ColorSwatches,
     clicked: &mut bool,
     rect: Rect,
     label: Option<&FieldLabelResponse>,
@@ -1668,7 +1654,6 @@ fn draw_value(
             ColorUsage::LDR,
             selected,
             clicked,
-            swatches,
             rect,
             id,
             &path,
@@ -1681,7 +1666,6 @@ fn draw_value(
             ColorUsage::HDR,
             selected,
             clicked,
-            swatches,
             rect,
             id,
             &path,
@@ -1807,7 +1791,6 @@ fn draw_color(
     usage: ColorUsage,
     selected: &mut Option<String>,
     clicked: &mut bool,
-    swatches: &mut ColorSwatches,
     rect: Rect,
     id: Id,
     path: &str,
@@ -1818,8 +1801,7 @@ fn draw_color(
         rect,
         ColorField::new(id, &mut property, picker_style)
             .selected(active)
-            .height(rect.height())
-            .swatches(swatches),
+            .height(rect.height()),
     );
     // A pick's confirming click never reaches egui (the host masks it), so
     // the eyedropper reports its own end of gesture; without that the page
@@ -1996,40 +1978,47 @@ fn collapsed_above(segments: &[&str], collapsed: &HashSet<String>) -> bool {
     false
 }
 
-/// Close, right-aligned, plus Reload on a shared page. Every edit is already
-/// written when the interaction ends, so there is nothing to apply or cancel
-/// here; Reload is the explicit "the file changed, read it again" path.
+/// Restore-to-defaults, right-aligned. Closing already belongs to the dock
+/// (the tab's × and the floating window's close control), and every edit is
+/// written when its interaction ends, so the footer has nothing to apply,
+/// cancel or re-read. Reset replaces the page's live style with its code
+/// defaults and asks the app to write the file as part of the same reset.
 fn footer(
     ui: &mut Ui,
     style: &PreferencesPanelStyle,
     rect: Rect,
-    page: Option<PageKey>,
+    page: &mut PageState,
     out: &mut UiOut,
 ) {
     ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+            let Some(key) = page.key else {
+                return;
+            };
             if ui
-                .add(Button::new("Close", &style.button_style()).id(close_id()))
+                .add(
+                    Button::new("Reset", &style.button_style())
+                        .id(reset_id(key))
+                        .tooltip("Restore this page's factory style and save it"),
+                )
                 .clicked()
             {
-                out.push(Action::Layout(LayoutAction::ClosePanel {
-                    panel: PREFERENCES,
-                }));
-            }
-
-            if let Some(PageKey::Shared(shared)) = page
-                && ui
-                    .add(Button::new("Reload", &style.button_style()).id(reload_id(shared)))
-                    .clicked()
-            {
-                // The open picker was drawn from the old file; close it
-                // rather than leave a stale window over the refreshed page.
+                // A picker or menu opened from the old values would be stale
+                // over the reset page; close it before asking for the defaults.
                 egui::Popup::close_all(ui.ctx());
                 close_all_color_pickers(ui.ctx());
-                out.push(Action::SharedStyle(SharedStyleAction::Reload {
-                    style: shared,
-                }));
+                page.reset();
+                match key {
+                    PageKey::Panel(panel) => {
+                        out.push(Action::Style(StyleAction::Reset { panel }));
+                    }
+                    PageKey::Shared(shared) => {
+                        out.push(Action::SharedStyle(SharedStyleAction::Reset {
+                            style: shared,
+                        }));
+                    }
+                }
             }
         });
     });
@@ -2493,18 +2482,29 @@ mod tests {
         );
     }
 
+    /// Reset replaces the page's live style with its code defaults. Closing is
+    /// the dock's job, so the footer has no close action of its own.
     #[test]
-    fn close_asks_the_layout_to_close_the_panel() {
+    fn the_footer_reset_button_asks_the_owner_for_code_defaults() {
         let mut harness = Harness::new(skins());
         harness.frame(Vec::new());
+        harness.panel.page.dirty = true;
 
-        let (_, actions) = harness.click(close_id());
+        let (_, actions) = harness.click(reset_id(panels::CONSOLE));
 
         assert_eq!(
             actions,
-            vec![Action::Layout(LayoutAction::ClosePanel {
-                panel: PREFERENCES
+            vec![Action::Style(StyleAction::Reset {
+                panel: panels::CONSOLE
             })]
+        );
+        assert!(
+            harness.panel.page.stale,
+            "the next pass re-reads the reset field table"
+        );
+        assert!(
+            !harness.panel.page.dirty,
+            "a reset discards the pending edit instead of committing it"
         );
     }
 
@@ -2601,20 +2601,37 @@ mod tests {
         );
     }
 
-    /// Reload is the explicit refresh path for a shared page whose file was
-    /// edited outside the editor.
+    /// A shared page resets through its own action path: the registry owns the
+    /// live value, not a panel instance.
     #[test]
-    fn a_shared_page_reload_button_asks_the_registry_to_re_read_the_file() {
+    fn a_shared_page_reset_button_asks_the_registry_for_code_defaults() {
         let mut harness = Harness::new(Vec::new());
         harness.frame(Vec::new());
 
-        let (_, actions) = harness.click(reload_id(COLOR_PICKER));
+        let (_, actions) = harness.click(reset_id(COLOR_PICKER));
 
         assert_eq!(
             actions,
-            vec![Action::SharedStyle(SharedStyleAction::Reload {
+            vec![Action::SharedStyle(SharedStyleAction::Reset {
                 style: COLOR_PICKER
             })]
+        );
+    }
+
+    /// The footer has one meaningful action. Close belongs to the dock (the
+    /// tab's × and the floating window's close control), and Reload is gone
+    /// because every edit is already written when its interaction ends.
+    #[test]
+    fn the_footer_offers_reset_without_close_or_reload() {
+        let mut harness = Harness::new(Vec::new());
+        let (output, _) = harness.frame(Vec::new());
+        let text = painted_text(&output);
+
+        assert!(text.contains("Reset"), "the footer offers Reset: {text}");
+        assert!(!text.contains("Close"), "Close is the dock's job: {text}");
+        assert!(
+            !text.contains("Reload"),
+            "there is nothing to reload: {text}"
         );
     }
 
@@ -2626,10 +2643,10 @@ mod tests {
         let mut harness = Harness::with_size(skins(), vec2(460.0, 180.0));
         harness.frame(Vec::new());
 
-        let rect = harness.rect_of(close_id());
+        let rect = harness.rect_of(reset_id(panels::CONSOLE));
         assert!(
             rect.max.y <= 180.0 && rect.max.x <= 460.0,
-            "Close is outside the panel: {rect:?}"
+            "Reset is outside the panel: {rect:?}"
         );
     }
 

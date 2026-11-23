@@ -20,3 +20,5 @@ ron = "0.12"
 serde = { version = "1.0.228", features = ["derive"] }
 # The enum field reads a value's variants and labels from strum in generic code.
 strum = { version = "0.28.0", features = ["derive"] }
+# The context-wide swatch store reports load/save failures through the editor log.
+kairos_log = { path = "../kairos_log" }
