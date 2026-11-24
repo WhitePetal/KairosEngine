@@ -1571,6 +1571,7 @@ fn status_bar(
 mod tests {
     use super::*;
     use crate::frame::HostView;
+use crate::shared_style::SharedStyles;
     use egui::{Event, FullOutput, Modifiers, PointerButton, Pos2, RawInput};
     use kairos_editor_core::EditorState;
     use kairos_editor_core::project::ScanEntry;
@@ -1637,6 +1638,7 @@ mod tests {
         ctx: egui::Context,
         state: EditorState,
         panel: ProjectPanel,
+        shared_styles: SharedStyles,
         out: UiOut,
         time: f64,
     }
@@ -1664,6 +1666,7 @@ mod tests {
                 ctx: egui::Context::default(),
                 state,
                 panel: ProjectPanel::default(),
+                shared_styles: SharedStyles::default(),
                 out: UiOut::new(),
                 time: 0.0,
             };
@@ -1694,10 +1697,11 @@ mod tests {
                 ctx,
                 state,
                 panel,
+                shared_styles,
                 out,
                 ..
             } = self;
-            let frame = Frame::with_host(state, &EmptyHost);
+            let frame = Frame::new(state, &EmptyHost, &shared_styles);
             ctx.run_ui(input, |ui| panel.ui(ui, &frame, &mut *out))
         }
 

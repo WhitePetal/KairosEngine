@@ -371,7 +371,7 @@ impl Panel for PreferencesPanel {
 
         // Panel pages first (the existing editor order), then the shared
         // styles, which are always present even when no panel is open.
-        let shared_skins: Vec<SharedSkin> = frame.shared.skins();
+        let shared_skins: Vec<SharedSkin> = frame.shared_styles.skins();
         let mut pages: Vec<PageInfo<'_>> = frame
             .skins
             .iter()
@@ -2228,9 +2228,8 @@ mod tests {
                 shared,
                 panel,
             } = self;
-            let frame = Frame::with_host(state, &host)
-                .with_skins(skins)
-                .with_shared(shared);
+            let frame = Frame::new(state, &host, &shared)
+                .with_skins(skins);
             let mut out = UiOut::new();
             let output = ctx.run_ui(input, |ui| {
                 if screen == size {
@@ -2563,7 +2562,7 @@ mod tests {
 
         let state = EditorState::new();
         let host = NoHost;
-        let frame = Frame::with_host(&state, &host);
+        let frame = Frame::new(&state, &host, &harness.shared);
         let mut out = UiOut::new();
 
         assert!(
@@ -2816,7 +2815,7 @@ mod tests {
 
         let state = EditorState::new();
         let host = NoHost;
-        let frame = Frame::with_host(&state, &host);
+        let frame = Frame::new(&state, &host, &harness.shared);
         let own = harness.panel.skin(&frame).expect("preferences has a skin");
         assert_eq!(own.panel, PREFERENCES);
         assert_eq!(own.file, "PreferencesPanel.ron");

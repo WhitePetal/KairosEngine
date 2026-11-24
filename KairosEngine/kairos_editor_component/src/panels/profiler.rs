@@ -2490,7 +2490,7 @@ mod probe {
         frame::HostView,
         panels::profiler::hierarchy::{
             HierarchySort, hierarchy_row_label, sort_hierarchy_rows, visible_hierarchy_rows,
-        },
+        }, shared_style::SharedStyles,
     };
     use egui::pos2;
     use kairos_editor_core::EditorState;
@@ -2537,12 +2537,13 @@ mod probe {
         events: Vec<egui::Event>,
     ) -> egui::FullOutput {
         let state = EditorState::new();
+        let shared_styles = SharedStyles::default();
         let mut out = UiOut::new();
         let mut input = egui::RawInput::default();
         input.screen_rect = Some(Rect::from_min_size(pos2(0.0, 0.0), size));
         input.events = events;
         ctx.run_ui(input, |ui| {
-            panel.ui(ui, &Frame::with_host(&state, host), &mut out);
+            panel.ui(ui, &Frame::new(&state, host, &shared_styles), &mut out);
         })
     }
 
@@ -2805,6 +2806,7 @@ mod probe {
     fn draw_panel(panel: &mut ProfilerPanel, host: &ProfilerHost) -> egui::FullOutput {
         let ctx = Context::default();
         let state = EditorState::new();
+        let shared_styles = SharedStyles::default();
         let mut out = UiOut::new();
         let mut input = egui::RawInput::default();
         input.screen_rect = Some(Rect::from_min_size(
@@ -2812,7 +2814,7 @@ mod probe {
             egui::vec2(900.0, 640.0),
         ));
         ctx.run_ui(input, |ui| {
-            panel.ui(ui, &Frame::with_host(&state, host), &mut out);
+            panel.ui(ui, &Frame::new(&state, host, &shared_styles), &mut out);
         })
     }
 
@@ -2922,6 +2924,7 @@ mod probe {
         let ctx = Context::default();
         let state = EditorState::new();
         let host = ProfilerHost(profiler);
+        let shared_styles = SharedStyles::default();
         let mut panel = ProfilerPanel::default();
         let mut out = UiOut::new();
         let mut input = egui::RawInput::default();
@@ -2930,7 +2933,7 @@ mod probe {
             egui::vec2(400.0, 300.0),
         ));
         let output = ctx.run_ui(input, |ui| {
-            panel.ui(ui, &Frame::with_host(&state, &host), &mut out);
+            panel.ui(ui, &Frame::new(&state, &host, &shared_styles), &mut out);
         });
 
         let painted = painted(&output);
@@ -3120,6 +3123,7 @@ mod probe {
         let host = ProfilerHost(captured_profiler());
         let mut panel = ProfilerPanel::default();
         let state = EditorState::new();
+        let shared_styles = SharedStyles::default();
         let mut out = UiOut::new();
         let ctx = Context::default();
         let mut input = egui::RawInput::default();
@@ -3131,7 +3135,7 @@ mod probe {
         // The first pass lays the panel out; the click in the second pass hits
         // the row rect the first pass registered.
         let first = ctx.run_ui(input.clone(), |ui| {
-            panel.ui(ui, &Frame::with_host(&state, &host), &mut out);
+            panel.ui(ui, &Frame::new(&state, &host, &shared_styles), &mut out);
         });
         let label = first
             .shapes
@@ -3159,7 +3163,7 @@ mod probe {
             },
         ];
         let _ = ctx.run_ui(input, |ui| {
-            panel.ui(ui, &Frame::with_host(&state, &host), &mut out);
+            panel.ui(ui, &Frame::new(&state, &host, &shared_styles), &mut out);
         });
 
         assert!(

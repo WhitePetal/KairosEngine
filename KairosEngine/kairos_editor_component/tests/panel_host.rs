@@ -4,7 +4,7 @@
 use egui::{Context, Pos2, RawInput, Rect, Vec2};
 use kairos_editor_component::{
     ConsoleLine, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelId, PanelInstanceId,
-    UiOut, panels,
+    UiOut, panels, shared_style::SharedStyles,
 };
 use kairos_editor_core::{EditorState, LayoutState, ListEdit, StyleValue};
 use kairos_editor_docking::viewer::TabViewer;
@@ -49,6 +49,7 @@ fn draw_with(
     host: &mut PanelHost,
     host_resources: &dyn HostView,
     state: &EditorState,
+    shared_styles: &SharedStyles,
     ids: &[PanelInstanceId],
 ) -> UiOut {
     let mut out = UiOut::new();
@@ -56,7 +57,7 @@ fn draw_with(
     let mut input = RawInput::default();
     input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 820.0)));
     {
-        let frame = Frame::with_host(state, host_resources);
+        let frame = Frame::new(state, host_resources, shared_styles);
         let mut viewer = host.viewer(&mut out, frame);
         let _ = ctx.run_ui(input, |ui| {
             for id in ids {
@@ -110,6 +111,7 @@ fn console_renders_the_host_log_snapshot() {
 
     let mut state = EditorState::new();
     state.layout.open(panels::CONSOLE);
+    let shared_styles = SharedStyles::default();
     let mut host = default_host();
     host.sync(&state.layout, &Context::default());
     let ids: Vec<PanelInstanceId> = host.ids().collect();
@@ -120,7 +122,7 @@ fn console_renders_the_host_log_snapshot() {
             ConsoleLine::new(Level::Warning, "toggle panel: console"),
         ],
     };
-    let out = draw_with(&mut host, &host_view, &state, &ids);
+    let out = draw_with(&mut host, &host_view, &state, &shared_styles, &ids);
 
     assert!(out.is_empty());
     // The console owns no history: it just rendered the host snapshot.
@@ -157,11 +159,12 @@ fn profiler_panel_renders_without_a_host_capture() {
 
     let mut state = EditorState::new();
     state.layout.open(panels::PROFILER);
+    let shared_styles = SharedStyles::default();
     let mut host = default_host();
     host.sync(&state.layout, &Context::default());
     let ids: Vec<PanelInstanceId> = host.ids().collect();
 
-    let out = draw_with(&mut host, &NoProfilerHost, &state, &ids);
+    let out = draw_with(&mut host, &NoProfilerHost, &state, &shared_styles, &ids);
 
     // The panel explains that the host is missing instead of panicking; it
     // never owns a capture of its own.
@@ -202,11 +205,12 @@ fn profiler_panel_renders_a_captured_frame() {
 
     let mut state = EditorState::new();
     state.layout.open(panels::PROFILER);
+    let shared_styles = SharedStyles::default();
     let mut host = default_host();
     host.sync(&state.layout, &Context::default());
     let ids: Vec<PanelInstanceId> = host.ids().collect();
 
-    let out = draw_with(&mut host, &host_view, &state, &ids);
+    let out = draw_with(&mut host, &host_view, &state, &shared_styles, &ids);
 
     assert!(out.is_empty());
     profiler.set_recording(false);
@@ -220,12 +224,13 @@ fn viewer_bridges_the_panel_icon_path_to_a_file_uri() {
 
     let mut state = EditorState::new();
     state.layout.open(panels::CONSOLE);
+    let shared_styles = SharedStyles::default();
     let mut host = default_host();
     host.sync(&state.layout, &Context::default());
     let id = host.id_of(panels::CONSOLE).expect("console instance");
 
     let mut out = UiOut::new();
-    let frame = Frame::with_host(&state, &NoHost);
+    let frame = Frame::new(&state, &NoHost, &shared_styles);
     let mut viewer = host.viewer(&mut out, frame);
     let icon = viewer.icon(id).expect("console tab icon");
     let uri = icon.uri().expect("URI image source");
@@ -292,10 +297,11 @@ fn skin_fields_are_listed_and_written_through_the_host() {
     let mut state = EditorState::new();
     state.layout.open(panels::CONSOLE);
     state.layout.open(panels::PROFILER);
+    let shared_styles = SharedStyles::default();
     let mut host = default_host();
     host.sync(&state.layout, &Context::default());
 
-    let skins = host.skins(&state);
+    let skins = host.skins(&state, &shared_styles);
     let console = skins
         .iter()
         .find(|skin| skin.panel == panels::CONSOLE)
@@ -325,7 +331,7 @@ fn skin_fields_are_listed_and_written_through_the_host() {
     assert!(!host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::Bool(true)));
 
     assert!(host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::F32(30.0)));
-    let updated = host.skins(&state);
+    let updated = host.skins(&state, &shared_styles);
     let console = updated
         .iter()
         .find(|skin| skin.panel == panels::CONSOLE)
@@ -339,7 +345,7 @@ fn skin_fields_are_listed_and_written_through_the_host() {
 
     // A list token grows, shrinks and reorders through the same host path.
     let palette_len = |host: &PanelHost| -> usize {
-        let skins = host.skins(&state);
+        let skins = host.skins(&state, &shared_styles);
         let profiler = skins
             .iter()
             .find(|skin| skin.panel == panels::PROFILER)

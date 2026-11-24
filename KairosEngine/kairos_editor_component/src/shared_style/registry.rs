@@ -78,13 +78,6 @@ impl SharedStyles {
         Self { entries }
     }
 
-    /// A process-lifetime default registry, so [`Frame::with_host`](crate::Frame::with_host)
-    /// can be used in tests and embedders that do not own shared styles.
-    pub fn default_ref() -> &'static SharedStyles {
-        static DEFAULT: std::sync::OnceLock<SharedStyles> = std::sync::OnceLock::new();
-        DEFAULT.get_or_init(SharedStyles::default)
-    }
-
     pub fn get<T: SharedStyle>(&self, id: SharedStyleId) -> Option<&T> {
         self.entries.get(&id)?.value.as_any().downcast_ref::<T>()
     }
@@ -364,5 +357,25 @@ mod tests {
 
         kairos_editor_widgets::style::set_style_root("Preferences/Styles");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// [`Frame`](crate::Frame) borrows a style the live registry omits from
+    /// this registry and expects every builtin id to be there. A filtered
+    /// default registry would turn that borrow into a panic, so pin it.
+    #[test]
+    fn the_default_registry_holds_every_builtin_style() {
+        let ids: Vec<_> = SharedStyles::default()
+            .skins()
+            .into_iter()
+            .map(|skin| skin.id)
+            .collect();
+
+        for def in StyleCatalog::builtin().defs() {
+            assert!(
+                ids.contains(&def.id),
+                "the default registry lacks {}",
+                def.id
+            );
+        }
     }
 }

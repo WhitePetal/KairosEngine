@@ -287,7 +287,7 @@ fn footer(ui: &mut Ui, style: &AboutPanelStyle, info: &EditorInfo, out: &mut UiO
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::HostView;
+    use crate::{frame::HostView, shared_style::SharedStyles};
     use kairos_editor_core::EditorState;
 
     struct NoHost;
@@ -328,7 +328,8 @@ mod tests {
     ) -> (egui::FullOutput, UiOut) {
         let state = EditorState::new();
         let host = NoHost;
-        let frame = Frame::with_host(&state, &host);
+        let shared_styles = SharedStyles::default();
+        let frame = Frame::new(&state, &host, &shared_styles);
         let mut out = UiOut::new();
         let output = ctx.run_ui(raw_input(events), |ui| panel.ui(ui, &frame, &mut out));
         (output, out)
@@ -461,7 +462,8 @@ mod tests {
         let ctx = Context::default();
         let state = EditorState::new();
         let host = NoHost;
-        let frame = Frame::with_host(&state, &host);
+        let shared_styles = SharedStyles::default();
+        let frame = Frame::new(&state, &host, &shared_styles);
         let mut out = UiOut::new();
         let mut size = egui::Vec2::ZERO;
 
@@ -498,7 +500,8 @@ mod tests {
         let panel = panel();
         let state = EditorState::new();
         let host = NoHost;
-        let frame = Frame::with_host(&state, &host);
+        let shared_styles = SharedStyles::default();
+        let frame = Frame::new(&state, &host, &shared_styles);
 
         assert_eq!(panel.title(&frame).text(), "About KairosEngine");
     }

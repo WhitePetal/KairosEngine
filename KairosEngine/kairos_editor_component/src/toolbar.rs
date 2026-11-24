@@ -130,7 +130,7 @@ mod tests {
     use egui::{Context, Pos2, RawInput, Rect, vec2};
     use kairos_editor_core::EditorState;
 
-    use crate::frame::HostView;
+    use crate::{frame::HostView, shared_style::SharedStyles};
 
     struct EmptyHost;
 
@@ -149,7 +149,8 @@ mod tests {
         let mut toolbar = ToolBar::new();
         let state = EditorState::new();
         let host = EmptyHost;
-        let frame = Frame::with_host(&state, &host);
+        let shared_styles = SharedStyles::default();
+        let frame = Frame::with_host(&state, &host, &shared_styles);
         let mut out = UiOut::new();
 
         let output = ctx.run_ui(raw_input(), |ui| toolbar.ui(ui, &frame, &mut out));

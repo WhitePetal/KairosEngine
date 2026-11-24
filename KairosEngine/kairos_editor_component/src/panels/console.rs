@@ -699,7 +699,7 @@ fn paint_stack_frame(ui: &mut Ui, frame: &StackFrame, style: &ConsoleStyle) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::HostView;
+    use crate::{frame::HostView, shared_style::SharedStyles};
     use egui::Pos2;
     use kairos_editor_core::EditorState;
     use kairos_editor_widgets::style::Style;
@@ -775,6 +775,7 @@ mod tests {
         state: EditorState,
         panel: ConsolePanel,
         host: &'a dyn HostView,
+        shared: SharedStyles,
         out: UiOut,
     }
 
@@ -785,6 +786,7 @@ mod tests {
                 state: EditorState::default(),
                 panel: ConsolePanel::default(),
                 host,
+                shared: SharedStyles::default(),
                 out: UiOut::new(),
             }
         }
@@ -803,9 +805,10 @@ mod tests {
                 state,
                 panel,
                 host,
+                shared,
                 out,
             } = self;
-            let frame = Frame::with_host(state, *host);
+            let frame = Frame::new(state, *host, shared);
             ctx.run_ui(input, |ui| panel.ui(ui, &frame, &mut *out))
         }
 

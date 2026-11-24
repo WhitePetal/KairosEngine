@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use kairos_editor_core::{EditorState, LayoutState, PanelId, StyleValue};
 
-use crate::frame::{Frame, HostView, UiOut};
+use crate::{frame::{Frame, HostView, UiOut}, shared_style::SharedStyles};
 
 use super::{Panel, PanelCatalog, PanelContext, PanelHostViewer, PanelInstanceId};
 use crate::skin::PanelSkin;
@@ -106,12 +106,12 @@ impl PanelHost {
     /// `state` is only there for `Panel::title`, which names the page: the
     /// snapshot is taken outside the UI pass, so there are no host resources to
     /// show and the frame carries an empty host.
-    pub fn skins(&self, state: &EditorState) -> Vec<PanelSkin> {
+    pub fn skins(&self, state: &EditorState, shared_styles: &SharedStyles) -> Vec<PanelSkin> {
         struct NoHost;
 
         impl HostView for NoHost {}
 
-        let frame = Frame::with_host(state, &NoHost);
+        let frame = Frame::new(state, &NoHost, &shared_styles);
         self.instances
             .values()
             .filter_map(|panel| panel.skin(&frame))

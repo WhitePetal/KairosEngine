@@ -191,7 +191,7 @@ pub struct EditorApp {
     skins: Vec<PanelSkin>,
     /// Appearance owned by the editor shell (toolbar, color picker). Loaded
     /// once at boot, edited live from the Preferences panel's shared pages.
-    shared: SharedStyles,
+    shared_styles: SharedStyles,
 }
 
 impl EditorApp {
@@ -225,8 +225,8 @@ impl EditorApp {
         // the font list, the toolbar logo, the eyedropper icon — so the fonts no
         // longer need a boot call of their own. A missing file is seeded in
         // place, so the editor works on a fresh checkout without a build step.
-        let shared = SharedStyles::load(&StyleCatalog::builtin(), egui_ctx.theme());
-        shared.preload(egui_ctx);
+        let shared_styles = SharedStyles::load(&StyleCatalog::builtin(), egui_ctx.theme());
+        shared_styles.preload(egui_ctx);
 
         // The swatch book is a context-wide widget resource: the store only
         // records the project-relative path, and the first picker that opens
@@ -266,7 +266,7 @@ impl EditorApp {
             inbox,
             project,
             skins: Vec::new(),
-            shared,
+            shared_styles,
         }
     }
 
@@ -336,7 +336,7 @@ impl EditorApp {
         // while that panel is open; after the effects, so an edit applied last
         // frame is already visible in the table.
         self.skins = if self.state.layout.is_open(panels::PREFERENCES) {
-            self.host.skins(&self.state)
+            self.host.skins(&self.state, &self.shared_styles)
         } else {
             Vec::new()
         };
@@ -384,11 +384,11 @@ impl EditorApp {
             let Self {
                 host,
                 dock,
-                shared,
+                shared_styles,
                 project,
                 ..
             } = self;
-            let mut executor = EffectExecutor::new(host, dock, shared, project, now);
+            let mut executor = EffectExecutor::new(host, dock, shared_styles, project, now);
             for effect in effects {
                 produced.extend(executor.apply(effect, ctx));
             }
@@ -597,12 +597,11 @@ impl EditorApp {
                     dock,
                     tool_bar,
                     skins,
-                    shared,
+                    shared_styles,
                     ..
                 } = self;
-                let frame = Frame::with_host(state, &host_scope)
-                    .with_skins(skins)
-                    .with_shared(shared);
+                let frame = Frame::new(state, &host_scope, shared_styles)
+                    .with_skins(skins);
                 tool_bar.ui(ui, &frame, &mut out);
                 let mut viewer = host.viewer(&mut out, frame);
                 Docker::new("kairos_editor_docker", dock).show(ui, &mut viewer);
@@ -719,7 +718,7 @@ mod tests {
             // tests assert, and a scheduler would only add timing to it.
             project: ProjectService::inline(),
             skins: Vec::new(),
-            shared: SharedStyles::default(),
+            shared_styles: SharedStyles::default(),
         }
     }
 
@@ -1070,7 +1069,7 @@ mod tests {
         );
 
         assert_eq!(
-            app.shared
+            app.shared_styles
                 .color_picker()
                 .expect("the color picker skin is registered")
                 .border_width,
@@ -1221,8 +1220,8 @@ mod tests {
 
         let mut out = UiOut::new();
         {
-            let EditorApp { state, host, .. } = &mut app;
-            let frame = Frame::with_host(state, &host_scope);
+            let EditorApp { state, host, shared_styles, .. } = &mut app;
+            let frame = Frame::new(state, &host_scope, shared_styles);
             let mut viewer = host.viewer(&mut out, frame);
             assert!(
                 viewer.allowed_in_windows(id),
@@ -1418,7 +1417,7 @@ mod tests {
 
         let console = app
             .host
-            .skins(&app.state)
+            .skins(&app.state, &app.shared_styles)
             .into_iter()
             .find(|skin| skin.panel == panels::CONSOLE)
             .expect("console skin");
@@ -1533,7 +1532,7 @@ mod tests {
         let mut app = build();
         let dir = scratch_style_root().to_path_buf();
         let ctx = egui::Context::default();
-        let default = app.shared.toolbar().expect("toolbar").height;
+        let default = app.shared_styles.toolbar().expect("toolbar").height;
 
         apply(
             &mut app,
@@ -1544,7 +1543,7 @@ mod tests {
             }),
             &ctx,
         );
-        assert_eq!(app.shared.toolbar().expect("toolbar").height, 99.0);
+        assert_eq!(app.shared_styles.toolbar().expect("toolbar").height, 99.0);
 
         apply(
             &mut app,
@@ -1552,7 +1551,7 @@ mod tests {
             &ctx,
         );
 
-        assert_eq!(app.shared.toolbar().expect("toolbar").height, default);
+        assert_eq!(app.shared_styles.toolbar().expect("toolbar").height, default);
         let text =
             std::fs::read_to_string(dir.join("ToolBar.ron")).expect("reset writes the shared skin");
         assert!(
@@ -1563,7 +1562,7 @@ mod tests {
 
     fn console_height(app: &EditorApp) -> StyleValue {
         app.host
-            .skins(&app.state)
+            .skins(&app.state, &app.shared_styles)
             .into_iter()
             .find(|skin| skin.panel == panels::CONSOLE)
             .expect("console skin")

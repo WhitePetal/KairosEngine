@@ -30,16 +30,16 @@
 //! egui's image loaders. `HostView` is for per-frame resources the host
 //! produces (viewport textures) or owns as a stream (log history).
 
-use std::sync::LazyLock;
-
-use kairos_editor_core::{EditorState, action::Action};
+use kairos_editor_core::{EditorState, SharedStyleId, action::Action};
 use kairos_editor_widgets::color_picker::ColorPickerStyle;
 use kairos_editor_widgets::modal::ModalStyle;
-use kairos_editor_widgets::style::Style;
 use kairos_log::{Level, StackFrame};
 use kairos_profile::Profiler;
 
-use crate::shared_style::{ColorPickerSkin, EditorFieldStyle, ListStyle, ModalSkin, SharedStyles};
+use crate::shared_style::{
+    COLOR_PICKER, ColorPickerSkin, EDITOR_FIELD, EditorFieldStyle, LIST, ListStyle, MODAL,
+    ModalSkin, SharedStyle, SharedStyles, TOOLBAR,
+};
 use crate::toolbar::style::ToolBarStyle;
 
 /// One host-owned console entry, rendered by the Console panel.
@@ -143,69 +143,65 @@ pub struct Frame<'a> {
     /// Appearance owned by the editor shell (toolbar, color picker), shared by
     /// every panel. `with_host` points this at the pure code defaults so tests
     /// and embedders do not need to own a registry.
-    pub shared: &'a SharedStyles,
+    pub shared_styles: &'a SharedStyles,
 }
 
 impl<'a> Frame<'a> {
     /// Frame carrying host resources, e.g. `Frame::with_host(&state, &self.host)`.
-    pub fn with_host(state: &'a EditorState, host: &'a dyn HostView) -> Self {
+    pub fn new(state: &'a EditorState, host: &'a dyn HostView, shared_styles: &'a SharedStyles) -> Self {
         Self {
             state,
             host,
             skins: &[],
-            shared: SharedStyles::default_ref(),
+            shared_styles,
         }
     }
 
-    /// Attach the live panels' skin snapshots (the Preferences editor).
     pub fn with_skins(mut self, skins: &'a [crate::skin::PanelSkin]) -> Self {
         self.skins = skins;
         self
     }
 
-    /// Attach the app-owned shared styles. Without this, the frame carries the
-    /// pure code defaults (tests, headless embedders).
-    pub fn with_shared(mut self, shared: &'a SharedStyles) -> Self {
-        self.shared = shared;
-        self
-    }
-
     /// The live toolbar skin.
-    pub fn toolbar_style(&self) -> &ToolBarStyle {
-        static FALLBACK: LazyLock<ToolBarStyle> = LazyLock::new(ToolBarStyle::dark);
-        self.shared.toolbar().unwrap_or(&FALLBACK)
+    pub fn toolbar_style(&self) -> &'a ToolBarStyle {
+        self.shared_style(TOOLBAR)
     }
 
     /// The value fields' runtime tokens, projected from the shared skin.
     pub fn field_style(&self) -> kairos_editor_widgets::field::FieldStyle {
-        self.shared
-            .editor_field()
-            .map(EditorFieldStyle::tokens)
-            .unwrap_or_default()
+        self.shared_style::<EditorFieldStyle>(EDITOR_FIELD).tokens()
     }
 
     /// The reorderable list's live skin. Lists read this instead of a panel's
     /// style, so every list in the editor shares one skin.
-    pub fn list_style(&self) -> &ListStyle {
-        static FALLBACK: LazyLock<ListStyle> = LazyLock::new(ListStyle::dark);
-        self.shared.list_style().unwrap_or(&FALLBACK)
+    pub fn list_style(&self) -> &'a ListStyle {
+        self.shared_style(LIST)
     }
 
     /// The color picker's runtime tokens, projected from the shared skin.
     pub fn color_picker_style(&self) -> ColorPickerStyle {
-        self.shared
-            .color_picker()
-            .map(ColorPickerSkin::tokens)
-            .unwrap_or_default()
+        self.shared_style::<ColorPickerSkin>(COLOR_PICKER).tokens()
     }
 
     /// The modal dialog's runtime tokens, projected from the shared skin.
     pub fn modal_style(&self) -> ModalStyle {
-        static FALLBACK: LazyLock<ModalStyle> = LazyLock::new(ModalStyle::dark);
-        self.shared
-            .modal()
-            .map(ModalSkin::tokens)
-            .unwrap_or_else(|| (*FALLBACK).clone())
+        self.shared_style::<ModalSkin>(MODAL).tokens()
+    }
+
+    /// One shared style by id.
+    ///
+    /// A frame always draws from a complete registry: `with_host` points at
+    /// the process-wide code defaults and the app attaches the builtin
+    /// catalog. A missing style therefore means the caller attached a partial
+    /// catalog — a programming error, reported here with the id rather than
+    /// silently drawn with some other skin.
+    fn shared_style<T: SharedStyle>(&self, id: SharedStyleId) -> &'a T {
+        match self.shared_styles.get(id) {
+            Some(style) => style,
+            None => panic!(
+                "the frame's shared registry has no `{id}` skin; build it from StyleCatalog::builtin()"
+            ),
+        }
     }
 }
 
@@ -259,6 +255,7 @@ mod tests {
     use egui::{Color32, Theme};
     use kairos_color::Color;
     use kairos_editor_core::{EditorState, StyleValue};
+    use kairos_editor_widgets::style::Style;
 
     use super::*;
     use crate::shared_style::{MODAL, SharedStyleDef, StyleCatalog};
@@ -267,63 +264,41 @@ mod tests {
 
     impl HostView for EmptyHost {}
 
-    /// A registry with no shared styles registered: every accessor takes its
-    /// fallback, which is the state of a headless embedder that never loaded a
-    /// catalog.
+    /// A registry built from a catalog that registers nothing: the shape of a
+    /// misconfigured embedder. The frame's accessors require a complete
+    /// registry, so this is a setup bug, not a runtime state.
     fn empty_registry() -> SharedStyles {
         static NO_STYLES: [SharedStyleDef; 0] = [];
         SharedStyles::defaults(&StyleCatalog::new(&NO_STYLES), Theme::Dark)
     }
 
-    fn frame_with_shared<'a>(
-        state: &'a EditorState,
-        host: &'a EmptyHost,
-        shared: &'a SharedStyles,
-    ) -> Frame<'a> {
-        Frame::with_host(state, host).with_shared(shared)
+    /// Without `.with_shared` the frame draws from the process-wide code
+    /// defaults, so a test or embedder can draw without owning a registry.
+    #[test]
+    fn a_frame_without_a_live_registry_draws_the_code_defaults() {
+        let state = EditorState::new();
+        let host = EmptyHost;
+        let shared_styles = SharedStyles::default();
+        let frame = Frame::new(&state, &host, &shared_styles);
+
+        assert_eq!(frame.toolbar_style().height, ToolBarStyle::dark().height);
+        assert_eq!(frame.list_style(), &ListStyle::dark());
+        assert_eq!(frame.modal_style().backdrop, ModalStyle::dark().backdrop);
     }
 
-    /// Without a registered skin the frame hands the dialog the widget's own
-    /// default, so a test or embedder can draw one without owning a registry.
+    /// Attaching a catalog that omits a style is a setup bug, not a state to
+    /// render around: the first access names the missing skin.
     #[test]
-    fn the_frame_falls_back_to_the_widgets_dialog_default() {
+    #[should_panic(expected = "has no `list` skin")]
+    fn a_registry_without_a_style_is_a_programming_error() {
         let state = EditorState::new();
         let host = EmptyHost;
         let shared = empty_registry();
-        let style = frame_with_shared(&state, &host, &shared).modal_style();
-        let default = ModalStyle::dark();
-
-        assert_eq!(style.backdrop, default.backdrop);
-        assert_eq!(style.fill, default.fill);
-        assert_eq!(style.stroke, default.stroke);
-        assert_eq!(style.corner_radius, default.corner_radius);
-        assert_eq!(style.shadow, default.shadow);
-        assert_eq!(style.width, default.width);
-        assert_eq!(style.padding, default.padding);
-        assert_eq!(style.title, default.title);
-        assert_eq!(style.title_size, default.title_size);
-        assert_eq!(style.title_height, default.title_height);
-        assert_eq!(style.title_bar, default.title_bar);
-        assert_eq!(style.rule, default.rule);
-        assert_eq!(style.text, default.text);
-        assert_eq!(style.text_size, default.text_size);
-        assert_eq!(style.body_gap, default.body_gap);
-        assert_eq!(style.footer_gap, default.footer_gap);
-        assert_eq!(style.button, default.button);
-        assert_eq!(style.button_gap, default.button_gap);
-        assert_eq!(style.button_text_size, default.button_text_size);
-        assert_eq!(style.button_radius, default.button_radius);
-        assert_eq!(style.button_fill, default.button_fill);
-        assert_eq!(style.button_hover, default.button_hover);
-        assert_eq!(style.button_text, default.button_text);
-        assert_eq!(style.button_stroke, default.button_stroke);
-        assert_eq!(style.danger_fill, default.danger_fill);
-        assert_eq!(style.danger_hover, default.danger_hover);
-        assert_eq!(style.danger_text, default.danger_text);
+        let _ = Frame::new(&state, &host, &shared).list_style();
     }
 
-    /// A registered skin wins over the fallback: the frame reads the live
-    /// registry value, so a Preferences edit is what the next dialog draws.
+    /// The frame reads the live registry value, so a Preferences edit is what
+    /// the next dialog draws.
     #[test]
     fn a_registered_modal_skin_is_what_the_frame_draws_with() {
         let state = EditorState::new();
@@ -332,7 +307,7 @@ mod tests {
         let backdrop = Color::from_srgb8([0x12, 0x34, 0x56, 0xFF]);
         assert!(shared.set_field(MODAL, "backdrop", &StyleValue::Color(backdrop)));
 
-        let style = frame_with_shared(&state, &host, &shared).modal_style();
+        let style = Frame::new(&state, &host, &shared).modal_style();
 
         assert_eq!(style.backdrop, Color32::from_rgb(0x12, 0x34, 0x56));
         assert_eq!(
