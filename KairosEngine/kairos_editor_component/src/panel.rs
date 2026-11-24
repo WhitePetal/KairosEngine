@@ -42,10 +42,9 @@ pub use host::PanelHost;
 pub use viewer::PanelHostViewer;
 
 use egui::{Context, Ui, WidgetText};
-use kairos_editor_core::{PanelId, StyleValue};
+use kairos_editor_core::PanelId;
 
 use crate::frame::{Frame, UiOut};
-use crate::skin::PanelSkin;
 
 // Instance identity is layout vocabulary: `LayoutState` focuses by instance, so
 // the type lives in core next to `PanelId`. Re-exported here because this file
@@ -117,34 +116,65 @@ pub trait Panel: PanelRegister {
     /// tab re-dock, window resize).
     fn on_rect_changed(&mut self) {}
 
-    /// Snapshot of this panel's editable skin, for the Preferences editor.
+    /// This panel's live style as a self-drawing page value. `None` when the
+    /// panel has no editable skin.
     ///
-    /// A panel that keeps its appearance in a `Preferences/Styles/*.ron` file
-    /// returns the tokens of its live style here. Reading it is cheap and
-    /// side-effect free (the app only asks while Preferences is open), so the
-    /// editor always shows the style the panel is actually drawing with.
-    ///
-    /// The page heading is `self.title(frame)`: a skin page is named like the
-    /// tab, so there is no second title to keep in sync. `#[panel]` generates
-    /// this method for panels declared with `skin = StyleType`.
-    fn skin(&self, _frame: &Frame) -> Option<PanelSkin> {
+    /// The value is borrowed, not copied: the app asks for a copy only when it
+    /// (re)builds the Preferences page snapshot or an owner was reset, never per
+    /// frame. The Preferences page is the only caller. `#[panel]` generates this
+    /// method for panels declared with `skin = StyleType`; it is the one seam the
+    /// page needs from a panel that owns a style.
+    fn skin_value(&self) -> Option<&dyn crate::style_row::StylePage> {
         None
     }
 
-    /// Write one token of this panel's live skin.
+    /// The `Preferences/Styles/*.ron` file this panel's style is persisted to,
+    /// or `None` when the panel has no editable skin.
     ///
-    /// The style is view state owned by the panel, so this is how the editor
-    /// changes what the next pass draws. Returns whether the path named a token
-    /// of the matching exact type; the default is "this panel has no editable skin".
-    fn set_skin_field(&mut self, _path: &str, _value: &StyleValue) -> bool {
-        false
+    /// Separate from [`Self::skin_value`] because the file is a constant of the
+    /// style type while the value belongs to the live instance. `#[panel]`
+    /// generates both for `skin = StyleType`.
+    fn skin_file(&self) -> Option<&'static str> {
+        None
     }
 
-    /// Apply one structural list edit to this panel's live skin.
+    /// A typed page for this panel's live skin: the style draws itself, and the
+    /// page hands a new copy back through `StyleAction::Replace`. `None` when the
+    /// panel has no editable skin.
     ///
-    /// Same owner and same validation as [`Panel::set_skin_field`]; the
-    /// default is "this panel has no list tokens".
-    fn edit_skin_list(&mut self, _path: &str, _edit: kairos_editor_core::ListEdit) -> bool {
+    /// The page heading is `self.title(frame)`: a skin page is named like the
+    /// tab, so there is no second title to keep in sync. The app only asks while
+    /// Preferences is open; it takes the snapshot once and then copies a page
+    /// again only when the owner's value changed outside the page (a reset).
+    fn skin_page(&self, frame: &Frame) -> Option<crate::skin::PageSkin> {
+        let meta = self.skin_meta(frame)?;
+        Some(crate::skin::PageSkin {
+            id: meta.id,
+            title: meta.title,
+            file: meta.file,
+            page: self.skin_value()?.clone_box(),
+        })
+    }
+
+    /// The page without its value: what the page list and the heading show.
+    ///
+    /// Cheap by construction (no style copy), so the app can rebuild the page
+    /// list every frame and compare it with the snapshot it holds.
+    fn skin_meta(&self, frame: &Frame) -> Option<crate::skin::PageMeta> {
+        let file = self.skin_file()?;
+        self.skin_value()?;
+        Some(crate::skin::PageMeta {
+            id: crate::skin::SkinId::Panel(self.kind()),
+            title: self.title(frame).text().to_owned(),
+            file,
+        })
+    }
+
+    /// Replace this panel's live skin with a whole value the page handed back.
+    ///
+    /// Returns whether the box held this panel's style type. The page draws its
+    /// own copy, so this is the one write: no path, no per-token dispatch.
+    fn replace_skin(&mut self, _skin: Box<dyn std::any::Any>) -> bool {
         false
     }
 

@@ -11,7 +11,8 @@
 use std::time::Instant;
 
 use egui::{Context, Rect};
-use kairos_editor_component::{PanelHost, PanelInstanceId, shared_style::SharedStyles};
+use kairos_editor_component::skin::SkinId;
+use kairos_editor_component::{PageSkin, PanelHost, PanelInstanceId, shared_style::SharedStyles};
 use kairos_editor_core::{
     Action, AppEffect, Effect, LayoutEffect, PanelId, ProjectEffect, SharedStyleEffect, StyleEffect,
 };
@@ -28,6 +29,10 @@ pub(crate) struct EffectExecutor<'a> {
     /// The file system's host side: scanning (M1), watching (M1), file
     /// operations (M3).
     project: &'a mut ProjectService,
+    /// The app's Preferences page snapshot. A skin edit writes the owner, so
+    /// the snapshot's copy of that page is refreshed here: the page only reads
+    /// it when the user switches to it, and a switch back must show the edit.
+    pages: &'a mut Vec<PageSkin>,
     /// The instant the effects run. Timing policy that depends on wall-clock
     /// time (M4's view-file debounce, scan elapsed time) is computed here, not
     /// in the reducer, which must stay a pure function.
@@ -40,6 +45,7 @@ impl<'a> EffectExecutor<'a> {
         dock: &'a mut DockState<PanelInstanceId>,
         shared: &'a mut SharedStyles,
         project: &'a mut ProjectService,
+        pages: &'a mut Vec<PageSkin>,
         now: Instant,
     ) -> Self {
         Self {
@@ -47,6 +53,7 @@ impl<'a> EffectExecutor<'a> {
             dock,
             shared,
             project,
+            pages,
             now,
         }
     }
@@ -101,29 +108,23 @@ impl<'a> EffectExecutor<'a> {
         }
     }
 
-    /// Skin edits: write the value into the owning panel's live style (the
-    /// next pass draws with it), and persist a panel's file on commit.
+    /// Skin edits: write the page's value into the owning panel's live style
+    /// (the next pass draws with it), and persist a panel's file on commit.
     ///
-    /// The two are separate effects on purpose. `SetField` runs on every
-    /// changed value, including every frame of a drag; `Persist` runs once when
-    /// the interaction ends. Writing the file per frame is exactly the legacy
-    /// defect this editor replaces (a selected style page wrote its TOML about
-    /// 60 times a second).
+    /// The two are separate effects on purpose. `Replace` runs on every changed
+    /// value, including every frame of a drag; `Persist` runs once when the
+    /// interaction ends. Writing the file per frame is exactly the legacy defect
+    /// this editor replaces (a selected style page wrote its TOML about 60 times
+    /// a second).
     fn apply_style(&mut self, effect: StyleEffect, ctx: &Context) {
         match effect {
-            StyleEffect::SetField { panel, path, value } => {
-                if !self.host.set_skin_field(panel, &path, &value) {
+            StyleEffect::Replace { panel, skin } => {
+                if self.host.replace_skin(panel, skin.into_any()) {
+                    self.refresh_page(SkinId::Panel(panel));
+                } else {
                     kairos_log::warn!(
                         target: "kairos_editor",
-                        "skin {panel}: no editable field {path}"
-                    );
-                }
-            }
-            StyleEffect::EditList { panel, path, edit } => {
-                if !self.host.edit_skin_list(panel, &path, edit) {
-                    kairos_log::warn!(
-                        target: "kairos_editor",
-                        "skin {panel}: no list {path}"
+                        "skin {panel}: the page's value is not this panel's style type"
                     );
                 }
             }
@@ -135,6 +136,7 @@ impl<'a> EffectExecutor<'a> {
                     );
                     return;
                 }
+                self.refresh_page(SkinId::Panel(panel));
                 if let Err(error) = self.host.save_skin(panel, ctx) {
                     kairos_log::warn!(target: "kairos_editor", "skin {panel}: {error}");
                 }
@@ -151,19 +153,13 @@ impl<'a> EffectExecutor<'a> {
     /// registry. Same gesture boundary as a panel skin, different owner.
     fn apply_shared_style(&mut self, effect: SharedStyleEffect, ctx: &Context) {
         match effect {
-            SharedStyleEffect::SetField { style, path, value } => {
-                if !self.shared.set_field(style, &path, &value) {
+            SharedStyleEffect::Replace { style, skin } => {
+                if self.shared.replace(style, skin.into_any()) {
+                    self.refresh_page(SkinId::Shared(style));
+                } else {
                     kairos_log::warn!(
                         target: "kairos_editor",
-                        "shared skin {style}: no editable field {path}"
-                    );
-                }
-            }
-            SharedStyleEffect::EditList { style, path, edit } => {
-                if !self.shared.edit_list(style, &path, edit) {
-                    kairos_log::warn!(
-                        target: "kairos_editor",
-                        "shared skin {style}: no list {path}"
+                        "shared skin {style}: the page's value is not this style's type"
                     );
                 }
             }
@@ -175,6 +171,7 @@ impl<'a> EffectExecutor<'a> {
                     );
                     return;
                 }
+                self.refresh_page(SkinId::Shared(style));
                 if let Err(error) = self.shared.save(style, ctx.theme()) {
                     kairos_log::warn!(target: "kairos_editor", "shared skin {style}: {error}");
                 }
@@ -186,6 +183,28 @@ impl<'a> EffectExecutor<'a> {
                 }
                 self.shared.preload(ctx);
             }
+        }
+    }
+
+    /// Keep the app's Preferences page snapshot in step with an owner an effect
+    /// just wrote.
+    ///
+    /// The page draws its own copy, so the snapshot's copy is read only when the
+    /// user switches back to that page; without this refresh a switch back would
+    /// show the value from before the edit or the reset. One page is copied, not
+    /// the whole list, and only when a replace or reset landed.
+    fn refresh_page(&mut self, id: SkinId) {
+        let page = match id {
+            SkinId::Panel(panel) => self.host.page(panel),
+            SkinId::Shared(style) => self.shared.page(style),
+        };
+        let Some(page) = page else {
+            // Not in the snapshot (Preferences is closed, or the page is no
+            // longer editable): the next snapshot rebuild picks the owner up.
+            return;
+        };
+        if let Some(slot) = self.pages.iter_mut().find(|slot| slot.id == id) {
+            slot.page = page;
         }
     }
 

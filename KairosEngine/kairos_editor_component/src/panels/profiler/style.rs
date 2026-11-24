@@ -15,11 +15,11 @@ use kairos_color::Color;
 use kairos_editor_widgets::style::Style;
 use serde::{Deserialize, Serialize};
 
-use crate::skin::StyleFields;
+use crate::style_row::StyleRow;
 
 /// Appearance tokens for the Profiler panel: colours, toolbar/transport icons,
 /// module-area and timeline geometry.
-#[derive(Clone, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct ProfilerStyle {
     pub icons: ProfilerIconPaths,
 
@@ -365,7 +365,7 @@ fn unity_category_palette() -> Vec<Color> {
 /// Runtime icon file paths for the Profiler panel, relative to the editor's
 /// working directory: Unity's toolbar transport artwork plus the module badges
 /// (the editor's own marks, which replace the painted CPU/GPU letters).
-#[derive(Clone, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct ProfilerIconPaths {
     pub tab: String,
     pub record_on: String,

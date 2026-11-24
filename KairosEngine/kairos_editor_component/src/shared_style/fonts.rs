@@ -31,13 +31,13 @@ use kairos_editor_widgets::style::Style;
 use serde::{Deserialize, Serialize};
 
 use crate::shared_style::SharedStyle;
-use crate::skin::StyleFields;
+use crate::style_row::StyleRow;
 
 /// The editor's font list.
 ///
 /// Field order is the Preferences page order. Each entry is a token group
 /// (proportional.0.name), so the page edits the rows the file has.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 #[SharedStyle(FONTS = "fonts", title = "Fonts")]
 pub struct EditorFonts {
     /// Proportional family, front of the fallback list first.
@@ -47,7 +47,7 @@ pub struct EditorFonts {
 }
 
 /// One font file in the list.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct FontEntry {
     /// Family name registered with egui.
     pub name: String,
@@ -59,9 +59,7 @@ pub struct FontEntry {
 
 /// The priority token: the serde skin of the widget's runtime [FontPriority].
 ///
-/// The payload is a single unnamed field, so it is transparent: the struct's
-/// fields are the variant's payload rows, directly under the enum row, with no
-/// header for the tuple field. The widget type keeps the same shape;
+/// Two unit variants, so the page draws one menu row and no payload;
 /// [EditorFontPriority::priority] maps one onto the other.
 #[derive(
     Clone,
@@ -70,7 +68,7 @@ pub struct FontEntry {
     PartialEq,
     Serialize,
     Deserialize,
-    StyleFields,
+    StyleRow,
     strum::EnumIter,
     strum::Display,
     strum::VariantNames,
@@ -80,9 +78,6 @@ pub enum EditorFontPriority {
     #[default]
     First,
     /// Appends to its family, so it is a fallback for glyphs the front lacks.
-    ///
-    /// The tuple payload is transparent: its struct fields are this enum's own
-    /// payload rows, with no named header between the menu row and them.
     Push,
 }
 
@@ -159,10 +154,7 @@ impl SharedStyle for EditorFonts {
 mod tests {
     use kairos_editor_widgets::style::StyleFile;
 
-    use kairos_editor_core::{ListEdit, StyleValue};
-
     use super::*;
-    use crate::skin::{LIST_MAX, StyleFields};
 
     /// The code defaults point at files that ship with the workspace.
     #[test]
@@ -179,133 +171,6 @@ mod tests {
         }
     }
 
-    /// The page edits names, paths, priorities and the enum payload; each list
-    /// node is a token of its own, so the header can add, remove and reorder
-    /// entries.
-    #[test]
-    fn the_page_edits_names_paths_the_list_and_the_priority_payload() {
-        let fields = EditorFonts::dark().style_fields();
-        let paths: Vec<&str> = fields.iter().map(|field| field.path.as_str()).collect();
-
-        assert_eq!(
-            paths,
-            [
-                "proportional",
-                "proportional.0.name",
-                "proportional.0.path",
-                "proportional.0.priority",
-                "proportional.1.name",
-                "proportional.1.path",
-                "proportional.1.priority",
-                "proportional.1.priority.fvalue",
-                "proportional.1.priority.ivalue",
-                "proportional.1.priority.svalue",
-                "proportional.1.priority.cvalue",
-                "monospace",
-            ]
-        );
-        assert_eq!(fields[0].value, StyleValue::ListLen(2));
-        assert_eq!(
-            fields[11].value,
-            StyleValue::ListLen(0),
-            "an empty list still has a node, which is what gives it a header"
-        );
-        let priority = &fields[6];
-        assert_eq!(priority.path, "proportional.1.priority");
-        assert_eq!(priority.name, "Priority");
-        assert_eq!(priority.value, StyleValue::Variant("Push".to_owned()));
-        let variants: &[&str] = <EditorFontPriority as crate::skin::StyleEnum>::variants();
-        assert_eq!(
-            priority.variants,
-            Some(variants),
-            "the enum row carries the two install orders"
-        );
-        assert_eq!(variants, ["First", "Push"].as_slice());
-    }
-
-    /// The install order is an editable token now: writing the variant changes
-    /// the font list (and therefore the projection the installer reads).
-    #[test]
-    fn the_install_order_is_written_as_a_variant() {
-        let mut fonts = EditorFonts::dark();
-        assert_eq!(
-            fonts.proportional[1].priority,
-            EditorFontPriority::Push
-        );
-
-        assert!(fonts.set_style_field(
-            "proportional.1.priority",
-            &StyleValue::Variant("First".to_owned())
-        ));
-        assert_eq!(fonts.proportional[1].priority, EditorFontPriority::First);
-        assert_eq!(fonts.config().proportional[1].priority, FontPriority::First);
-
-        assert!(
-            !fonts.set_style_field(
-                "proportional.1.priority",
-                &StyleValue::Variant("Sideways".to_owned())
-            ),
-            "an unknown variant is a no-op"
-        );
-        assert_eq!(fonts.proportional[1].priority, EditorFontPriority::First);
-        assert!(
-            !fonts.set_style_field("proportional.1.priority", &StyleValue::Text("First".into())),
-            "the exact type has to match"
-        );
-    }
-
-    /// A payload field is an ordinary token: writing its dotted path edits the
-    /// active variant's struct, which is what the page draws as rows.
-    #[test]
-    fn the_priority_payload_fields_are_writable_tokens() {
-        let mut fonts = EditorFonts::dark();
-        assert!(fonts.set_style_field("proportional.1.priority.fvalue", &StyleValue::F32(2.5),));
-        assert!(fonts.set_style_field(
-            "proportional.1.priority.svalue",
-            &StyleValue::Text("payload".to_owned()),
-        ));
-        assert!(fonts.set_style_field("proportional.1.priority.ivalue", &StyleValue::I32(-3),));
-        let EditorFontPriority::Push = &fonts.proportional[1].priority else {
-            panic!("entry 1 is Push");
-        };
-        assert!(
-            !fonts.set_style_field("proportional.0.priority.fvalue", &StyleValue::F32(2.5),),
-            "First has no payload: the path does not exist"
-        );
-    }
-
-    /// The list node's value is the entry count: writing it resizes, and the
-    /// structural edits cover what a resize cannot express.
-    #[test]
-    fn the_list_token_resizes_and_reorders() {
-        let mut fonts = EditorFonts::dark();
-        let entries = fonts.proportional.len();
-
-        assert!(fonts.set_style_field("proportional", &StyleValue::ListLen(entries + 1)));
-        assert_eq!(fonts.proportional.len(), entries + 1);
-        assert_eq!(
-            fonts.proportional[entries],
-            FontEntry::default(),
-            "growth appends a blank entry"
-        );
-        assert!(fonts.set_style_field("proportional", &StyleValue::ListLen(entries)));
-        assert_eq!(fonts.proportional.len(), entries);
-        assert!(
-            !fonts.set_style_field("proportional", &StyleValue::ListLen(LIST_MAX as usize + 1)),
-            "the editor's cap does not grow an unbounded list"
-        );
-
-        assert!(fonts.edit_style_list("proportional", ListEdit::Insert { index: 1 }));
-        assert_eq!(fonts.proportional[1], FontEntry::default());
-        let first = fonts.proportional[0].clone();
-        assert!(fonts.edit_style_list("proportional", ListEdit::Move { from: 0, to: 1 }));
-        assert_eq!(fonts.proportional[1], first);
-        assert!(fonts.edit_style_list("proportional", ListEdit::Remove { index: 1 }));
-        assert_eq!(fonts.proportional.len(), entries);
-        assert!(!fonts.edit_style_list("proportional", ListEdit::Remove { index: entries }));
-        assert!(!fonts.edit_style_list("monospace", ListEdit::Remove { index: 0 }));
-    }
-
     /// The projection keeps the file's order and the two priorities.
     #[test]
     fn the_projection_keeps_the_install_order() {
@@ -313,10 +178,7 @@ mod tests {
 
         assert_eq!(config.proportional[0].name, "Inter");
         assert_eq!(config.proportional[0].priority, FontPriority::First);
-        assert_eq!(
-            config.proportional[1].priority,
-            FontPriority::Push
-        );
+        assert_eq!(config.proportional[1].priority, FontPriority::Push);
         assert_eq!(
             config.proportional[0].path,
             PathBuf::from("Preferences/Fonts/Inter-Regular.otf")
@@ -324,7 +186,7 @@ mod tests {
     }
 
     /// The enum's variant order and labels come from strum, which is what the
-    /// typed EnumField reads; the style table still uses the same declaration.
+    /// typed `VariantMenu` reads.
     #[test]
     fn the_style_enum_lists_its_variants_with_strum() {
         use strum::IntoEnumIterator;
@@ -333,6 +195,115 @@ mod tests {
             .map(|value| value.to_string())
             .collect();
         assert_eq!(labels, ["First", "Push"]);
+    }
+
+    /// The page draws the two lists and the priority menu. A list is one row
+    /// (its header and count) followed by one block per entry, so the walk
+    /// names every token without a field table.
+    #[test]
+    fn the_page_walks_the_two_lists_and_the_priority_menu() {
+        use kairos_color::Color;
+
+        use crate::style_row::{RowSink, StyleRow};
+
+        /// Records one path per row; a group opens a path prefix.
+        #[derive(Default)]
+        struct Recorder {
+            rows: Vec<String>,
+            path: Vec<String>,
+        }
+
+        impl RowSink for Recorder {
+            fn number<N: kairos_editor_widgets::field::Number>(
+                &mut self,
+                name: &str,
+                _value: &mut N,
+            ) {
+                self.rows.push(self.join(name));
+            }
+
+            fn text(&mut self, name: &str, _value: &mut String) {
+                self.rows.push(self.join(name));
+            }
+
+            fn toggle(&mut self, name: &str, _value: &mut bool) {
+                self.rows.push(self.join(name));
+            }
+
+            fn color(&mut self, name: &str, _value: &mut Color) {
+                self.rows.push(self.join(name));
+            }
+
+            fn color_property(
+                &mut self,
+                name: &str,
+                _value: &mut kairos_editor_widgets::color_picker::ColorProperty,
+            ) {
+                self.rows.push(self.join(name));
+            }
+
+            fn variant<E: crate::skin::StyleEnum>(&mut self, name: &str, _value: &mut E) {
+                self.rows.push(self.join(name));
+            }
+
+            fn group(&mut self, name: &str, body: impl FnOnce(&mut Self)) {
+                if name.is_empty() {
+                    return body(self);
+                }
+                self.path.push(name.to_owned());
+                body(self);
+                self.path.pop();
+            }
+
+            fn payload(&mut self, name: &str, body: impl FnOnce(&mut Self)) {
+                self.path.push(name.to_owned());
+                body(self);
+                self.path.pop();
+            }
+
+            fn list<T: StyleRow + Default>(&mut self, name: &str, values: &mut Vec<T>) {
+                self.rows.push(self.join(name));
+                self.path.push(name.to_owned());
+                for (index, item) in values.iter_mut().enumerate() {
+                    let index = index.to_string();
+                    self.path.push(index);
+                    StyleRow::row(item, "", self);
+                    self.path.pop();
+                }
+                self.path.pop();
+            }
+        }
+
+        impl Recorder {
+            fn join(&self, name: &str) -> String {
+                let mut path = self.path.join(".");
+                if !name.is_empty() {
+                    if !path.is_empty() {
+                        path.push('.');
+                    }
+                    path.push_str(name);
+                }
+                path
+            }
+        }
+
+        let mut fonts = EditorFonts::dark();
+        let mut recorder = Recorder::default();
+        fonts.row("", &mut recorder);
+
+        assert_eq!(
+            recorder.rows,
+            [
+                "proportional",
+                "proportional.0.name",
+                "proportional.0.path",
+                "proportional.0.priority",
+                "proportional.1.name",
+                "proportional.1.path",
+                "proportional.1.priority",
+                "monospace",
+            ]
+        );
     }
 
     /// The checked-in reference skin and the code defaults are one skin.

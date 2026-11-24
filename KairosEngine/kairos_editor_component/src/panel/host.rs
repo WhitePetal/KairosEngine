@@ -13,12 +13,14 @@
 
 use std::collections::BTreeMap;
 
-use kairos_editor_core::{EditorState, LayoutState, PanelId, StyleValue};
+use kairos_editor_core::{EditorState, LayoutState, PanelId};
 
-use crate::{frame::{Frame, HostView, UiOut}, shared_style::SharedStyles};
+use crate::{
+    frame::{Frame, HostView, UiOut},
+    shared_style::SharedStyles,
+};
 
 use super::{Panel, PanelCatalog, PanelContext, PanelHostViewer, PanelInstanceId};
-use crate::skin::PanelSkin;
 
 /// Owns live panel instances and reconciles them with the open-panel intent.
 pub struct PanelHost {
@@ -97,48 +99,81 @@ impl PanelHost {
             .is_some_and(|panel| panel.allowed_in_windows())
     }
 
-    /// Field tables of every live panel that has an editable skin.
+    /// One page's metadata per live panel that draws its own skin, in instance
+    /// order.
     ///
-    /// The app snapshots these while the Preferences editor is open. A panel
-    /// that is not open has no instance and therefore no editable skin: it owns
-    /// its style, and the style only exists once `Panel::init` loaded it.
+    /// No style value is copied, so the app can rebuild this every frame and
+    /// compare it with the snapshot it holds; it takes a copy only when the list
+    /// changed or an owner was reset.
     ///
-    /// `state` is only there for `Panel::title`, which names the page: the
-    /// snapshot is taken outside the UI pass, so there are no host resources to
-    /// show and the frame carries an empty host.
-    pub fn skins(&self, state: &EditorState, shared_styles: &SharedStyles) -> Vec<PanelSkin> {
+    /// A panel that is not open has no instance and therefore no editable skin:
+    /// it owns its style, and the style only exists once `Panel::init` loaded
+    /// it. `state` is only there for `Panel::title`, which names the page: the
+    /// list is built outside the UI pass, so there are no host resources to show
+    /// and the frame carries an empty host.
+    pub fn page_metas(
+        &self,
+        state: &EditorState,
+        shared_styles: &SharedStyles,
+    ) -> Vec<crate::skin::PageMeta> {
         struct NoHost;
 
         impl HostView for NoHost {}
 
-        let frame = Frame::new(state, &NoHost, &shared_styles);
+        let frame = Frame::new(state, &NoHost, shared_styles);
         self.instances
             .values()
-            .filter_map(|panel| panel.skin(&frame))
+            .filter_map(|panel| panel.skin_meta(&frame))
             .collect()
     }
 
-    /// Write one token on a live panel's skin. `false` when the panel is not
-    /// open or the path/kind did not match.
-    pub fn set_skin_field(&mut self, panel: PanelId, path: &str, value: &StyleValue) -> bool {
+    /// One live panel's page with its value copied, or `None` when the panel is
+    /// not open or has no editable skin.
+    ///
+    /// This and [`Self::page_metas`] are the only two reads the Preferences
+    /// snapshot is built from: metadata every frame, a value only when the page
+    /// list changed or the owner was replaced/reset.
+    pub fn page(&self, panel: PanelId) -> Option<Box<dyn crate::style_row::StylePage>> {
         self.instances
-            .values_mut()
+            .values()
             .find(|instance| instance.kind() == panel)
-            .is_some_and(|instance| instance.set_skin_field(path, value))
+            .and_then(|instance| instance.skin_value())
+            .map(crate::style_row::StylePage::clone_box)
     }
 
-    /// Apply one structural list edit to a live panel's skin. `false` when the
-    /// panel is not open or the path is not a list.
-    pub fn edit_skin_list(
-        &mut self,
-        panel: PanelId,
-        path: &str,
-        edit: kairos_editor_core::ListEdit,
-    ) -> bool {
+    /// Every live panel's page with its value copied.
+    ///
+    /// Built on [`Self::page_metas`] and [`Self::page`], so the list the app
+    /// compares and the one it snapshots cannot disagree. Copying every open
+    /// skin is what makes this a rebuild-only call, not a per-frame one.
+    pub fn pages(
+        &self,
+        state: &EditorState,
+        shared_styles: &SharedStyles,
+    ) -> Vec<crate::skin::PageSkin> {
+        self.page_metas(state, shared_styles)
+            .into_iter()
+            .filter_map(|meta| {
+                let crate::skin::SkinId::Panel(panel) = meta.id else {
+                    return None;
+                };
+                Some(crate::skin::PageSkin {
+                    id: meta.id,
+                    title: meta.title,
+                    file: meta.file,
+                    page: self.page(panel)?,
+                })
+            })
+            .collect()
+    }
+
+    /// Replace one live panel's skin with the page's whole typed copy.
+    /// `false` when the panel is not open or the type does not match.
+    pub fn replace_skin(&mut self, panel: PanelId, skin: Box<dyn std::any::Any>) -> bool {
         self.instances
             .values_mut()
             .find(|instance| instance.kind() == panel)
-            .is_some_and(|instance| instance.edit_skin_list(path, edit))
+            .is_some_and(|instance| instance.replace_skin(skin))
     }
 
     /// Replace one live panel's skin with its code defaults. `false` when the

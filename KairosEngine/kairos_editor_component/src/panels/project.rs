@@ -1571,7 +1571,7 @@ fn status_bar(
 mod tests {
     use super::*;
     use crate::frame::HostView;
-use crate::shared_style::SharedStyles;
+    use crate::shared_style::SharedStyles;
     use egui::{Event, FullOutput, Modifiers, PointerButton, Pos2, RawInput};
     use kairos_editor_core::EditorState;
     use kairos_editor_core::project::ScanEntry;

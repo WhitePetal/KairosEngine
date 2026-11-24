@@ -3,7 +3,7 @@
 //! The values are code defaults for [`ProjectStyle`], persisted per component in
 //! `Preferences/Styles/ProjectStyle.ron` (dark + light). The panel loads the file
 //! in `Panel::init`; editing it restyles the Project panel without a rebuild, and
-//! `#[derive(StyleFields)]` puts every token in the Preferences skin editor for
+//! `#[derive(StyleRow)]` puts every token in the Preferences skin editor for
 //! free.
 //!
 //! Two halves:
@@ -27,10 +27,10 @@ use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::tree::TreeStyle;
 use serde::{Deserialize, Serialize};
 
-use crate::skin::StyleFields;
+use crate::style_row::StyleRow;
 
 /// Appearance tokens for the Project panel.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct ProjectStyle {
     // --- tree pane ---
     /// Background of the whole panel body (both columns and the status bar).
@@ -128,7 +128,7 @@ pub struct ProjectStyle {
 /// The artwork is extracted from the local Unity/Tuanjie editor resources by
 /// `scripts/extract_tuanjie_icons.py` (row icons 64x64, toolbar eye 32x32); the
 /// reason is in `Preferences/Textures/project/README.md`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, StyleRow)]
 pub struct ProjectIcons {
     pub folder: String,
     pub folder_open: String,

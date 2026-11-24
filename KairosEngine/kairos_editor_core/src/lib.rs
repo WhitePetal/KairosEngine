@@ -44,4 +44,4 @@ pub use panel::{PanelId, PanelInstanceId};
 pub use project::{ProjectAction, ProjectEffect, ProjectError, ProjectState};
 pub use reduce::reduce;
 pub use state::{EditorState, LayoutState};
-pub use style::{ListEdit, SharedStyleId, StyleValue};
+pub use style::SharedStyleId;

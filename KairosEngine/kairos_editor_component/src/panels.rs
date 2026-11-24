@@ -34,9 +34,15 @@ mod scene;
 
 pub use about::ABOUT;
 pub use console::CONSOLE;
+// A panel's style type is part of its public surface: the app's tests build a
+// whole value to hand back, the same way the Preferences page does.
+pub use console::style::ConsoleStyle;
 pub use hierarchy::HIERARCHY;
 pub use inspector::INSPECTOR;
 pub use preferences::PREFERENCES;
+// The form rows project this skin onto the inspector's row layout; the module
+// itself stays private so panels are only reached through their declarations.
+pub use preferences::style::PreferencesPanelStyle;
 pub use profiler::PROFILER;
 pub use project::PROJECT;
 pub use scene::SCENE;

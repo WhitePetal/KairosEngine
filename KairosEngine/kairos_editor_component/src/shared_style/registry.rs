@@ -3,17 +3,17 @@
 //! The composition root loads one value per registered style at boot and hands
 //! [`SharedStyles`] to every panel through [`Frame::shared`](crate::Frame). The
 //! registry is also the write target of the separate shared-style action path:
-//! `SetField` writes the live value, `Reset` restores the code defaults, and
-//! `Persist` writes the RON file. The app effect persists a reset in the same
-//! click; the Preferences page marks its own snapshot stale.
+//! `Replace` swaps the live value for the page's typed copy, `Reset` restores
+//! the code defaults, and `Persist` writes the RON file. The app effect persists
+//! a reset in the same click; the Preferences page re-reads the owner's value on
+//! the next pass.
 
 use std::collections::BTreeMap;
 
-use kairos_editor_core::{SharedStyleId, StyleValue};
+use kairos_editor_core::SharedStyleId;
 use kairos_editor_widgets::color_picker::ColorPickerStyle;
 use kairos_editor_widgets::modal::ModalStyle;
 
-use crate::skin::StyleField;
 use crate::toolbar::style::ToolBarStyle;
 
 use super::catalog::{SharedStyleDef, StyleCatalog};
@@ -22,15 +22,6 @@ use super::{
     COLOR_PICKER, EDITOR_FIELD, EditorFieldStyle, LIST, ListStyle, MODAL, ModalSkin, SharedStyle,
     TOOLBAR,
 };
-
-/// One shared style as the Preferences panel sees it.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SharedSkin {
-    pub id: SharedStyleId,
-    pub title: String,
-    pub file: &'static str,
-    pub fields: Vec<StyleField>,
-}
 
 struct SharedStyleEntry {
     def: &'static SharedStyleDef,
@@ -118,36 +109,60 @@ impl SharedStyles {
         self.modal().map(ModalSkin::tokens)
     }
 
-    /// Field tables for the Preferences panel, in catalog order.
-    pub fn skins(&self) -> Vec<SharedSkin> {
+    /// One page's metadata per registered style, in catalog order.
+    ///
+    /// No value is copied: the app rebuilds this every frame while Preferences
+    /// is open and compares it with the snapshot it holds.
+    pub fn page_metas(&self) -> Vec<crate::skin::PageMeta> {
         self.entries
             .iter()
-            .map(|(id, entry)| SharedSkin {
-                id: *id,
+            .map(|(id, entry)| crate::skin::PageMeta {
+                id: crate::skin::SkinId::Shared(*id),
                 title: entry.def.title.to_owned(),
                 file: entry.def.file,
-                fields: entry.value.style_fields(),
             })
             .collect()
     }
 
-    /// Write one field on one live style. Returns whether the path matched.
-    pub fn set_field(&mut self, id: SharedStyleId, path: &str, value: &StyleValue) -> bool {
-        self.entries
-            .get_mut(&id)
-            .is_some_and(|entry| entry.value.set_style_field(path, value))
+    /// One registered style, copied as a self-drawing page.
+    ///
+    /// `None` when `id` is not registered. The app takes this copy when it
+    /// builds the Preferences snapshot, and again after a reset replaced the
+    /// live value.
+    pub fn page(&self, id: SharedStyleId) -> Option<Box<dyn crate::style_row::StylePage>> {
+        self.entries.get(&id).map(|entry| entry.value.page())
     }
 
-    /// Insert, remove or move one entry of a list token on the live style.
-    pub fn edit_list(
-        &mut self,
-        id: SharedStyleId,
-        path: &str,
-        edit: kairos_editor_core::ListEdit,
-    ) -> bool {
+    /// Typed pages for every registered style, in catalog order.
+    ///
+    /// Built on [`Self::page_metas`] and [`Self::page`], so the list the app
+    /// compares and the one it snapshots cannot disagree. Copying every style is
+    /// what makes this a rebuild-only call, not a per-frame one.
+    pub fn pages(&self) -> Vec<crate::skin::PageSkin> {
+        self.page_metas()
+            .into_iter()
+            .filter_map(|meta| {
+                let crate::skin::SkinId::Shared(id) = meta.id else {
+                    return None;
+                };
+                Some(crate::skin::PageSkin {
+                    id: meta.id,
+                    title: meta.title,
+                    file: meta.file,
+                    page: self.page(id)?,
+                })
+            })
+            .collect()
+    }
+
+    /// Replace one live style with the page's whole typed copy.
+    ///
+    /// Returns whether the id is registered and the box held its type. The
+    /// page draws its own copy, so this is the one write for a style page.
+    pub fn replace(&mut self, id: SharedStyleId, skin: Box<dyn std::any::Any>) -> bool {
         self.entries
             .get_mut(&id)
-            .is_some_and(|entry| entry.value.edit_style_list(path, edit))
+            .is_some_and(|entry| entry.value.replace(skin))
     }
 
     /// Persist one live style into its RON file.
@@ -186,141 +201,95 @@ impl Default for SharedStyles {
 
 #[cfg(test)]
 mod tests {
-    use kairos_color::Color;
-
-    use kairos_editor_core::ListEdit;
-
     use super::*;
     use crate::shared_style::{
         COLOR_PICKER, EDITOR_FIELD, EditorFonts, FONTS, LIST, MODAL, TOOLBAR,
     };
+    use crate::skin::SkinId;
 
+    /// The page hands back a whole typed value; the registry swaps the live
+    /// style and rejects a box of the wrong type.
+    #[test]
+    fn a_whole_skin_replaces_the_live_value() {
+        let mut shared = SharedStyles::default();
+        let mut toolbar = shared.toolbar().expect("the toolbar is registered").clone();
+        toolbar.height += 10.0;
+
+        assert!(shared.replace(TOOLBAR, Box::new(toolbar.clone())));
+        assert_eq!(
+            shared.toolbar().map(|style| style.height),
+            Some(toolbar.height)
+        );
+        assert!(
+            !shared.replace(TOOLBAR, Box::new(0u8)),
+            "a box of the wrong type is a no-op"
+        );
+        assert_eq!(
+            shared.toolbar().map(|style| style.height),
+            Some(toolbar.height)
+        );
+    }
+
+    /// Every registered style exposes one self-drawing page, in catalog order,
+    /// with the file its edits are saved to.
     #[test]
     fn the_registry_exposes_a_page_for_every_shared_style() {
         let shared = SharedStyles::default();
-        let skins = shared.skins();
+        let pages = shared.pages();
 
-        assert!(skins.iter().any(|skin| skin.id == TOOLBAR));
-        assert!(skins.iter().any(|skin| skin.id == COLOR_PICKER));
-        assert!(skins.iter().any(|skin| skin.id == EDITOR_FIELD));
-        assert!(skins.iter().any(|skin| skin.id == LIST));
-        assert!(skins.iter().any(|skin| skin.id == FONTS));
-        assert!(shared.toolbar().is_some());
+        for id in [TOOLBAR, COLOR_PICKER, EDITOR_FIELD, LIST, MODAL, FONTS] {
+            assert!(
+                pages.iter().any(|page| page.id == SkinId::Shared(id)),
+                "no page for {id}"
+            );
+        }
+        assert!(
+            pages
+                .iter()
+                .all(|page| !page.title.is_empty() && page.file.ends_with(".ron")),
+            "every page has a heading and a file"
+        );
         assert!(shared.get::<EditorFonts>(FONTS).is_some());
-        assert!(shared.color_picker().is_some());
-        assert!(shared.color_picker_style().is_some());
         assert!(shared.list_style().is_some());
-        assert!(shared.modal().is_some());
         assert!(shared.modal_style().is_some());
-        assert!(
-            skins
-                .iter()
-                .all(|skin| !skin.fields.is_empty() && skin.file.ends_with(".ron")),
-            "every shared page has a file and at least one editable token"
-        );
-
-        let toolbar = skins
-            .iter()
-            .find(|skin| skin.id == TOOLBAR)
-            .expect("toolbar page");
-        assert!(toolbar.fields.iter().any(|field| field.path == "height"));
-        assert!(
-            toolbar
-                .fields
-                .iter()
-                .any(|field| field.path == "icons.about"),
-            "nested toolbar groups stay addressable"
-        );
-
-        let picker = skins
-            .iter()
-            .find(|skin| skin.id == COLOR_PICKER)
-            .expect("picker page");
-        assert!(picker.fields.iter().any(|field| field.path == "accent"));
-        assert!(
-            picker
-                .fields
-                .iter()
-                .any(|field| field.path == "eyedropper_icon")
-        );
-
-        let modal = skins
-            .iter()
-            .find(|skin| skin.id == MODAL)
-            .expect("modal page");
-        assert_eq!(modal.title, "Modal");
-        assert_eq!(modal.file, "Modal.ron");
-        assert!(modal.fields.iter().any(|field| field.path == "title_bar"));
-        assert!(modal.fields.iter().any(|field| field.path == "button_fill"));
-
-        let fonts = skins
-            .iter()
-            .find(|skin| skin.id == FONTS)
-            .expect("fonts page");
-        assert!(
-            fonts
-                .fields
-                .iter()
-                .any(|field| field.path == "proportional.0.name"),
-            "font entries are indexed token groups"
-        );
     }
 
-    /// A list token grows, shrinks and reorders on the live style; the panel
-    /// path and the shared-style path share the same validation.
+    /// The list the app compares and the pages it snapshots are built from the
+    /// same metadata, so they cannot disagree; a value is copied per call, on
+    /// rebuild and on a page switch, not for the whole list per frame.
     #[test]
-    fn a_list_edit_lands_on_the_live_style() {
-        let mut shared = SharedStyles::default();
-        let entries = shared
-            .get::<EditorFonts>(FONTS)
-            .expect("fonts style")
-            .proportional
-            .len();
+    fn the_page_list_and_its_per_page_copies_share_their_metadata() {
+        let shared = SharedStyles::default();
+        let metas = shared.page_metas();
+        let pages = shared.pages();
 
-        assert!(shared.edit_list(FONTS, "proportional", ListEdit::Insert { index: 0 }));
-        assert_eq!(
-            shared
-                .get::<EditorFonts>(FONTS)
-                .expect("fonts")
-                .proportional
-                .len(),
-            entries + 1
-        );
-        assert!(shared.edit_list(FONTS, "proportional", ListEdit::Remove { index: 0 }));
-        assert_eq!(
-            shared
-                .get::<EditorFonts>(FONTS)
-                .expect("fonts")
-                .proportional
-                .len(),
-            entries
-        );
-        assert!(!shared.edit_list(FONTS, "proportional", ListEdit::Remove { index: 99 }));
-        assert!(!shared.edit_list(FONTS, "missing", ListEdit::Insert { index: 0 }));
-    }
-
-    #[test]
-    fn a_field_write_lands_on_the_live_style() {
-        let mut shared = SharedStyles::default();
-        let accent = Color::from_srgb8([1, 2, 3, 255]);
-
-        assert!(shared.set_field(COLOR_PICKER, "accent", &StyleValue::Color(accent)));
-        assert_eq!(shared.color_picker().expect("picker").accent, accent);
-        assert!(!shared.set_field(COLOR_PICKER, "missing", &StyleValue::F32(1.0)));
+        assert_eq!(metas.len(), pages.len());
+        for (meta, page) in metas.iter().zip(&pages) {
+            assert_eq!(meta.id, page.id);
+            assert_eq!(meta.title, page.title);
+            assert_eq!(meta.file, page.file);
+        }
         assert!(
-            !shared.set_field(TOOLBAR, "accent", &StyleValue::Color(accent)),
-            "a path from another style does not match"
+            shared.page(TOOLBAR).is_some(),
+            "a registered style is copied on demand for the page snapshot"
+        );
+        assert!(
+            shared
+                .page(kairos_editor_core::SharedStyleId("not-registered"))
+                .is_none()
         );
     }
 
-    /// Reset restores the code defaults; the Preferences page marks its own
-    /// snapshot stale so the next pass shows them.
+    /// Reset restores the code defaults; the Preferences page re-reads the
+    /// live value on the next pass.
     #[test]
     fn reset_restores_the_code_defaults() {
         let mut shared = SharedStyles::default();
         let default_height = shared.toolbar().expect("toolbar").height;
-
-        assert!(shared.set_field(TOOLBAR, "height", &StyleValue::F32(99.0)));
+        let mut toolbar = shared.toolbar().expect("toolbar").clone();
+        toolbar.height = 99.0;
+        assert!(shared.replace(TOOLBAR, Box::new(toolbar)));
+        assert_eq!(shared.toolbar().expect("toolbar").height, 99.0);
 
         assert!(shared.reset(TOOLBAR, egui::Theme::Dark));
         assert_eq!(shared.toolbar().expect("toolbar").height, default_height);
@@ -345,7 +314,9 @@ mod tests {
         kairos_editor_widgets::style::set_style_root(&root);
 
         let mut shared = SharedStyles::default();
-        assert!(shared.set_field(TOOLBAR, "height", &StyleValue::F32(30.0)));
+        let mut toolbar = shared.toolbar().expect("toolbar").clone();
+        toolbar.height = 30.0;
+        assert!(shared.replace(TOOLBAR, Box::new(toolbar)));
         shared
             .save(TOOLBAR, egui::Theme::Dark)
             .expect("save toolbar");
@@ -365,14 +336,14 @@ mod tests {
     #[test]
     fn the_default_registry_holds_every_builtin_style() {
         let ids: Vec<_> = SharedStyles::default()
-            .skins()
+            .pages()
             .into_iter()
-            .map(|skin| skin.id)
+            .map(|page| page.id)
             .collect();
 
         for def in StyleCatalog::builtin().defs() {
             assert!(
-                ids.contains(&def.id),
+                ids.contains(&SkinId::Shared(def.id)),
                 "the default registry lacks {}",
                 def.id
             );

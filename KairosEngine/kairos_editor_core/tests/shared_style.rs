@@ -1,53 +1,38 @@
 //! Shared-style slice: routing only, exactly like the panel-skin slice.
 
+use kairos_editor_core::style::{Skin, StyleBlob};
 use kairos_editor_core::{
-    Action, EditorState, Effect, ListEdit, ProjectState, SharedStyleAction, SharedStyleEffect,
-    SharedStyleId, StyleValue, reduce,
+    Action, EditorState, Effect, ProjectState, SharedStyleAction, SharedStyleEffect, SharedStyleId,
+    reduce,
 };
 
 const COLOR_PICKER: SharedStyleId = SharedStyleId("color_picker");
 
-#[test]
-fn a_shared_field_edit_becomes_a_registry_write() {
-    let mut state = EditorState::new();
-    let action = Action::SharedStyle(SharedStyleAction::SetField {
-        style: COLOR_PICKER,
-        path: "accent".to_owned(),
-        value: StyleValue::Color(kairos_color::Color::from_srgb8([1, 2, 3, 255])),
-    });
-
-    assert_eq!(
-        reduce(&mut state, action),
-        vec![Effect::SharedStyle(SharedStyleEffect::SetField {
-            style: COLOR_PICKER,
-            path: "accent".to_owned(),
-            value: StyleValue::Color(kairos_color::Color::from_srgb8([1, 2, 3, 255])),
-        })]
-    );
+#[derive(Clone, Debug, PartialEq)]
+struct TestStyle {
+    accent: f32,
 }
 
-/// A shared list edit routes to the registry's list write, like a shared field
-/// edit routes to its field write.
-#[test]
-fn a_shared_list_edit_becomes_a_registry_list_write() {
-    let mut state = EditorState::new();
-    let edit = ListEdit::Insert { index: 0 };
+impl StyleBlob for TestStyle {
+    fn clone_blob(&self) -> Box<dyn StyleBlob> {
+        Box::new(self.clone())
+    }
 
-    assert_eq!(
-        reduce(
-            &mut state,
-            Action::SharedStyle(SharedStyleAction::EditList {
-                style: COLOR_PICKER,
-                path: "proportional".to_owned(),
-                edit,
-            })
-        ),
-        vec![Effect::SharedStyle(SharedStyleEffect::EditList {
-            style: COLOR_PICKER,
-            path: "proportional".to_owned(),
-            edit,
-        })]
-    );
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
+
+    fn equals(&self, other: &dyn StyleBlob) -> bool {
+        other.as_any().downcast_ref::<Self>() == Some(self)
+    }
+
+    fn debug_blob(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("TestStyle")
+    }
 }
 
 #[test]
@@ -84,16 +69,35 @@ fn a_shared_reset_becomes_a_reset() {
     );
 }
 
+#[test]
+fn a_whole_shared_skin_is_routed_to_the_registry() {
+    let mut state = EditorState::new();
+    let skin = Skin::new(TestStyle { accent: 1.0 });
+
+    assert_eq!(
+        reduce(
+            &mut state,
+            Action::SharedStyle(SharedStyleAction::Replace {
+                style: COLOR_PICKER,
+                skin: skin.clone(),
+            })
+        ),
+        vec![Effect::SharedStyle(SharedStyleEffect::Replace {
+            style: COLOR_PICKER,
+            skin,
+        })]
+    );
+}
+
 /// Shared styles live in the app's registry, not in the state tree.
 #[test]
 fn shared_style_edits_leave_the_state_tree_alone() {
     let mut state = EditorState::new();
     reduce(
         &mut state,
-        Action::SharedStyle(SharedStyleAction::SetField {
+        Action::SharedStyle(SharedStyleAction::Replace {
             style: COLOR_PICKER,
-            path: "accent".to_owned(),
-            value: StyleValue::F32(1.0),
+            skin: Skin::new(TestStyle { accent: 1.0 }),
         }),
     );
 

@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use kairos_editor_component::{
-    ConsoleLine, ConsoleLog, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelInstanceId,
-    PanelSkin, UiOut, panels, shared_style::SharedStyles, shared_style::StyleCatalog,
+    ConsoleLine, ConsoleLog, EditorInfo, Frame, HostView, PageSkin, PanelContext, PanelHost,
+    PanelInstanceId, UiOut, panels, shared_style::SharedStyles, shared_style::StyleCatalog,
     toolbar::ToolBar,
 };
 use kairos_editor_core::project::{ScanReason, SelectMode};
@@ -186,9 +186,15 @@ pub struct EditorApp {
     /// Host side of the project slice: scanning, watching and file operations.
     /// It owns the file system so the state tree does not have to.
     project: ProjectService,
-    /// Live panels' skin field tables, rebuilt each frame while the Preferences
-    /// editor is open (and empty otherwise).
-    skins: Vec<PanelSkin>,
+    /// The Preferences page snapshot: one self-drawing page per live skin (open
+    /// panels, then shared styles), kept while the Preferences editor is open
+    /// and empty otherwise.
+    ///
+    /// A page holds a typed copy of its owner's style. Copies are taken when the
+    /// page list changes (Preferences opens, a panel opens or closes, a title
+    /// changes) and when an effect replaces or resets an owner; a steady frame
+    /// copies nothing. The panel takes its own copy of the page it shows.
+    pages: Vec<PageSkin>,
     /// Appearance owned by the editor shell (toolbar, color picker). Loaded
     /// once at boot, edited live from the Preferences panel's shared pages.
     shared_styles: SharedStyles,
@@ -265,7 +271,7 @@ impl EditorApp {
             pending_effects: Vec::new(),
             inbox,
             project,
-            skins: Vec::new(),
+            pages: Vec::new(),
             shared_styles,
         }
     }
@@ -331,20 +337,48 @@ impl EditorApp {
         let produced = self.execute_pending_effects(ctx, now);
         self.inbox.extend(produced);
 
-        // The Preferences editor draws the live panels' field tables. Building
-        // them walks every token of every open skin, so snapshots exist only
-        // while that panel is open; after the effects, so an edit applied last
-        // frame is already visible in the table.
-        self.skins = if self.state.layout.is_open(panels::PREFERENCES) {
-            self.host.skins(&self.state, &self.shared_styles)
-        } else {
-            Vec::new()
-        };
+        // The Preferences editor draws one page per live skin, each holding a
+        // typed copy of the owner's style. The snapshot is kept, not rebuilt: a
+        // frame copies a style only when the page list changed or an effect
+        // replaced an owner (which the executor already refreshed). After the
+        // effects, so a value written in this frame is already visible.
+        self.refresh_pages();
 
         debug_assert!(
             self.host.ids().all(|id| self.dock.contains_tab(id)),
             "a live panel instance has no dock tab; opening a panel must return a layout effect"
         );
+    }
+
+    /// Bring the Preferences page snapshot in step with the live page set.
+    ///
+    /// One metadata entry per page costs no style copy, so this is cheap enough
+    /// to run every frame: a steady frame compares and returns. The snapshot is
+    /// rebuilt only when the list changed (Preferences opened, a panel opened or
+    /// closed, a page heading changed), which is also the only time every style
+    /// is copied. An owner replaced or reset by an effect is refreshed page by
+    /// page in [`EffectExecutor`], so a page switch never reads a stale value.
+    ///
+    /// Empty while Preferences is closed: the pages exist for that panel only.
+    fn refresh_pages(&mut self) {
+        if !self.state.layout.is_open(panels::PREFERENCES) {
+            self.pages.clear();
+            return;
+        }
+
+        let mut metas = self.host.page_metas(&self.state, &self.shared_styles);
+        metas.extend(self.shared_styles.page_metas());
+        let unchanged = self.pages.len() == metas.len()
+            && self.pages.iter().zip(&metas).all(|(page, meta)| {
+                page.id == meta.id && page.title == meta.title && page.file == meta.file
+            });
+        if unchanged {
+            return;
+        }
+
+        let mut pages = self.host.pages(&self.state, &self.shared_styles);
+        pages.extend(self.shared_styles.pages());
+        self.pages = pages;
     }
 
     /// Make the live panel instances and the dock tabs match `LayoutState`.
@@ -386,9 +420,10 @@ impl EditorApp {
                 dock,
                 shared_styles,
                 project,
+                pages,
                 ..
             } = self;
-            let mut executor = EffectExecutor::new(host, dock, shared_styles, project, now);
+            let mut executor = EffectExecutor::new(host, dock, shared_styles, project, pages, now);
             for effect in effects {
                 produced.extend(executor.apply(effect, ctx));
             }
@@ -501,22 +536,12 @@ fn describe(action: &Action) -> String {
             ProjectAction::RevealRequested { path } => format!("project reveal: {path}"),
         },
         Action::Style(action) => match action {
-            StyleAction::SetField { panel, path, .. } => {
-                format!("set {panel} skin: {path}")
-            }
-            StyleAction::EditList { panel, path, edit } => {
-                format!("edit {panel} skin list: {path} {edit:?}")
-            }
+            StyleAction::Replace { panel, .. } => format!("replace {panel} skin"),
             StyleAction::Reset { panel } => format!("reset {panel} skin to defaults"),
             StyleAction::Commit { panel } => format!("save {panel} skin"),
         },
         Action::SharedStyle(action) => match action {
-            SharedStyleAction::SetField { style, path, .. } => {
-                format!("set {style} shared skin: {path}")
-            }
-            SharedStyleAction::EditList { style, path, edit } => {
-                format!("edit {style} shared skin list: {path} {edit:?}")
-            }
+            SharedStyleAction::Replace { style, .. } => format!("replace {style} shared skin"),
             SharedStyleAction::Reset { style } => {
                 format!("reset {style} shared skin to defaults")
             }
@@ -527,7 +552,7 @@ fn describe(action: &Action) -> String {
 
 /// Whether an action is too frequent to log.
 ///
-/// A skin drag emits one `SetField` per frame; logging every frame of a gesture
+/// A skin drag emits one `Replace` per frame; logging every frame of a gesture
 /// would flood the console the way the legacy window did with its per-frame
 /// style messages. The commit (the write) is logged; the value itself is
 /// visible in the field.
@@ -538,8 +563,8 @@ fn describe(action: &Action) -> String {
 fn is_quiet(action: &Action) -> bool {
     matches!(
         action,
-        Action::Style(StyleAction::SetField { .. })
-            | Action::SharedStyle(SharedStyleAction::SetField { .. })
+        Action::Style(StyleAction::Replace { .. })
+            | Action::SharedStyle(SharedStyleAction::Replace { .. })
     )
 }
 
@@ -596,12 +621,11 @@ impl EditorApp {
                     host,
                     dock,
                     tool_bar,
-                    skins,
+                    pages,
                     shared_styles,
                     ..
                 } = self;
-                let frame = Frame::new(state, &host_scope, shared_styles)
-                    .with_skins(skins);
+                let frame = Frame::new(state, &host_scope, shared_styles).with_pages(pages);
                 tool_bar.ui(ui, &frame, &mut out);
                 let mut viewer = host.viewer(&mut out, frame);
                 Docker::new("kairos_editor_docker", dock).show(ui, &mut viewer);
@@ -632,10 +656,15 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+    use kairos_editor_component::panels::ConsoleStyle;
+    use kairos_editor_component::shared_style::color_picker::ColorPickerSkin;
     use kairos_editor_component::shared_style::{COLOR_PICKER, TOOLBAR};
-    use kairos_editor_core::StyleValue;
+    use kairos_editor_component::skin::SkinId;
+    use kairos_editor_component::toolbar::style::ToolBarStyle;
     use kairos_editor_core::project::ScanReason;
+    use kairos_editor_core::style::Skin;
     use kairos_editor_docking::viewer::TabViewer;
+    use kairos_editor_widgets::style::Style;
 
     /// Puffin's frame collector is process-global even though each app owns its
     /// recorder, so only one capture test may run a UI pass while recording.
@@ -717,7 +746,7 @@ mod tests {
             // Scans run on the calling thread here: the protocol is what these
             // tests assert, and a scheduler would only add timing to it.
             project: ProjectService::inline(),
-            skins: Vec::new(),
+            pages: Vec::new(),
             shared_styles: SharedStyles::default(),
         }
     }
@@ -979,12 +1008,11 @@ mod tests {
             "quit editor"
         );
         assert_eq!(
-            describe(&Action::Style(StyleAction::SetField {
+            describe(&Action::Style(StyleAction::Replace {
                 panel: panels::CONSOLE,
-                path: "toolbar_height".to_owned(),
-                value: StyleValue::F32(30.0),
+                skin: Skin::new(ConsoleStyle::dark()),
             })),
-            "set console skin: toolbar_height"
+            "replace console skin"
         );
         assert_eq!(
             describe(&Action::Style(StyleAction::Reset {
@@ -999,12 +1027,11 @@ mod tests {
             "save console skin"
         );
         assert_eq!(
-            describe(&Action::SharedStyle(SharedStyleAction::SetField {
+            describe(&Action::SharedStyle(SharedStyleAction::Replace {
                 style: COLOR_PICKER,
-                path: "border_width".to_owned(),
-                value: StyleValue::F32(0.9),
+                skin: Skin::new(ColorPickerSkin::dark()),
             })),
-            "set color_picker shared skin: border_width"
+            "replace color_picker shared skin"
         );
         assert_eq!(
             describe(&Action::SharedStyle(SharedStyleAction::Reset {
@@ -1058,12 +1085,13 @@ mod tests {
         let mut app = build();
         let ctx = egui::Context::default();
 
+        let mut skin = ColorPickerSkin::dark();
+        skin.border_width = 0.9;
         apply(
             &mut app,
-            Action::SharedStyle(SharedStyleAction::SetField {
+            Action::SharedStyle(SharedStyleAction::Replace {
                 style: COLOR_PICKER,
-                path: "border_width".to_owned(),
-                value: StyleValue::F32(0.9),
+                skin: Skin::new(skin),
             }),
             &ctx,
         );
@@ -1089,12 +1117,13 @@ mod tests {
         let path = root.join("ColorPicker.ron");
         let _ = std::fs::remove_file(&path);
 
+        let mut skin = ColorPickerSkin::dark();
+        skin.border_width = 0.9;
         apply(
             &mut app,
-            Action::SharedStyle(SharedStyleAction::SetField {
+            Action::SharedStyle(SharedStyleAction::Replace {
                 style: COLOR_PICKER,
-                path: "border_width".to_owned(),
-                value: StyleValue::F32(0.9),
+                skin: Skin::new(skin),
             }),
             &ctx,
         );
@@ -1220,7 +1249,12 @@ mod tests {
 
         let mut out = UiOut::new();
         {
-            let EditorApp { state, host, shared_styles, .. } = &mut app;
+            let EditorApp {
+                state,
+                host,
+                shared_styles,
+                ..
+            } = &mut app;
             let frame = Frame::new(state, &host_scope, shared_styles);
             let mut viewer = host.viewer(&mut out, frame);
             assert!(
@@ -1366,13 +1400,13 @@ mod tests {
         assert_eq!(app.dock.focused_tab(), Some(id));
     }
 
-    /// Opening Preferences makes the app snapshot the live panels' field tables;
-    /// they are the rows the editor draws.
+    /// Opening Preferences makes the app collect one self-drawing page per live
+    /// skin; the panels' pages come first, then the shell's shared styles.
     #[test]
-    fn opening_preferences_snapshots_the_live_skins() {
+    fn opening_preferences_snapshots_the_live_pages() {
         let mut app = build();
         let ctx = egui::Context::default();
-        assert!(app.skins.is_empty(), "nothing to draw while closed");
+        assert!(app.pages.is_empty(), "nothing to draw while closed");
 
         apply(
             &mut app,
@@ -1383,50 +1417,233 @@ mod tests {
         );
 
         assert!(
-            app.skins.iter().any(|skin| skin.panel == panels::CONSOLE),
+            app.pages
+                .iter()
+                .any(|page| page.id == SkinId::Panel(panels::CONSOLE)),
             "the open console is editable"
         );
         assert!(
-            app.skins
+            app.pages
                 .iter()
-                .any(|skin| skin.panel == panels::PREFERENCES),
+                .any(|page| page.id == SkinId::Panel(panels::PREFERENCES)),
             "the editor can edit its own skin"
         );
         assert!(
-            !app.skins.iter().any(|skin| skin.panel == panels::ABOUT),
+            !app.pages
+                .iter()
+                .any(|page| page.id == SkinId::Panel(panels::ABOUT)),
             "About is not open, so it has no live style to edit"
+        );
+        assert!(
+            app.pages
+                .iter()
+                .any(|page| page.id == SkinId::Shared(TOOLBAR)),
+            "the shell's styles are always editable"
         );
     }
 
-    /// A field edit is host work: the executor writes it into the owning
-    /// panel's live style, and the next snapshot shows the new value.
+    /// One page's value from the app's snapshot, copied and typed.
+    fn snapshot_page<T: Clone + 'static>(app: &EditorApp, id: SkinId) -> Option<T> {
+        app.pages
+            .iter()
+            .find(|page| page.id == id)
+            .and_then(|page| page.page.as_any().downcast_ref::<T>())
+            .cloned()
+    }
+
+    /// The snapshot is a cache, not a per-frame projection: a frame that changes
+    /// nothing must not copy every open style again. The test proves it by
+    /// replacing one snapshot page with a marker value and checking it survives
+    /// the next host phase.
     #[test]
-    fn a_skin_edit_reaches_the_owning_panel() {
+    fn a_steady_frame_reuses_the_page_snapshot() {
         let mut app = build();
         let ctx = egui::Context::default();
-
         apply(
             &mut app,
-            Action::Style(StyleAction::SetField {
-                panel: panels::CONSOLE,
-                path: "toolbar_height".to_owned(),
-                value: StyleValue::F32(30.0),
+            Action::Layout(LayoutAction::ShowPanel {
+                panel: panels::PREFERENCES,
             }),
             &ctx,
         );
 
-        let console = app
-            .host
-            .skins(&app.state, &app.shared_styles)
-            .into_iter()
-            .find(|skin| skin.panel == panels::CONSOLE)
-            .expect("console skin");
-        let height = console
-            .fields
-            .iter()
-            .find(|field| field.path == "toolbar_height")
-            .expect("toolbar_height");
-        assert_eq!(height.value, StyleValue::F32(30.0));
+        let mut marker = ConsoleStyle::dark();
+        marker.toolbar_height = 123.0;
+        let slot = app
+            .pages
+            .iter_mut()
+            .find(|page| page.id == SkinId::Panel(panels::CONSOLE))
+            .expect("console page");
+        slot.page = Box::new(marker);
+
+        app.begin_frame(&ctx);
+
+        assert_eq!(
+            snapshot_page::<ConsoleStyle>(&app, SkinId::Panel(panels::CONSOLE))
+                .map(|style| style.toolbar_height),
+            Some(123.0),
+            "a frame that changed nothing keeps the snapshot instead of copying every style"
+        );
+    }
+
+    /// The page set is the one thing a steady frame still watches: a panel that
+    /// opens (or closes) while Preferences is open joins (or leaves) the
+    /// snapshot, and the list is rebuilt once.
+    #[test]
+    fn the_page_snapshot_follows_panels_opening_and_closing() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+        apply(
+            &mut app,
+            Action::Layout(LayoutAction::ShowPanel {
+                panel: panels::PREFERENCES,
+            }),
+            &ctx,
+        );
+
+        let mut marker = ConsoleStyle::dark();
+        marker.toolbar_height = 123.0;
+        app.pages
+            .iter_mut()
+            .find(|page| page.id == SkinId::Panel(panels::CONSOLE))
+            .expect("console page")
+            .page = Box::new(marker);
+        assert!(
+            !app.pages
+                .iter()
+                .any(|page| page.id == SkinId::Panel(panels::ABOUT)),
+            "About is closed, so it has no live style to edit"
+        );
+
+        apply(
+            &mut app,
+            Action::Layout(LayoutAction::ShowPanel {
+                panel: panels::ABOUT,
+            }),
+            &ctx,
+        );
+
+        assert!(
+            app.pages
+                .iter()
+                .any(|page| page.id == SkinId::Panel(panels::ABOUT)),
+            "the newly opened panel joins the snapshot"
+        );
+        assert_ne!(
+            snapshot_page::<ConsoleStyle>(&app, SkinId::Panel(panels::CONSOLE))
+                .map(|style| style.toolbar_height),
+            Some(123.0),
+            "a changed page list rebuilds every page from its owner"
+        );
+
+        apply(
+            &mut app,
+            Action::Layout(LayoutAction::ClosePanel {
+                panel: panels::ABOUT,
+            }),
+            &ctx,
+        );
+        assert!(
+            !app.pages
+                .iter()
+                .any(|page| page.id == SkinId::Panel(panels::ABOUT)),
+            "a closed panel leaves the snapshot"
+        );
+    }
+
+    /// A page switch copies from the snapshot, so the snapshot must hold the
+    /// value the owner was just given: an edit refreshes that one page, and a
+    /// switch back shows it instead of the value from before the edit.
+    #[test]
+    fn an_edit_refreshes_its_page_in_the_snapshot() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+        apply(
+            &mut app,
+            Action::Layout(LayoutAction::ShowPanel {
+                panel: panels::PREFERENCES,
+            }),
+            &ctx,
+        );
+
+        let mut console = ConsoleStyle::dark();
+        console.toolbar_height = 31.0;
+        apply(
+            &mut app,
+            Action::Style(StyleAction::Replace {
+                panel: panels::CONSOLE,
+                skin: Skin::new(console),
+            }),
+            &ctx,
+        );
+
+        assert_eq!(
+            snapshot_page::<ConsoleStyle>(&app, SkinId::Panel(panels::CONSOLE))
+                .map(|style| style.toolbar_height),
+            Some(31.0),
+            "the edited page is refreshed, so switching back reads the edit"
+        );
+    }
+
+    /// Reset replaces the owner outside the page, so the page snapshot must be
+    /// refreshed too: otherwise switching back would redraw the old value.
+    #[test]
+    fn a_reset_refreshes_its_page_in_the_snapshot() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+        apply(
+            &mut app,
+            Action::Layout(LayoutAction::ShowPanel {
+                panel: panels::PREFERENCES,
+            }),
+            &ctx,
+        );
+
+        let mut console = ConsoleStyle::dark();
+        console.toolbar_height = 42.0;
+        apply(
+            &mut app,
+            Action::Style(StyleAction::Replace {
+                panel: panels::CONSOLE,
+                skin: Skin::new(console),
+            }),
+            &ctx,
+        );
+        apply(
+            &mut app,
+            Action::Style(StyleAction::Reset {
+                panel: panels::CONSOLE,
+            }),
+            &ctx,
+        );
+
+        assert_eq!(
+            snapshot_page::<ConsoleStyle>(&app, SkinId::Panel(panels::CONSOLE))
+                .map(|style| style.toolbar_height),
+            Some(ConsoleStyle::dark().toolbar_height),
+            "the reset value replaced the page's snapshot copy"
+        );
+    }
+
+    /// A skin edit is host work: the executor writes the page's whole value into
+    /// the owning panel's live style, and the next frame draws with it.
+    #[test]
+    fn a_skin_edit_reaches_the_owning_panel() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+        let mut console = ConsoleStyle::dark();
+        console.toolbar_height = 30.0;
+
+        apply(
+            &mut app,
+            Action::Style(StyleAction::Replace {
+                panel: panels::CONSOLE,
+                skin: Skin::new(console),
+            }),
+            &ctx,
+        );
+
+        assert_eq!(console_height(&app), 30.0);
     }
 
     /// The save boundary: an edit alone writes nothing; the commit writes the
@@ -1441,12 +1658,13 @@ mod tests {
         let ctx = egui::Context::default();
         let file = dir.join("ConsoleStyle.ron");
 
+        let mut console = ConsoleStyle::dark();
+        console.toolbar_height = 30.0;
         apply(
             &mut app,
-            Action::Style(StyleAction::SetField {
+            Action::Style(StyleAction::Replace {
                 panel: panels::CONSOLE,
-                path: "toolbar_height".to_owned(),
-                value: StyleValue::F32(30.0),
+                skin: Skin::new(console),
             }),
             &ctx,
         );
@@ -1490,16 +1708,17 @@ mod tests {
         );
         let default = console_height(&app);
 
+        let mut console = ConsoleStyle::dark();
+        console.toolbar_height = 30.0;
         apply(
             &mut app,
-            Action::Style(StyleAction::SetField {
+            Action::Style(StyleAction::Replace {
                 panel: panels::CONSOLE,
-                path: "toolbar_height".to_owned(),
-                value: StyleValue::F32(30.0),
+                skin: Skin::new(console),
             }),
             &ctx,
         );
-        assert_eq!(console_height(&app), StyleValue::F32(30.0));
+        assert_eq!(console_height(&app), 30.0);
 
         apply(
             &mut app,
@@ -1534,12 +1753,13 @@ mod tests {
         let ctx = egui::Context::default();
         let default = app.shared_styles.toolbar().expect("toolbar").height;
 
+        let mut toolbar = ToolBarStyle::dark();
+        toolbar.height = 99.0;
         apply(
             &mut app,
-            Action::SharedStyle(SharedStyleAction::SetField {
+            Action::SharedStyle(SharedStyleAction::Replace {
                 style: TOOLBAR,
-                path: "height".to_owned(),
-                value: StyleValue::F32(99.0),
+                skin: Skin::new(toolbar),
             }),
             &ctx,
         );
@@ -1551,7 +1771,10 @@ mod tests {
             &ctx,
         );
 
-        assert_eq!(app.shared_styles.toolbar().expect("toolbar").height, default);
+        assert_eq!(
+            app.shared_styles.toolbar().expect("toolbar").height,
+            default
+        );
         let text =
             std::fs::read_to_string(dir.join("ToolBar.ron")).expect("reset writes the shared skin");
         assert!(
@@ -1560,17 +1783,18 @@ mod tests {
         );
     }
 
-    fn console_height(app: &EditorApp) -> StyleValue {
+    fn console_height(app: &EditorApp) -> f32 {
         app.host
-            .skins(&app.state, &app.shared_styles)
+            .pages(&app.state, &app.shared_styles)
             .into_iter()
-            .find(|skin| skin.panel == panels::CONSOLE)
-            .expect("console skin")
-            .fields
-            .into_iter()
-            .find(|field| field.path == "toolbar_height")
-            .expect("toolbar_height")
-            .value
+            .find(|page| page.id == SkinId::Panel(panels::CONSOLE))
+            .and_then(|page| {
+                page.page
+                    .as_any()
+                    .downcast_ref::<ConsoleStyle>()
+                    .map(|style| style.toolbar_height)
+            })
+            .expect("console style")
     }
 
     /// The field cursors survive the real dock: a numeric row publishes the

@@ -2490,7 +2490,8 @@ mod probe {
         frame::HostView,
         panels::profiler::hierarchy::{
             HierarchySort, hierarchy_row_label, sort_hierarchy_rows, visible_hierarchy_rows,
-        }, shared_style::SharedStyles,
+        },
+        shared_style::SharedStyles,
     };
     use egui::pos2;
     use kairos_editor_core::EditorState;

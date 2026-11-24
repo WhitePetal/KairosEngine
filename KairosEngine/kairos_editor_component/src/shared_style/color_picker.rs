@@ -2,7 +2,7 @@
 //!
 //! The widget layer (`kairos_editor_widgets::color_picker`) draws from runtime
 //! tokens (`Color32`/`TextStyle`/`WindowControlsStyle`); those types are not
-//! serde-friendly and cannot derive `StyleFields`. This is the serializable
+//! serde-friendly and cannot derive `StyleRow`. This is the serializable
 //! skin the editor owns: plain colors and metrics, one file under
 //! `Preferences/Styles/ColorPicker.ron`, projected onto the widget tokens at
 //! the call site.
@@ -23,7 +23,7 @@ use kairos_editor_widgets::window_controls::WindowControlsStyle;
 use serde::{Deserialize, Serialize};
 
 use crate::shared_style::SharedStyle;
-use crate::skin::StyleFields;
+use crate::style_row::StyleRow;
 
 /// Appearance of the color field and its floating picker.
 ///
@@ -31,7 +31,7 @@ use crate::skin::StyleFields;
 /// `TextStyle` values: the sizes are separate tokens so the field editor can
 /// reach every piece. The title is not bold in the current editor look,
 /// matching the old projection.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 #[SharedStyle(COLOR_PICKER = "color_picker", title = "Color Picker")]
 pub struct ColorPickerSkin {
     /// Text of channel values and menus.
@@ -228,8 +228,6 @@ mod tests {
     use kairos_editor_widgets::style::StyleFile;
 
     use super::*;
-    use kairos_editor_core::StyleValue;
-
     /// The checked-in reference skin and the code defaults are one skin.
     #[test]
     fn shipped_reference_skin_matches_the_code_defaults() {
@@ -267,25 +265,6 @@ mod tests {
         assert_eq!(
             ColorPickerSkin::dark().tokens().window_controls,
             WindowControlsStyle::default()
-        );
-    }
-
-    /// Every picker token is reachable through the field editor, including the
-    /// runtime icon path; the window controls are deliberately not a token.
-    #[test]
-    fn the_skin_describes_its_own_tokens() {
-        let fields = ColorPickerSkin::dark().style_fields();
-
-        assert!(fields.iter().any(|field| field.path == "accent"));
-        assert!(fields.iter().any(|field| field.path == "text_size"));
-        assert!(
-            fields.iter().any(|field| field.path == "eyedropper_icon"
-                && matches!(field.value, StyleValue::Text(_))),
-            "the icon path is a text token, like the Console tab icons"
-        );
-        assert!(
-            !fields.iter().any(|field| field.path == "window_controls"),
-            "the picker does not own the shared traffic-light widget"
         );
     }
 }

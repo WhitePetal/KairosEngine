@@ -2,7 +2,7 @@
 //!
 //! The widget layer (`kairos_editor_widgets::modal`) draws from runtime tokens
 //! (`Color32`/`Stroke`/`Shadow`/`Margin`/`Vec2`); those are not serde-friendly and
-//! cannot derive `StyleFields`. This is the serializable skin the editor owns:
+//! cannot derive `StyleRow`. This is the serializable skin the editor owns:
 //! plain colours and metrics, one file under `Preferences/Styles/Modal.ron`,
 //! projected onto the widget tokens at the call site.
 //!
@@ -28,14 +28,14 @@ use kairos_editor_widgets::window_controls::WindowControlsStyle;
 use serde::{Deserialize, Serialize};
 
 use crate::shared_style::SharedStyle;
-use crate::skin::StyleFields;
+use crate::style_row::StyleRow;
 
 /// Appearance of the editor's dialogs: the dim, the frame, the title strip, the
 /// body text and the button row.
 ///
 /// Field order is the Preferences page order, following the dialog from the
 /// backdrop behind it down to its buttons.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 #[SharedStyle(MODAL = "modal", title = "Modal")]
 pub struct ModalSkin {
     /// Dim over the rest of the editor.
@@ -229,7 +229,6 @@ impl SharedStyle for ModalSkin {}
 
 #[cfg(test)]
 mod tests {
-    use kairos_editor_core::StyleValue;
     use kairos_editor_widgets::style::StyleFile;
 
     use super::*;
@@ -346,36 +345,6 @@ mod tests {
         assert_eq!(actual.danger_fill, expected.danger_fill);
         assert_eq!(actual.danger_hover, expected.danger_hover);
         assert_eq!(actual.danger_text, expected.danger_text);
-    }
-
-    /// The page exposes plain colours and numbers: egui's `Stroke`, `Shadow`,
-    /// `Margin` and `Vec2` are the projection's business, not the editor's.
-    #[test]
-    fn the_skin_exposes_scalar_tokens_not_the_widgets_runtime_types() {
-        let fields = ModalSkin::dark().style_fields();
-        let paths: Vec<&str> = fields.iter().map(|field| field.path.as_str()).collect();
-
-        for token in [
-            "backdrop",
-            "stroke_width",
-            "shadow_blur",
-            "title_bar",
-            "button_fill",
-            "danger_fill",
-        ] {
-            assert!(paths.contains(&token), "missing {token}: {paths:?}");
-        }
-        assert!(
-            fields.iter().all(|field| matches!(
-                field.value,
-                StyleValue::Color(_) | StyleValue::F32(_) | StyleValue::U8(_)
-            )),
-            "every modal token is a scalar the field editor can draw"
-        );
-        assert!(
-            fields.iter().all(|field| !field.path.contains('.')),
-            "the modal skin is flat: composite runtime values are split, not grouped"
-        );
     }
 
     /// The checked-in reference skin and the code defaults are one skin.

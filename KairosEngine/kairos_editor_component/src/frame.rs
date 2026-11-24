@@ -135,11 +135,14 @@ pub struct Frame<'a> {
     pub state: &'a EditorState,
     /// Host-owned display resources (textures, log lines, ...).
     pub host: &'a dyn HostView,
-    /// Field tables of the live panels' skins, for the Preferences editor.
+    /// The Preferences pages: one per open panel's live skin, plus the shared
+    /// styles. A style already draws itself, so this is only the page list.
     ///
-    /// Empty unless Preferences is open: building them allocates a row per
-    /// token, and no other panel reads them.
-    pub skins: &'a [crate::skin::PanelSkin],
+    /// Empty unless Preferences is open: no other panel reads it. The app holds
+    /// the snapshot across frames and copies a style only when the page list
+    /// changes or an owner is reset; the panel takes its copy of one page when
+    /// the user switches to it.
+    pub pages: &'a [crate::skin::PageSkin],
     /// Appearance owned by the editor shell (toolbar, color picker), shared by
     /// every panel. `with_host` points this at the pure code defaults so tests
     /// and embedders do not need to own a registry.
@@ -148,17 +151,21 @@ pub struct Frame<'a> {
 
 impl<'a> Frame<'a> {
     /// Frame carrying host resources, e.g. `Frame::with_host(&state, &self.host)`.
-    pub fn new(state: &'a EditorState, host: &'a dyn HostView, shared_styles: &'a SharedStyles) -> Self {
+    pub fn new(
+        state: &'a EditorState,
+        host: &'a dyn HostView,
+        shared_styles: &'a SharedStyles,
+    ) -> Self {
         Self {
             state,
             host,
-            skins: &[],
+            pages: &[],
             shared_styles,
         }
     }
 
-    pub fn with_skins(mut self, skins: &'a [crate::skin::PanelSkin]) -> Self {
-        self.skins = skins;
+    pub fn with_pages(mut self, pages: &'a [crate::skin::PageSkin]) -> Self {
+        self.pages = pages;
         self
     }
 
@@ -254,11 +261,11 @@ impl UiOut {
 mod tests {
     use egui::{Color32, Theme};
     use kairos_color::Color;
-    use kairos_editor_core::{EditorState, StyleValue};
+    use kairos_editor_core::EditorState;
     use kairos_editor_widgets::style::Style;
 
     use super::*;
-    use crate::shared_style::{MODAL, SharedStyleDef, StyleCatalog};
+    use crate::shared_style::{MODAL, ModalSkin, SharedStyleDef, StyleCatalog};
 
     struct EmptyHost;
 
@@ -305,7 +312,9 @@ mod tests {
         let host = EmptyHost;
         let mut shared = SharedStyles::default();
         let backdrop = Color::from_srgb8([0x12, 0x34, 0x56, 0xFF]);
-        assert!(shared.set_field(MODAL, "backdrop", &StyleValue::Color(backdrop)));
+        let mut skin = ModalSkin::dark();
+        skin.backdrop = backdrop;
+        assert!(shared.replace(MODAL, Box::new(skin)));
 
         let style = Frame::new(&state, &host, &shared).modal_style();
 

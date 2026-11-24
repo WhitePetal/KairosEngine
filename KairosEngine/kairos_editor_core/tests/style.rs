@@ -1,54 +1,11 @@
 //! Style slice: routing only — the value lands in the panel, not in state.
 
+use kairos_editor_core::style::{Skin, StyleBlob};
 use kairos_editor_core::{
-    Action, EditorState, Effect, ListEdit, PanelId, ProjectState, StyleAction, StyleEffect,
-    StyleValue, reduce,
+    Action, EditorState, Effect, PanelId, ProjectState, StyleAction, StyleEffect, reduce,
 };
 
 const CONSOLE: PanelId = PanelId("console");
-
-#[test]
-fn a_field_edit_becomes_the_panel_write_it_needs() {
-    let mut state = EditorState::new();
-    let action = Action::Style(StyleAction::SetField {
-        panel: CONSOLE,
-        path: "toolbar_height".to_owned(),
-        value: StyleValue::F32(30.0),
-    });
-
-    assert_eq!(
-        reduce(&mut state, action),
-        vec![Effect::Style(StyleEffect::SetField {
-            panel: CONSOLE,
-            path: "toolbar_height".to_owned(),
-            value: StyleValue::F32(30.0),
-        })]
-    );
-}
-
-/// A list edit is not a value write: it becomes the structural write the
-/// panel's own style applies (the path names the list, not an entry).
-#[test]
-fn a_list_edit_becomes_a_list_write() {
-    let mut state = EditorState::new();
-    let edit = ListEdit::Move { from: 0, to: 2 };
-
-    assert_eq!(
-        reduce(
-            &mut state,
-            Action::Style(StyleAction::EditList {
-                panel: CONSOLE,
-                path: "category_palette".to_owned(),
-                edit,
-            })
-        ),
-        vec![Effect::Style(StyleEffect::EditList {
-            panel: CONSOLE,
-            path: "category_palette".to_owned(),
-            edit,
-        })]
-    );
-}
 
 /// Reset is its own effect, not a pile of field writes: the host knows how
 /// to restore its own type's defaults, and the click also persists them.
@@ -78,17 +35,66 @@ fn a_commit_becomes_a_persist() {
     );
 }
 
-/// A skin belongs to the panel instance, not to the state tree: editing one
+/// A whole value crosses the boundary in one piece: the page drew its own copy,
+/// so the reducer only routes the box to the owner.
+#[derive(Clone, Debug, PartialEq)]
+struct TestStyle {
+    height: f32,
+}
+
+impl StyleBlob for TestStyle {
+    fn clone_blob(&self) -> Box<dyn StyleBlob> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
+
+    fn equals(&self, other: &dyn StyleBlob) -> bool {
+        other.as_any().downcast_ref::<Self>() == Some(self)
+    }
+
+    fn debug_blob(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("TestStyle")
+    }
+}
+
+#[test]
+fn a_whole_skin_is_routed_to_its_owner() {
+    let mut state = EditorState::new();
+    let skin = Skin::new(TestStyle { height: 30.0 });
+
+    assert_eq!(
+        reduce(
+            &mut state,
+            Action::Style(StyleAction::Replace {
+                panel: CONSOLE,
+                skin: skin.clone(),
+            })
+        ),
+        vec![Effect::Style(StyleEffect::Replace {
+            panel: CONSOLE,
+            skin,
+        })],
+        "the box reaches the owner unchanged; equality compares the styles"
+    );
+}
+
+/// A skin belongs to the panel instance, not to the state tree: replacing one
 /// must not change EditorState.
 #[test]
 fn skin_edits_leave_the_state_tree_alone() {
     let mut state = EditorState::new();
     reduce(
         &mut state,
-        Action::Style(StyleAction::SetField {
+        Action::Style(StyleAction::Replace {
             panel: CONSOLE,
-            path: "toolbar_height".to_owned(),
-            value: StyleValue::F32(30.0),
+            skin: Skin::new(TestStyle { height: 30.0 }),
         }),
     );
 

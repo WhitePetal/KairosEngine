@@ -81,27 +81,29 @@
 //!
 //! `panels::preferences` is the 0.2.0 rewrite of the legacy `PreferencesWindow`:
 //! a two-column editor that lists every open panel's `Preferences/Styles/*.ron`
-//! tokens as widgets and writes them back. Each style derives `StyleFields`
-//! ([`skin`], macro crate `macros/`), so the field table comes from the
-//! struct itself: a token and its editor row cannot drift apart, and fields are
-//! addressed by dotted path instead of a `Vec` index. A panel exposes its
-//! table and accepts writes through [`Panel::skin`],
-//! [`Panel::set_skin_field`] and [`Panel::save_skin`]; the app snapshots the
-//! live tables into `Frame::skins` while Preferences is open, applies edits to
-//! the owning panel (live preview) and persists its file when the interaction
-//! ends. See `docs/plan/editor-ui-architecture/preferences-panel.md`.
+//! tokens as widgets and writes them back. Each style derives `StyleRow`
+//! ([`style_row`], macro crate `macros/`), so the style draws its own page: a
+//! token and its editor row cannot drift apart, and no dotted path or field
+//! table exists at runtime. A panel exposes its live style through
+//! [`Panel::skin_value`]/[`Panel::skin_file`] and accepts a whole value back
+//! through [`Panel::replace_skin`]; while Preferences is open the app keeps one
+//! [`PageSkin`] per editable skin and hands the list to the panel in
+//! `Frame::pages`. The snapshot is taken when the page list changes (not every
+//! frame: the panel copies the one page the user switches to), an edit reaches
+//! the owning panel live and its file is persisted when the interaction ends.
+//! See `docs/plan/editor-ui-architecture/preferences-panel.md`.
 //!
 //! ## Shared styles
 //!
 //! The toolbar, the color picker and the font list are not panels, so they have
 //! no instance to load a skin into. They declare `#[SharedStyle(...)]` next to
-//! their `#[derive(StyleFields)]`: the derive emits the id constant, the sealed erasure
-//! impl and a [`SharedStyleDef`](shared_style::SharedStyleDef) submission (the
-//! same inventory mechanism as panels). The app loads the
+//! their `#[derive(StyleRow)]`: the derive emits the id constant, the sealed
+//! erasure impl and a [`SharedStyleDef`](shared_style::SharedStyleDef)
+//! submission (the same inventory mechanism as panels). The app loads the
 //! [`StyleCatalog`](shared_style::StyleCatalog) once at boot into a
 //! [`SharedStyles`](shared_style::SharedStyles) registry, and [`Frame::shared`]
-//! hands the live values to every panel. Preferences appends their pages after
-//! the panel skins and edits them through the separate
+//! hands the live values to every panel. Preferences appends their self-drawing
+//! pages after the panel pages and edits them through the separate
 //! `SharedStyleAction`/`SharedStyleEffect` path.
 
 #![forbid(unsafe_code)]
@@ -116,17 +118,26 @@ pub(crate) mod __sealed {
     pub trait Sealed {}
 
     /// The erasure half of `SharedStyle`, implemented only by the
-    /// `StyleFields` derive for `#[SharedStyle(...)]`.
+    /// `StyleRow` derive for `#[SharedStyle(...)]`.
     pub trait SharedStyleSealed {
         fn as_any(&self) -> &dyn std::any::Any;
+
+        /// Replace the whole live value with the page's typed copy.
+        fn replace(&mut self, skin: Box<dyn std::any::Any>) -> bool;
+
+        /// A typed page for this style: it draws itself and hands a new copy
+        /// back through `SharedStyleAction::Replace`.
+        fn page(&self) -> Box<dyn crate::style_row::StylePage>;
     }
 }
 pub mod console;
+pub mod form;
 pub mod frame;
 pub mod panel;
 pub mod panels;
 pub mod shared_style;
 pub mod skin;
+pub mod style_row;
 pub mod toolbar;
 
 pub use console::ConsoleLog;
@@ -140,9 +151,14 @@ pub use panel::{
     EditorInfo, Panel, PanelCatalog, PanelContext, PanelDef, PanelFactory, PanelHost,
     PanelHostViewer, PanelInstanceId, PanelRegister,
 };
-// The Preferences editor consumes these; a panel implementation needs
-// `StyleFields` (derive) and builds a `PanelSkin` in `Panel::skin`.
-pub use skin::{PanelSkin, StyleField, StyleFields as StyleFieldsTrait};
+// The Preferences editor consumes these: one page per owner, keyed by `SkinId`;
+// the metadata is what its snapshot is compared against, the page holds the
+// style copy the panel draws when the user switches to it.
+pub use skin::{PageMeta, PageSkin, SkinId};
+// A style draws its own rows into a sink, so the Preferences page needs no
+// per-token value type and no dotted paths. The derive and the trait share the
+// name, the way serde's do.
+pub use style_row::{RowSink, StyleRow};
 
 // The panel declaration attribute: id, registration and factory from one item.
 // Panels are defined in this crate only (`PanelRegister` is sealed), so the

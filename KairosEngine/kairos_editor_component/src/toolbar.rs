@@ -150,7 +150,7 @@ mod tests {
         let state = EditorState::new();
         let host = EmptyHost;
         let shared_styles = SharedStyles::default();
-        let frame = Frame::with_host(&state, &host, &shared_styles);
+        let frame = Frame::new(&state, &host, &shared_styles);
         let mut out = UiOut::new();
 
         let output = ctx.run_ui(raw_input(), |ui| toolbar.ui(ui, &frame, &mut out));

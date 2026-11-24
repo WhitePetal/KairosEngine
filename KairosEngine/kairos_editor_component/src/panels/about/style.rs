@@ -18,11 +18,11 @@ use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::text::TextStyle;
 use serde::{Deserialize, Serialize};
 
-use crate::skin::StyleFields;
+use crate::style_row::StyleRow;
 
 /// Appearance tokens for the About panel: palette, type sizes, geometry and the
 /// two runtime icon paths.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct AboutPanelStyle {
     /// Big product mark and the (small) tab artwork.
     pub icons: AboutIconPaths,
@@ -168,7 +168,7 @@ impl AboutPanelStyle {
 /// Runtime artwork paths. Both skins point at the packaged engine icon, so a
 /// fresh checkout draws the About panel without extra files; a skin may point
 /// `tab` at a dedicated 16 px glyph.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct AboutIconPaths {
     /// Product mark in the panel body.
     pub logo: String,

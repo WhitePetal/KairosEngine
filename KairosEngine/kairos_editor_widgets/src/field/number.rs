@@ -204,8 +204,7 @@ impl<'a, N: Number> NumberField<'a, N> {
             changed = self.drag_value(ui, scrub.delta);
         }
         if scrub.stopped {
-            ui.ctx()
-                .data_mut(|data| data.insert_temp(drag_key(self.id), 0.0_f32));
+            clear_drag(ui.ctx(), self.id);
         }
         changed
     }
@@ -251,13 +250,17 @@ impl<'a, N: Number> NumberField<'a, N> {
         }
 
         if self.box_drag {
+            if response.drag_started() {
+                // A new gesture starts from the value it grabbed, not from a
+                // step left behind by an interrupted one.
+                clear_drag(ui.ctx(), self.id);
+            }
             let delta = response.drag_delta().x - response.drag_delta().y;
             if response.dragged() && delta != 0.0 && self.drag_value(ui, delta) {
                 response.mark_changed();
             }
             if response.drag_stopped() {
-                ui.ctx()
-                    .data_mut(|data| data.insert_temp(drag_key(self.id), 0.0_f32));
+                clear_drag(ui.ctx(), self.id);
             }
         }
 
@@ -304,21 +307,38 @@ impl<'a, N: Number> NumberField<'a, N> {
     }
 
     fn drag_value(&mut self, ui: &Ui, delta: f32) -> bool {
-        let current = (*self.value).as_f64();
+        // egui may run a pass twice in one frame (a layout asked for a
+        // discard). The second pass sees the value the first one wrote, so
+        // adding this frame's delta again would move the field twice. Keep the
+        // value and the delta of the frame's first pass and recompute: the
+        // same pixels give the same value no matter how often the pass runs.
+        let frame = ui.ctx().cumulative_frame_nr();
+        let key = drag_key(self.id);
+        let mut track = ui
+            .ctx()
+            .data(|data| data.get_temp::<DragTrack>(key))
+            .unwrap_or(DragTrack {
+                frame,
+                base: (*self.value).as_f64(),
+                moved: delta,
+                carry: 0.0,
+            });
+        if track.frame != frame {
+            track.base = (*self.value).as_f64();
+            track.moved = delta;
+            track.frame = frame;
+        }
+
         let raw = if N::WHOLE {
-            let key = drag_key(self.id);
-            let carried = ui
-                .ctx()
-                .data(|data| data.get_temp::<f32>(key).unwrap_or(0.0));
-            let total = carried + delta;
+            let total = track.carry + track.moved;
             let steps = total.trunc();
-            ui.ctx()
-                .data_mut(|data| data.insert_temp(key, total - steps));
-            current + f64::from(steps)
+            track.carry = total - steps;
+            track.base + f64::from(steps)
         } else {
-            let moved = current as f32 + delta * drag_speed(current as f32) as f32;
+            let moved = track.base as f32 + track.moved * drag_speed(track.base as f32) as f32;
             f64::from(round_decimal(moved, 3))
         };
+        ui.ctx().data_mut(|data| data.insert_temp(key, track));
         self.write(raw)
     }
 
@@ -360,8 +380,22 @@ impl<'a, N: Number> NumberField<'a, N> {
     }
 }
 
+/// One scrub's step within a frame: the value it started at, the pixels this
+/// frame moved, and the whole-unit remainder carried between frames.
+#[derive(Clone, Copy, Debug)]
+struct DragTrack {
+    frame: u64,
+    base: f64,
+    moved: f32,
+    carry: f32,
+}
+
 fn drag_key(id: Id) -> Id {
     id.with("drag")
+}
+
+fn clear_drag(ctx: &egui::Context, id: Id) {
+    ctx.data_mut(|data| data.remove::<DragTrack>(drag_key(id)));
 }
 
 /// Units per point of drag: a 3 px padding needs a finer hand than a 130 px
@@ -657,5 +691,41 @@ mod tests {
 
         assert!(fills.contains(&rect()), "painted fills {fills:?}");
         assert!(outlines.contains(&rect()), "painted outlines {outlines:?}");
+    }
+
+    /// egui may run a pass twice in one frame (a layout requested a discard).
+    /// The field must move by this frame's pointer delta once, not once per
+    /// pass: the second pass sees the value the first one wrote.
+    #[test]
+    fn a_discarded_pass_does_not_apply_the_drag_twice() {
+        let ctx = Context::default();
+        let style = style();
+        let mut value = 10.0_f32;
+        let mut edit: Option<NumberEdit> = None;
+
+        let from = label_rect().center();
+        let _ = ctx.run_ui(input(), |ui| row(ui, &style, &mut value, &mut edit, None));
+        let mut hover = input();
+        hover.events = vec![Event::PointerMoved(from)];
+        let _ = ctx.run_ui(hover, |ui| row(ui, &style, &mut value, &mut edit, None));
+        let mut press = input();
+        press.events = vec![button(from, true)];
+        let _ = ctx.run_ui(press, |ui| row(ui, &style, &mut value, &mut edit, None));
+
+        let mut moved = input();
+        moved.events = vec![Event::PointerMoved(from + egui::vec2(20.0, 0.0))];
+        let passes = std::cell::Cell::new(0);
+        let _ = ctx.run_ui(moved, |ui| {
+            passes.set(passes.get() + 1);
+            row(ui, &style, &mut value, &mut edit, None);
+            ui.ctx().request_discard("two-pass number drag");
+        });
+
+        assert!(
+            passes.get() >= 2,
+            "the frame must run twice: {} pass(es)",
+            passes.get()
+        );
+        assert_eq!(value, 14.0, "10 + 20 px at 0.2 per px, applied once");
     }
 }

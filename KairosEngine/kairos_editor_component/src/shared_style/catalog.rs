@@ -16,7 +16,7 @@ use kairos_editor_widgets::style::{Style, StyleFile};
 
 use super::SharedStyle;
 
-/// One registered shared style. The `StyleFields` derive submits it for a
+/// One registered shared style. The `StyleRow` derive submits it for a
 /// `#[SharedStyle(...)]` declaration.
 #[derive(Clone, Copy)]
 pub struct SharedStyleDef {

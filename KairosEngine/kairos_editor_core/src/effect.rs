@@ -13,7 +13,7 @@
 
 use crate::PanelId;
 use crate::project::ProjectEffect;
-use crate::style::{ListEdit, SharedStyleId, StyleValue};
+use crate::style::{SharedStyleId, Skin};
 
 /// One unit of host work returned by `reduce`.
 #[derive(Clone, Debug, PartialEq)]
@@ -65,19 +65,10 @@ pub enum AppEffect {
 /// intents to the app instead of writing state.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StyleEffect {
-    /// Write one field on the panel's live style; the panel redraws from it on
-    /// the next pass, which is what makes the edit feel immediate.
-    SetField {
-        panel: PanelId,
-        path: String,
-        value: StyleValue,
-    },
-    /// Apply one structural list edit to the panel's live style.
-    EditList {
-        panel: PanelId,
-        path: String,
-        edit: ListEdit,
-    },
+    /// Replace the panel's whole live style with the page's typed copy; the
+    /// panel redraws from it on the next pass, which is what makes the edit
+    /// feel immediate.
+    Replace { panel: PanelId, skin: Skin },
     /// Replace the panel's live style with its code defaults and persist it.
     Reset { panel: PanelId },
     /// Persist the panel's live style to its RON file.
@@ -90,18 +81,8 @@ pub enum StyleEffect {
 /// shared-style registry instead of a panel instance.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SharedStyleEffect {
-    /// Write one field on the live shared style.
-    SetField {
-        style: SharedStyleId,
-        path: String,
-        value: StyleValue,
-    },
-    /// Apply one structural list edit to the live shared style.
-    EditList {
-        style: SharedStyleId,
-        path: String,
-        edit: ListEdit,
-    },
+    /// Replace the whole live shared style with the page's typed copy.
+    Replace { style: SharedStyleId, skin: Skin },
     /// Replace the live shared style with its code defaults and persist it.
     Reset { style: SharedStyleId },
     /// Persist the live shared style to its RON file.

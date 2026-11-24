@@ -1,9 +1,11 @@
 # Preferences 窗口迁移评审：`kairos_editor::PreferencesWindow` → 0.2.0 `panels/preferences`
 
-> **状态**：评审 + 实现（2026-11-19）；UI 重做为 Unity Inspector 样式，并加入自有 LDR/HDR 取色器（2026-11-19 续）；颜色值改为 8 字节 linear `Color` + `ColorProperty` 字段策略（2026-11-19 再续）；取色器改为 260 px 浮动窗、HDR 0-Inf/191 曝光基准、Library swatch groups，menu button/浮层菜单对齐 Unity popup field（2026-11-19 完善）；标题栏改为 dock 同款三 traffic-light widget + 居中标题，收起/最大化灰色禁用（2026-11-19）；Float/Int/String/Toggle 值框抽成 `kairos_editor_widgets::field` 的可复用 widget，页面只剩 StyleValue 映射（2026-11-20）；每个控件一个文件，数字改为拖 label scrub，值框皮肤独立成共享样式 `EditorFieldStyle`（2026-11-20 续）；枚举值控 `EnumField` + `StyleValue::Variant` + `StyleField::variants` + derive 支持 enum（变体菜单 + 载荷行同一块背景、载荷行从菜单按钮列开始），`FontEntry::priority` 去掉 `#[style(skip)]`；EnumField 改为 `&mut` 枚举 + strum、载荷行从 menu button 列开始，`FontPriority` 改为 component 侧的平行枚举 `EditorFontPriority`（tuple payload 透明），触发按钮用项目 `Button` + 共享 `MenuStyle`（2026-11-20 再续）
+> **状态**：评审 + 实现（2026-11-19）；UI 重做为 Unity Inspector 样式，并加入自有 LDR/HDR 取色器（2026-11-19 续）；颜色值改为 8 字节 linear `Color` + `ColorProperty` 字段策略（2026-11-19 再续）；取色器改为 260 px 浮动窗、HDR 0-Inf/191 曝光基准、Library swatch groups，menu button/浮层菜单对齐 Unity popup field（2026-11-19 完善）；标题栏改为 dock 同款三 traffic-light widget + 居中标题，收起/最大化灰色禁用（2026-11-19）；Float/Int/String/Toggle 值框抽成 `kairos_editor_widgets::field` 的可复用 widget，页面只剩 StyleValue 映射（2026-11-20）；每个控件一个文件，数字改为拖 label scrub，值框皮肤独立成共享样式 `EditorFieldStyle`（2026-11-20 续）；枚举值控 `EnumField` + `StyleValue::Variant` + `StyleField::variants` + derive 支持 enum（变体菜单 + 载荷行同一块背景、载荷行从菜单按钮列开始），`FontEntry::priority` 去掉 `#[style(skip)]`；EnumField 改为 `&mut` 枚举 + strum、载荷行从 menu button 列开始，`FontPriority` 改为 component 侧的平行枚举 `EditorFontPriority`（tuple payload 透明），触发按钮用项目 `Button` + 共享 `MenuStyle`（2026-11-20 再续）；**字段表整体删除，页面改为「每个样式类型自己绘制」（derive `StyleRow` → `FormRows` → `Replace` 整份写回），见 [style-row-codegen.md](./style-row-codegen.md)（2026-11-24）**
 > **范围**：把 0.1.0 的 `kairos_editor/src/ui/preferences_window.rs`（414 行）与它依赖的样式反射通道（`ui_style_fields.rs`、`ui.rs:468-514`）迁到 0.2.0 的面板架构。目标与旧窗口一致：**把各个组件的 `Preferences/Styles/*.ron` 以 UI 控件的形式列出来，直接在 Preferences 里改**。
 > **配套**：[about-panel.md](./about-panel.md)（同一套评审口径）· [ADR 0008](../adr/0008-editor-ui-architecture.md) · [ADR 0009](../adr/0009-editor-panel-host-and-viewport.md) · [widget-layer.md](./widget-layer.md) · [editor-ui-widget-catalog.md](../../research/editor-ui-widget-catalog.md) §C17
 > **证据口径**：`path:line` 为本次（2026-11-19）工作区 HEAD 实读；「每帧写盘」「多 pass 重复发消息」沿用 `docs/research/editor-ui-messager-mvc-audit.md` 的静态推断口径（该文已给调用链）。
+>
+> **注意（2026-11-24）**：§2.2/§3/§4 描述的「字段表 + `StyleValue` + 点分路径 + 每帧快照」**已被删除**，当前机制是「每个样式类型自己绘制页面 + 整份 typed 值写回」（`RowSink`/`StyleRow`/`FormRows`/`StyleAction::Replace`），以 [style-row-codegen.md](./style-row-codegen.md) 为准。本文保留原评审与迁移记录，其中的字段表实现细节只作历史。
 
 ---
 
@@ -11,10 +13,10 @@
 
 1. **旧窗口的功能是「样式字段编辑器」**：左侧页面列表、右侧 `egui::Grid` 的字段表单，改一个值立刻作用于对应窗口。本文保留这个功能，换掉它的机制。
 2. **旧机制有四个硬伤**：(a) 字段按 **下标** 读写（`style_fields[0..3]`、`pages[style_page.id]`、`drawers[style_page.id]`）——重排字段就是运行时 panic 或静默写错；(b) body 末尾**每帧**无条件 `send(UpdateUIStyle(page))`（`preferences_window.rs:404`）→ 三个窗口的 `update_style` 直接 `toml::to_string` + `fs::write`，约 60 次/秒；(c) 页面列表是 **Drawer 镜像**：遍历全部 drawer 生成页面，13 个实现里 4 个有字段，还把布局容器和 Preferences 自己列进去；(d) 视图在 `ui()` 里发消息，而 `Grid` 首帧会 `request_discard`（egui-0.35.0/src/grid.rs:454），多 pass 下同一帧重复写盘。
-3. **新机制：字段由类型自己给出**。每个 `*Style` derive `StyleFields`（新增 derive 宏），宏从结构体字段生成**点分路径**（`"icons.warning"`、`"toolbar_height"`）和按类型决定的控件种类；新增/重排字段不需要改第二份表，也不会出现「下标对不上」。
-4. **改值 = 立即写进面板自己的 live style**：面板实现 `Panel::set_skin_field`，app 的 effect executor 调用它；下一 pass 面板就用新样式重绘 —— 这就是旧窗口的「立即生效」。
-5. **落盘 = 一次交互一次**：`StyleAction::SetField` → `Effect::Style(SetField)`（每帧，预览）；`StyleAction::Commit` → `Effect::Style(Persist)`（指针抬起 / 切页 / 关闭面板时一次）。写盘从「帧」变成「手势」，B1 消解。
-6. **面板列表 = 活着的面板**：0.2.0 里样式属于面板实例（`Panel::init` 载入），没打开的面板没有实例可改。页面列表因此来自 `PanelHost::skins()` 的实时快照；Preferences 自己也在列表里（可以改自己的皮肤）。
+3. **新机制：字段由类型自己给出**。每个 `*Style` derive `StyleRow`（[style-row-codegen.md](./style-row-codegen.md)）：宏从结构体字段生成「自己走一遍行」的 `StyleRow`，页面对一份 typed copy 直接 `&mut` 绘制；没有字段表、没有 `StyleValue`、没有点分路径。新增/重排字段不需要改第二份表，也不会出现「下标对不上」。
+4. **改值 = 把整份 typed copy 交回 owner**：页面在选页时拿一份 `Box<dyn StylePage>`（owner 样式的 clone），`FormRows` 直接改这份 copy；变了就发 `StyleAction::Replace { skin }`，executor 调 `PanelHost::replace_skin` / `SharedStyles::replace`，下一 pass 面板用新样式重绘 —— 这就是旧窗口的「立即生效」。
+5. **落盘 = 一次交互一次**：`StyleAction::Replace`（每帧，预览）；`StyleAction::Commit` → `Effect::Style(Persist)`（指针抬起 / 切页 / 关闭面板时一次；`Replace` 排在它前面，所以写盘拿到的是刚画的值）。写盘从「帧」变成「手势」，B1 消解。
+6. **面板列表 = 活着的面板**：0.2.0 里样式属于面板实例（`Panel::init` 载入），没打开的面板没有实例可改。页面列表因此来自 `PanelHost::pages()` + `SharedStyles::pages()` 的实时收集；Preferences 自己也在列表里（可以改自己的皮肤）。
 7. **不迁移的东西**：窗口尺寸/页面列表本身不可编辑（B6/B7）；不存在空页与自指页（M9）；没有「打开时重新收集」这一步，页面表是每次绘制的快照。
 
 ---
@@ -191,6 +193,11 @@ StyleFields::set_style_field(path, value)
 > 把裁剪矩形设成它自己的 rect，而不是父级 ScrollArea 的 viewport：父 `Ui` 的 clip 会被子 `Ui`
 > 继承，v0.35 的 `new_child` 不会重置它，所以只传 `page_clip` 等于没改；现在拖动前只露出一半的
 > 元素，拖动时也能画出完整块。
+>
+> **2026-11-24 补充（`FormRows` 的整块 ghost）**：typed 页的列表按同一原则重做了拖拽浮层——
+> `element_block` 把被拖块的 band + 行画进 tooltip 层的 disabled 子 `Ui`，`with_visual_transform`
+> 平移到指针，父 `Ui` 只按子 `Ui` 的 rect 前进（布局与 drop 数学不变）；被拖块不再在原地画。
+> 早期「用页面底色盖住原位」的版本会把滑进该位置的邻居一起盖掉，已删除。
 >
 > **2026-11-20 补充（枚举控件）**：值协议新增 `StyleValue::Variant(String)`（稳定变体名，不是下标）；
 > 变体名由 `StyleField::variants: Option<&'static [&'static str]>` 携带，页面画菜单时读取，值本身
@@ -377,19 +384,20 @@ StyleFields::set_style_field(path, value)
 
 ## 6. 已知边界 / 后续
 
-1. **ToolBar / Color Picker 是 shared 页，不是 `PanelSkin` 页**：它们没有面板实例，由 `SharedStyles` 注册表持有，Preferences 固定追加它们的页。将来第三个 chrome 样式（例如 window controls）只需 `#[derive(StyleFields)]` + `#[SharedStyle(...)]` 并写 `preload`，页面和保存路径自动出现（若面板要读它，再在 `Frame` 加一个 typed accessor）。
+1. **ToolBar / Color Picker 是 shared 页，不是面板页**：它们没有面板实例，由 `SharedStyles` 注册表持有，Preferences 固定追加它们的页。将来第三个 chrome 样式（例如 window controls）只需 `#[derive(StyleRow)]` + `#[SharedStyle(...)]` 并写 `preload`，页面和保存路径自动出现（若面板要读它，再在 `Frame` 加一个 typed accessor）。
 2. **面板页仍只能编辑已打开的面板**：原因见 §2.6。要覆盖关闭的面板需要 `StyleState`（状态树持有样式文档），属 catalog §C17；shared 页不受这个限制。
 3. **只显示当前主题的那一半皮肤**：面板在 `init` 里、shared 在 `SharedStyles::load` 里按 `ctx.theme()` 选 skin（主题被 app 钉为 Dark）。页面编辑 dark；保存时保留 light。等浅色皮肤启用后再做主题切换（shared 需要重新 load/选半套）。
 4. **没有单字段「恢复默认」**：需要 `StyleEffect::ResetField`（把代码默认值与字段路径对齐），等有第二个使用场景再加。
-5. **键盘提交点**：键入触发 `SetField`（宿主下一帧生效）；`Commit` 在指针抬起、行内数字编辑结束（Enter / 失焦）、color hex/数值的 Enter/Esc、关窗或切页时发生。纯键盘编辑文本字段（不点鼠标）仍要等失焦/关窗才写盘。
+5. **键盘提交点**：键入触发 `Replace`（宿主下一帧生效）；`Commit` 在指针抬起、行内数字编辑结束（Enter / 失焦）、color hex/数值的 Enter/Esc、关窗或切页时发生。纯键盘编辑文本字段（不点鼠标）仍要等失焦/关窗才写盘。
 6. **拖拽速度是启发式的**：`speed = clamp(|value| / 50, 0.01, 1.0)`，对大多数尺寸合适；某些 token（颜色分量之外的极小值）可能偏慢，后续可以按字段加 hint。
-7. **页面列表的花费**：Preferences 打开时每帧重新快照所有字段（现在约 3 个面板 + 2 个 shared 页、~240 个字段；shared 字段表由 `SharedStyles::skins()` 即时生成）。这些分配只在编辑器自己的设置窗口开着时发生；若将来面板/字段数量上来了，改成「页面切换时刷新」即可。
+7. **页面快照的花费（2026-11-24 收尾）**：app 在 Preferences 打开时持有一份页面快照（每个可编辑样式一份 typed copy，`Frame::pages`），但不再每帧 clone 整份：每帧只重建元数据列表（id/title/file，`PanelHost::page_metas` / `SharedStyles::page_metas`）做比较；只有页面集变化（Preferences 打开、面板开关、标题变化）才整份重建，`Replace`/`Reset` 由 effect executor 只刷新那一页（`PanelHost::page` / `SharedStyles::page`）。面板切页时只从快照 clone 选中页（`PageState::select`）。稳态帧 0 次样式值拷贝，切页 1 次。
 8. **吸管按平台走各自的原生通路**：widget 侧只有会话与 `eyedropper::Update` 契约（sRGB 字节 + Picking/Committed/Cancelled + 会话 id），不认平台；宿主 `kairos_editor_app/src/eyedropper/{win32,macos,linux}.rs` 负责取像素与放大镜。Windows 走 `GetCursorPos` + `BitBlt`（屏幕 DC）+ GDI 浮层，**不依赖 framebuffer readback**，因此不需要接 egui 的 screenshot 请求；拾取期间用 `WH_MOUSE_LL` 钩子遮罩桌面鼠标按键与滚轮（移动放行，否则系统光标会被冻住；捕获窗口自己的标题栏按钮也盖不住，见 ADR 0014）；确认/取消的按键由钩子记录（丢弃的事件 `GetAsyncKeyState` 读不到）。macOS 用 ScreenCaptureKit 的 `SCScreenshotManager` 按 `pointPixelScale` 取 15×15 像素，每块屏幕一个透明 AppKit 浮层；浮层消费确认点击，所以同样要吞随后的 release，字段在 Picking 帧逐帧跟随。首次使用触发系统屏幕录制授权；无权限、旧系统（<14）或采集失败时回退 `NSColorSampler`（无需权限，但只在确认时给色、无右键取消）。Linux 在 X11 下用私有 X 连接 `QueryPointer` + `GetImage`（15×15 块）+ override-redirect 浮层 + `GrabPointer`（只选按键事件，移动放行）实现同样的行为；Wayland 没有全局指针与跨窗口像素（只能走 ScreenCast portal），XWayland 的 root window 也不含 Wayland 客户端的像素，因此两者都报告不可用。确认后的写盘靠 widget 的 `take_committed` 结束信号；Windows/X11 的确认点击被遮罩，宿主还要把随后的 release 吞掉（两帧无按键后解除，见 ADR 0014）。
-9. **HDR 数据面**：`Color` / `ColorProperty` 已经端到端打通并有组件测试；`StyleValue::HdrColor` 是皮肤协议里的线性颜色 variant。现有面板皮肤都是 LDR，所以正常 Preferences 页面暂时看不到 HDR 行；它会在材质/发射色 token 接入后出现。
+9. **HDR 数据面**：`Color` / `ColorProperty` 已经端到端打通并有组件测试；HDR 由字段类型 `ColorProperty` 自带的 usage 表达（不再有 `StyleValue` 的 variant）。现有面板皮肤都是 LDR，所以正常 Preferences 页面暂时看不到 HDR 行；它会在材质/发射色 token 接入后出现。
 10. **枚举载荷的边界**：具名载荷任意；单字段 tuple 载荷透明（没有 header，字段直接挂到 enum 路径）；多字段 tuple 没有稳定字段名，宏直接报错。载荷字段必须实现 `Default`，切过去时按 `Default` 重建。布局上，tuple/具名 enum 的**直接**载荷行从 menu button 列开始；具名 struct 的 foldout header 仍按普通组整行画，嵌套枚举的下一层载荷和载荷里的 list 仍用整行列表布局，没有继续嵌进按钮列。
 11. **枚举下拉没有键盘导航**：只能点；Up/Down/Enter 选择、type-ahead 都还没做。菜单开着时滚轮滚的是菜单自己的长列表（>10 项），不是页面。
 12. **嵌套枚举块不再有第二层底色或边框**：外层枚举的载荷里再有带载荷的枚举时，内层载荷只靠从 menu button 列对齐和斑马纹区分；要更明显的层级再加缩进或新的底色 token。
-13. **未知变体 id 是 no-op**：`StyleValue::Variant` 与类型的 `StyleEnum::with_variant` 对不上时不写、不报错，和错误 kind 的处理一致。手改 RON 里的变体名不会被自动纠正（serde 会在加载时报错）。
+13. **未知变体 id 是 no-op**：`VariantMenu` 的 id 与类型的 `StyleEnum::with_variant` 对不上时不写、不报错。手改 RON 里的变体名不会被自动纠正（serde 会在加载时报错）。
+14. ~~**字段路径的父子推导仍在字符串上**~~（2026-11-24 作废）：字段表已删除，`enum_blocks`/`open_groups`/`list_stack` 等按点分路径做前缀判断的代码不再存在；行版式在 `FormRows` 里按 sink 的作用域（group/payload/list）直接维护，不重建父子关系。`StyleValue`/`toml::Value` 的取舍问题随之消失（写回是整份 typed value）。
 
 ---
 

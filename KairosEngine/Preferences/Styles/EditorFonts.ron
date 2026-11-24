@@ -9,12 +9,7 @@
             (
                 name: "Inter Medium",
                 path: "Preferences/Fonts/Inter-Medium.otf",
-                priority: Push((
-                    fvalue: 0.0,
-                    ivalue: 0,
-                    svalue: "",
-                    cvalue: "#00000000",
-                )),
+                priority: Push,
             ),
         ],
         monospace: [],
@@ -29,12 +24,7 @@
             (
                 name: "Inter Medium",
                 path: "Preferences/Fonts/Inter-Medium.otf",
-                priority: Push((
-                    fvalue: 0.0,
-                    ivalue: 0,
-                    svalue: "",
-                    cvalue: "#00000000",
-                )),
+                priority: Push,
             ),
         ],
         monospace: [],

@@ -11,7 +11,7 @@
 
 use crate::panel::PanelId;
 use crate::project::ProjectAction;
-use crate::style::{ListEdit, SharedStyleId, StyleValue};
+use crate::style::{SharedStyleId, Skin};
 
 /// Aggregate UI intent, routed by domain slice.
 #[derive(Clone, Debug, PartialEq)]
@@ -65,29 +65,14 @@ pub enum AppAction {
 /// loads it in `Panel::init`, so these intents describe *host work on a panel
 /// instance*, not a state transition. They still travel as actions so the panel
 /// stays side-effect free and the app has one command path.
+///
+/// A skin edit is one whole value, never a token: the page draws a typed copy of
+/// the panel's style and hands the copy back when it changed.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StyleAction {
-    /// One field of one panel's skin changed (live preview while dragging).
-    ///
-    /// `path` is the dotted field path the panel reported
-    /// (`"icons.warning"`, `"toolbar_height"`); the panel decides whether
-    /// the path and the value's kind match, and reports `false` if they do not.
-    SetField {
-        panel: PanelId,
-        path: String,
-        value: StyleValue,
-    },
-    /// Insert, remove or move one entry of a list token.
-    ///
-    /// The list's length is itself a token: `SetField` with an `Integer`
-    /// resizes the list (growing appends defaults, shrinking drops from the
-    /// end). This edit carries the changes a resize cannot express — inserting
-    /// in the middle, removing an entry that is not the last, reordering.
-    EditList {
-        panel: PanelId,
-        path: String,
-        edit: ListEdit,
-    },
+    /// Replace the panel's whole live skin with the typed copy the editor page
+    /// drew. One value, no paths: the page owns the copy and hands it back.
+    Replace { panel: PanelId, skin: Skin },
     /// Replace the panel's live skin with its code defaults for the active
     /// theme, then write the file. One click, one write: this is the factory
     /// reset, not a field edit followed by a commit.
@@ -100,24 +85,13 @@ pub enum StyleAction {
 ///
 /// The toolbar and the color picker are loaded once by the editor shell, not by
 /// a panel instance, so their files cannot travel through the panel-skin path
-/// above. They still share the same gesture boundary: set while dragging or
-/// typing, persist when the interaction ends. Reset replaces the live value
-/// with the code defaults and writes it in one go.
+/// above. They still share the same gesture boundary: replace the live value
+/// while drawing, persist when the interaction ends. Reset replaces the live
+/// value with the code defaults and writes it in one go.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SharedStyleAction {
-    /// One field of one shared style changed (live preview).
-    SetField {
-        style: SharedStyleId,
-        path: String,
-        value: StyleValue,
-    },
-    /// Insert, remove or move one entry of a list token; see
-    /// [`StyleAction::EditList`].
-    EditList {
-        style: SharedStyleId,
-        path: String,
-        edit: ListEdit,
-    },
+    /// Replace the shared style's whole live value with the page's typed copy.
+    Replace { style: SharedStyleId, skin: Skin },
     /// Replace the shared style's live value with its code defaults for the
     /// active theme, then write the file.
     Reset { style: SharedStyleId },

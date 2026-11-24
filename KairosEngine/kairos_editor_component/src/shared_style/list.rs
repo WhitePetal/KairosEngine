@@ -20,11 +20,11 @@ use kairos_editor_widgets::style::Style;
 use serde::{Deserialize, Serialize};
 
 use crate::shared_style::SharedStyle;
-use crate::skin::StyleFields;
+use crate::style_row::StyleRow;
 
 /// Appearance of a reorderable list: header, element bands, stripes, selection,
 /// drag handle, container rules and the add/remove cells.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 #[SharedStyle(LIST = "list", title = "List")]
 pub struct ListStyle {
     /// Header name.
@@ -261,31 +261,6 @@ mod tests {
         assert_eq!(
             chrome.band_text_selected.text_color(),
             skin.band_text_selected.to_egui()
-        );
-    }
-
-    #[test]
-    fn the_list_page_exposes_its_chrome_tokens() {
-        let fields = ListStyle::dark().style_fields();
-        let paths: Vec<&str> = fields.iter().map(|field| field.path.as_str()).collect();
-
-        for token in [
-            "header_fill",
-            "band_fill",
-            "band_alt",
-            "selection",
-            "handle",
-            "container_border",
-            "row_height",
-            "gutter_width",
-            "button_fill",
-            "button_text",
-        ] {
-            assert!(paths.contains(&token), "missing {token}: {paths:?}");
-        }
-        assert!(
-            !paths.contains(&"field"),
-            "the value boxes are not a group of the list skin"
         );
     }
 

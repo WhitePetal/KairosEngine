@@ -7,8 +7,8 @@
 //! * [`macro@panel`] on `impl Panel for YourPanel` declares the panel's id,
 //!   registers it (`PanelRegister` + `inventory` submission), generates the
 //!   factory and — when the panel has a skin — the `Panel` skin methods.
-//! * `#[derive(StyleFields)]` makes a style struct describe itself field by
-//!   field, which is what the Preferences panel edits. The optional
+//! * `#[derive(StyleRow)]` makes a style struct draw its own Preferences page:
+//!   the row walk, the erased page, and the whole-value write. The optional
 //!   `#[SharedStyle(...)]` helper declaration additionally seals the type as a
 //!   `SharedStyle` and submits its `SharedStyleDef`.
 //!
@@ -50,11 +50,13 @@ use syn::{
 ///   `create = path` (`fn(&PanelContext) -> Self`) for a panel that needs the
 ///   injected identity;
 /// * with `skin = StyleType`, the `Panel` methods that let Preferences
-///   edit this panel's `Preferences/Styles/*.ron` file: `skin` (the field
-///   table, titled by the panel's own `title`), `set_skin_field` (live
-///   write), `reset_skin` (restore the theme's code defaults) and
-///   `save_skin` (persist). The style is expected in a field named
-///   `style`; the type must implement `Style + StyleFields`.
+///   edit this panel's `Preferences/Styles/*.ron` file: `skin_value` (the live
+///   style borrowed as a self-drawing page) and `skin_file` (the RON file it
+///   persists to), which the `Panel` trait's provided `skin_page`/`skin_meta`
+///   turn into a page snapshot; `replace_skin` (take a whole value the page
+///   hands back), `reset_skin` (restore the theme's code defaults) and
+///   `save_skin` (persist). The style is expected in a field named `style`; the
+///   type must implement `Style + StyleRow`.
 ///
 /// Putting the attribute on the impl rather than the struct is what lets it
 /// generate methods inside the trait impl; a second `impl Panel` block is not
@@ -203,50 +205,36 @@ fn expand_panel(args: TokenStream2, mut item: ItemImpl) -> syn::Result<TokenStre
     };
 
     if let Some(style) = skin {
-        // The page title is the panel's own title: a skin page is named after
-        // the panel, so passing a second title here would be a duplicate
-        // source of truth.
+        // The two halves the `Panel` trait turns into a page: the live value
+        // (borrowed; the owner is the only one who has it) and the file its
+        // type persists to. The page heading is the panel's own `title`, so
+        // nothing about the page is restated here.
         item.items.push(parse_quote! {
-            fn skin(
+            fn skin_value(
                 &self,
-                frame: &::kairos_editor_component::frame::Frame,
-            ) -> ::std::option::Option<::kairos_editor_component::skin::PanelSkin> {
-                ::std::option::Option::Some(::kairos_editor_component::skin::PanelSkin {
-                    panel: #id_name,
-                    title: ::kairos_editor_component::panel::Panel::title(self, frame)
-                        .text()
-                        .to_owned(),
-                    file: <#style as ::kairos_editor_widgets::style::Style>::FILE,
-                    fields: ::kairos_editor_component::skin::StyleFields::style_fields(
-                        &self.style,
-                    ),
-                })
+            ) -> ::std::option::Option<&dyn ::kairos_editor_component::style_row::StylePage> {
+                ::std::option::Option::Some(&self.style)
             }
         });
         item.items.push(parse_quote! {
-            fn set_skin_field(
-                &mut self,
-                path: &str,
-                value: &::kairos_editor_core::StyleValue,
-            ) -> bool {
-                ::kairos_editor_component::skin::StyleFields::set_style_field(
-                    &mut self.style,
-                    path,
-                    value,
+            fn skin_file(&self) -> ::std::option::Option<&'static str> {
+                ::std::option::Option::Some(
+                    <#style as ::kairos_editor_widgets::style::Style>::FILE,
                 )
             }
         });
         item.items.push(parse_quote! {
-            fn edit_skin_list(
+            fn replace_skin(
                 &mut self,
-                path: &str,
-                edit: ::kairos_editor_core::ListEdit,
+                skin: ::std::boxed::Box<dyn ::std::any::Any>,
             ) -> bool {
-                ::kairos_editor_component::skin::StyleFields::edit_style_list(
-                    &mut self.style,
-                    path,
-                    edit,
-                )
+                match skin.downcast::<#style>() {
+                    ::std::result::Result::Ok(next) => {
+                        self.style = *next;
+                        true
+                    }
+                    ::std::result::Result::Err(_) => false,
+                }
             }
         });
         item.items.push(parse_quote! {
@@ -306,34 +294,37 @@ fn expand_panel(args: TokenStream2, mut item: ItemImpl) -> syn::Result<TokenStre
 }
 
 // ---------------------------------------------------------------------------
-// #[derive(StyleFields)]
+// #[derive(StyleRow)]
 // ---------------------------------------------------------------------------
 
-/// See `kairos_editor_component::skin`.
+/// See `kairos_editor_component::style_row`.
 ///
-/// The derive walks the struct's fields and emits two impls:
+/// Declares a style: the type draws its own Preferences page.
 ///
-/// * `skin::StyleNode` — `collect` (append this value or its children to a
-///   `Vec<StyleField>`) and `write` (write one leaf by dotted path). Nested
-///   structs derive it too, so a group such as `icons` nests without the
-///   parent knowing it is a group.
-/// * `skin::StyleFields` — the entry point `Panel::skin` forwards to.
+/// The derive walks the struct's fields and emits:
+///
+/// * `style_row::StyleRow` — `row(&mut self, name, sink)`: one `sink.group`
+///   per struct and one `StyleRow::row` per field, in declaration order. Nested
+///   structs derive it too, so a group such as `icons` nests without the parent
+///   knowing it is a group. `#[style(skip)]` leaves a field out of the rows; the
+///   field stays part of the value.
+/// * `style_row::StylePage` and `kairos_editor_core::style::StyleBlob` — the
+///   erased page the Preferences panel holds, and the whole-value write it hands
+///   back to the owner. Both need the type to be `Clone + PartialEq`.
 ///
 /// Field values come from the field's type (`f32`/`f64`, `i8`..`i64`/`isize`,
-/// `u8`/`u16`/`u32`/`u64`/`usize`, `bool`, `String`, `Color`, `ColorProperty`);
-/// the macro itself only knows names and accessors. `#[style(skip)]` leaves a
-/// field out.
+/// `u8`/`u16`/`u32`/`u64`/`usize`, `bool`, `String`, `Color`, `ColorProperty`,
+/// `Vec<T>`); the macro itself only knows names and accessors.
 ///
 /// On an enum it generates the enum *token* protocol instead: the active id,
-/// how to rebuild a variant, and a `StyleNode` that emits the enum's own row
-/// followed by the active variant's named fields as dotted children. The
+/// how to rebuild a variant, and a `StyleRow` that draws the enum's own menu row
+/// followed by the active variant's named fields under a payload scope. The
 /// variant table is strum's `VariantNames::VARIANTS`, so the enum must also
 /// derive `strum::VariantNames`; the macros do not invent a second name list.
 /// Unit variants add nothing; a single-field tuple variant is transparent: its
-/// payload's fields are the enum's own payload, with no header row for the
-/// unnamed field. The tuple payload is meant to be a struct/group; a leaf
-/// payload would collect at the enum's own path. A tuple with more than one
-/// field is rejected because its values have no names to address.
+/// payload's fields are the enum's own rows, with no header row for the unnamed
+/// field. A tuple with more than one field is rejected because its values have
+/// no names to address.
 ///
 /// # Shared styles
 ///
@@ -341,20 +332,21 @@ fn expand_panel(args: TokenStream2, mut item: ItemImpl) -> syn::Result<TokenStre
 /// declares the type as a shared style:
 ///
 /// * emits `pub const CONST: SharedStyleId`, so the id lives next to the style;
-/// * implements the crate-private `SharedStyleSealed` erasure trait, so
-///   `SharedStyle` cannot be implemented without this attribute;
+/// * implements the crate-private `SharedStyleSealed` erasure trait (`as_any`,
+///   `replace`, `page`), so `SharedStyle` cannot be implemented without this
+///   attribute;
 /// * submits a `SharedStyleDef` to the inventory table. The submission
 ///   requires `SharedStyle`, so the attribute without the trait impl does not
 ///   compile either.
 ///
 /// `SharedStyle` is a helper attribute of this derive, not a separate macro:
-/// the derive supplies the field table, and the helper supplies the id and the
-/// Preferences page title. `#[style(skip)]` stays the field-level helper.
+/// the derive supplies the self-drawing page, and the helper supplies the id and
+/// the Preferences page title. `#[style(skip)]` stays the field-level helper.
 ///
 /// The type then writes only the `preload` hook:
 ///
 /// ```ignore
-/// #[derive(StyleFields)]
+/// #[derive(StyleRow)]
 /// #[SharedStyle(TOOLBAR = "toolbar", title = "Toolbar")]
 /// struct ToolBarStyle { /* ... */ }
 ///
@@ -362,28 +354,28 @@ fn expand_panel(args: TokenStream2, mut item: ItemImpl) -> syn::Result<TokenStre
 ///     fn preload(&self, ctx: &egui::Context) { /* ... */ }
 /// }
 /// ```
-#[proc_macro_derive(StyleFields, attributes(style, SharedStyle))]
-pub fn style_fields(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(StyleRow, attributes(style, SharedStyle))]
+pub fn style_row(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    match expand_style_fields(input) {
+    match expand_style_row(input) {
         Ok(tokens) => tokens.into(),
         Err(error) => error.to_compile_error().into(),
     }
 }
 
-fn expand_style_fields(input: DeriveInput) -> syn::Result<TokenStream2> {
+fn expand_style_row(input: DeriveInput) -> syn::Result<TokenStream2> {
     match &input.data {
-        Data::Struct(data) => expand_struct_style_fields(&input, data),
-        Data::Enum(data) => expand_enum_style_fields(&input, data),
+        Data::Struct(data) => expand_struct_style_row(&input, data),
+        Data::Enum(data) => expand_enum_style_row(&input, data),
         Data::Union(_) => Err(syn::Error::new_spanned(
             &input,
-            "StyleFields can only be derived for a struct or an enum",
+            "StyleRow can only be derived for a struct or an enum",
         )),
     }
 }
 
-/// A style struct: one row per token, nested structs are dotted groups.
-fn expand_struct_style_fields(
+/// A style struct: one row per token, nested structs are groups.
+fn expand_struct_style_row(
     input: &DeriveInput,
     data: &syn::DataStruct,
 ) -> syn::Result<TokenStream2> {
@@ -409,6 +401,27 @@ fn expand_struct_style_fields(
                 fn as_any(&self) -> &dyn ::std::any::Any {
                     self
                 }
+
+                fn replace(
+                    &mut self,
+                    skin: ::std::boxed::Box<dyn ::std::any::Any>,
+                ) -> bool {
+                    match skin.downcast::<#name>() {
+                        ::std::result::Result::Ok(next) => {
+                            *self = *next;
+                            true
+                        }
+                        ::std::result::Result::Err(_) => false,
+                    }
+                }
+
+                fn page(
+                    &self,
+                ) -> ::std::boxed::Box<
+                    dyn ::kairos_editor_component::style_row::StylePage,
+                > {
+                    ::std::boxed::Box::new(self.clone())
+                }
             }
 
             pub const #constant: ::kairos_editor_component::__macro::SharedStyleId =
@@ -424,9 +437,7 @@ fn expand_struct_style_fields(
         None => quote! {},
     };
 
-    let mut collects = Vec::new();
-    let mut writes = Vec::new();
-    let mut edits = Vec::new();
+    let mut rows = Vec::new();
     for field in fields {
         if is_skipped(field) {
             continue;
@@ -435,86 +446,58 @@ fn expand_struct_style_fields(
             continue;
         };
         let key = ident.to_string();
-        collects.push(quote! {
-            {
-                let child = if path.is_empty() {
-                    ::std::string::String::from(#key)
-                } else {
-                    ::std::format!("{path}.{}", #key)
-                };
-                ::kairos_editor_component::skin::StyleNode::collect(&self.#ident, &child, out);
-            }
-        });
-        writes.push(quote! {
-            #key => ::kairos_editor_component::skin::StyleNode::write(&mut self.#ident, tail, value),
-        });
-        edits.push(quote! {
-            #key => ::kairos_editor_component::skin::StyleNode::edit_list(&mut self.#ident, tail, edit),
+        rows.push(quote! {
+            ::kairos_editor_component::style_row::StyleRow::row(&mut self.#ident, #key, sink);
         });
     }
 
     Ok(quote! {
-        impl ::kairos_editor_component::skin::StyleNode for #name {
-            fn collect(
-                &self,
-                path: &str,
-                out: &mut ::std::vec::Vec<::kairos_editor_component::skin::StyleField>,
+        impl ::kairos_editor_component::style_row::StyleRow for #name {
+            fn row(
+                &mut self,
+                name: &str,
+                sink: &mut impl ::kairos_editor_component::style_row::RowSink,
             ) {
-                #(#collects)*
-            }
-
-            fn write(
-                &mut self,
-                path: &str,
-                value: &::kairos_editor_core::StyleValue,
-            ) -> bool {
-                let (head, tail) = match path.split_once('.') {
-                    ::std::option::Option::Some((head, tail)) => (head, tail),
-                    ::std::option::Option::None => (path, ""),
-                };
-                match head {
-                    #(#writes)*
-                    _ => false,
-                }
-            }
-
-            fn edit_list(
-                &mut self,
-                path: &str,
-                edit: ::kairos_editor_core::ListEdit,
-            ) -> bool {
-                let (head, tail) = match path.split_once('.') {
-                    ::std::option::Option::Some((head, tail)) => (head, tail),
-                    ::std::option::Option::None => (path, ""),
-                };
-                match head {
-                    #(#edits)*
-                    _ => false,
-                }
+                sink.group(name, |sink| {
+                    #(#rows)*
+                });
             }
         }
 
-        impl ::kairos_editor_component::skin::StyleFields for #name {
-            fn style_fields(&self) -> ::std::vec::Vec<::kairos_editor_component::skin::StyleField> {
-                let mut out = ::std::vec::Vec::new();
-                ::kairos_editor_component::skin::StyleNode::collect(self, "", &mut out);
-                out
+        // A style is also a page value: the editor draws its own typed copy and
+        // hands the whole thing back through `Skin` (see `StyleBlob`). The
+        // stamp needs `Clone` and `PartialEq`, which every style derives.
+        impl ::kairos_editor_core::style::StyleBlob for #name {
+            fn clone_blob(&self) -> ::std::boxed::Box<dyn ::kairos_editor_core::style::StyleBlob> {
+                ::std::boxed::Box::new(self.clone())
             }
 
-            fn set_style_field(
-                &mut self,
-                path: &str,
-                value: &::kairos_editor_core::StyleValue,
-            ) -> bool {
-                ::kairos_editor_component::skin::StyleNode::write(self, path, value)
+            fn as_any(&self) -> &dyn ::std::any::Any {
+                self
             }
 
-            fn edit_style_list(
-                &mut self,
-                path: &str,
-                edit: ::kairos_editor_core::ListEdit,
-            ) -> bool {
-                ::kairos_editor_component::skin::StyleNode::edit_list(self, path, edit)
+            fn into_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn ::std::any::Any> {
+                self
+            }
+
+            fn equals(&self, other: &dyn ::kairos_editor_core::style::StyleBlob) -> bool {
+                other.as_any().downcast_ref::<Self>() == ::std::option::Option::Some(self)
+            }
+
+            fn debug_blob(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                f.write_str(::std::any::type_name::<Self>())
+            }
+        }
+
+        impl ::kairos_editor_component::style_row::StylePage for #name {
+            fn draw_page(&mut self, rows: &mut ::kairos_editor_component::form::FormRows<'_>) {
+                ::kairos_editor_component::style_row::StyleRow::row(self, "", rows);
+            }
+
+            fn clone_box(
+                &self,
+            ) -> ::std::boxed::Box<dyn ::kairos_editor_component::style_row::StylePage> {
+                ::std::boxed::Box::new(self.clone())
             }
         }
 
@@ -529,10 +512,7 @@ fn expand_struct_style_fields(
 /// payload of any type (f32, Color, a nested struct, a list) is drawn by the
 /// widget its value variant names. Unit variants and struct-like variants share
 /// this one expansion: a unit variant simply has no payload rows.
-fn expand_enum_style_fields(
-    input: &DeriveInput,
-    data: &syn::DataEnum,
-) -> syn::Result<TokenStream2> {
+fn expand_enum_style_row(input: &DeriveInput, data: &syn::DataEnum) -> syn::Result<TokenStream2> {
     let name = &input.ident;
     if shared_decl(input)?.is_some() {
         return Err(syn::Error::new_spanned(
@@ -543,9 +523,7 @@ fn expand_enum_style_fields(
 
     let mut variant_ids = Vec::new();
     let mut with_variant_arms = Vec::new();
-    let mut collect_arms = Vec::new();
-    let mut write_arms = Vec::new();
-    let mut edit_arms = Vec::new();
+    let mut row_arms = Vec::new();
 
     for variant in &data.variants {
         if let Some(attr) = variant
@@ -567,9 +545,7 @@ fn expand_enum_style_fields(
                 with_variant_arms.push(quote! {
                     #id => ::std::option::Option::Some(Self::#ident),
                 });
-                collect_arms.push(quote! { Self::#ident => {}, });
-                write_arms.push(quote! { Self::#ident => false, });
-                edit_arms.push(quote! { Self::#ident => false, });
+                row_arms.push(quote! { Self::#ident => {}, });
             }
             Fields::Named(fields) => {
                 // Only the token fields are collected and written; a
@@ -608,69 +584,29 @@ fn expand_enum_style_fields(
                     #id => ::std::option::Option::Some(Self::#ident { #(#defaults),* }),
                 });
 
-                let collects = token_fields.iter().map(|field| {
+                // The payload rows hang under the menu button, which is a
+                // layout scope, not a path: the bindings already name the
+                // tokens, and the sink knows the enum's own path.
+                let rows = token_fields.iter().map(|field| {
                     let field = field.ident.as_ref().expect("a named payload field");
                     let key = field.to_string();
                     quote! {
-                        {
-                            let child = if path.is_empty() {
-                                ::std::string::String::from(#key)
-                            } else {
-                                ::std::format!("{path}.{}", #key)
-                            };
-                            ::kairos_editor_component::skin::StyleNode::collect(
-                                #field,
-                                &child,
-                                out,
-                            );
+                        ::kairos_editor_component::style_row::StyleRow::row(#field, #key, sink);
+                    }
+                });
+                if token_fields.is_empty() {
+                    row_arms.push(quote! {
+                        Self::#ident { #(#bindings),* } => {},
+                    });
+                } else {
+                    row_arms.push(quote! {
+                        Self::#ident { #(#bindings),* } => {
+                            sink.payload(name, |sink| {
+                                #(#rows)*
+                            });
                         }
-                    }
-                });
-                collect_arms.push(quote! {
-                    Self::#ident { #(#bindings),* } => {
-                        #(#collects)*
-                    }
-                });
-
-                let writes = token_fields.iter().map(|field| {
-                    let field = field.ident.as_ref().expect("a named payload field");
-                    let key = field.to_string();
-                    quote! {
-                        #key => ::kairos_editor_component::skin::StyleNode::write(
-                            #field,
-                            tail,
-                            value,
-                        ),
-                    }
-                });
-                write_arms.push(quote! {
-                    Self::#ident { #(#bindings),* } => {
-                        match head {
-                            #(#writes)*
-                            _ => false,
-                        }
-                    }
-                });
-
-                let edits = token_fields.iter().map(|field| {
-                    let field = field.ident.as_ref().expect("a named payload field");
-                    let key = field.to_string();
-                    quote! {
-                        #key => ::kairos_editor_component::skin::StyleNode::edit_list(
-                            #field,
-                            tail,
-                            edit,
-                        ),
-                    }
-                });
-                edit_arms.push(quote! {
-                    Self::#ident { #(#bindings),* } => {
-                        match head {
-                            #(#edits)*
-                            _ => false,
-                        }
-                    }
-                });
+                    });
+                }
             }
             Fields::Unnamed(fields) => {
                 if fields.unnamed.len() != 1 {
@@ -680,7 +616,6 @@ fn expand_enum_style_fields(
                     ));
                 }
                 let field = fields.unnamed.first().expect("one tuple field");
-                let payload = syn::Ident::new("payload", Span::call_site());
                 variant_ids.push(quote! { Self::#ident(_) => #id, });
                 with_variant_arms.push(quote! {
                     #id => ::std::option::Option::Some(
@@ -688,41 +623,20 @@ fn expand_enum_style_fields(
                     ),
                 });
                 if is_skipped(field) {
-                    collect_arms.push(quote! { Self::#ident(_) => {}, });
-                    write_arms.push(quote! { Self::#ident(_) => false, });
-                    edit_arms.push(quote! { Self::#ident(_) => false, });
+                    row_arms.push(quote! { Self::#ident(_) => {}, });
                 } else {
-                    // A tuple payload has no field name to put on a header
-                    // row: its tokens are the enum's own payload, at the same
-                    // path. A struct payload therefore contributes its fields
-                    // directly under the enum row.
-                    collect_arms.push(quote! {
-                        Self::#ident(#payload) => {
-                            ::kairos_editor_component::skin::StyleNode::collect(
-                                #payload,
-                                path,
-                                out,
-                            );
-                        }
-                    });
-                    write_arms.push(quote! {
-                        Self::#ident(#payload) => {
-                            let _ = (head, tail);
-                            ::kairos_editor_component::skin::StyleNode::write(
-                                #payload,
-                                path,
-                                value,
-                            )
-                        }
-                    });
-                    edit_arms.push(quote! {
-                        Self::#ident(#payload) => {
-                            let _ = (head, tail);
-                            ::kairos_editor_component::skin::StyleNode::edit_list(
-                                #payload,
-                                path,
-                                edit,
-                            )
+                    // A tuple payload is transparent: it enters the payload
+                    // scope with an empty name, so its fields are the enum's
+                    // own rows (no header, no extra path segment).
+                    row_arms.push(quote! {
+                        Self::#ident(payload) => {
+                            sink.payload(name, |sink| {
+                                ::kairos_editor_component::style_row::StyleRow::row(
+                                    payload,
+                                    "",
+                                    sink,
+                                );
+                            });
                         }
                     });
                 }
@@ -746,104 +660,19 @@ fn expand_enum_style_fields(
             }
         }
 
-        impl ::kairos_editor_component::skin::StyleNode for #name {
-            fn collect(
-                &self,
-                path: &str,
-                out: &mut ::std::vec::Vec<::kairos_editor_component::skin::StyleField>,
+        impl ::kairos_editor_component::style_row::StyleRow for #name {
+            fn row(
+                &mut self,
+                name: &str,
+                sink: &mut impl ::kairos_editor_component::style_row::RowSink,
             ) {
-                out.push(
-                    ::kairos_editor_component::skin::StyleField::new(
-                        path,
-                        ::kairos_editor_component::skin::humanize(path),
-                        ::kairos_editor_core::StyleValue::Variant(
-                            ::std::string::String::from(
-                                <Self as ::kairos_editor_component::skin::StyleEnum>::variant_id(
-                                    self,
-                                ),
-                            ),
-                        ),
-                    )
-                    .with_variants(
-                        <Self as ::kairos_editor_component::skin::StyleEnum>::variants(),
-                    ),
-                );
+                sink.variant(name, self);
                 match self {
-                    #(#collect_arms)*
-                }
-            }
-
-            fn write(
-                &mut self,
-                path: &str,
-                value: &::kairos_editor_core::StyleValue,
-            ) -> bool {
-                if path.is_empty() {
-                    let ::kairos_editor_core::StyleValue::Variant(id) = value else {
-                        return false;
-                    };
-                    if <Self as ::kairos_editor_component::skin::StyleEnum>::variant_id(self)
-                        == id.as_str()
-                    {
-                        return true;
-                    }
-                    return match <Self as ::kairos_editor_component::skin::StyleEnum>::with_variant(
-                        id.as_str(),
-                    ) {
-                        ::std::option::Option::Some(next) => {
-                            *self = next;
-                            true
-                        }
-                        ::std::option::Option::None => false,
-                    };
-                }
-                let (head, tail) = match path.split_once('.') {
-                    ::std::option::Option::Some((head, tail)) => (head, tail),
-                    ::std::option::Option::None => (path, ""),
-                };
-                match self {
-                    #(#write_arms)*
-                }
-            }
-
-            fn edit_list(
-                &mut self,
-                path: &str,
-                edit: ::kairos_editor_core::ListEdit,
-            ) -> bool {
-                let (head, tail) = match path.split_once('.') {
-                    ::std::option::Option::Some((head, tail)) => (head, tail),
-                    ::std::option::Option::None => (path, ""),
-                };
-                match self {
-                    #(#edit_arms)*
+                    #(#row_arms)*
                 }
             }
         }
 
-        impl ::kairos_editor_component::skin::StyleFields for #name {
-            fn style_fields(&self) -> ::std::vec::Vec<::kairos_editor_component::skin::StyleField> {
-                let mut out = ::std::vec::Vec::new();
-                ::kairos_editor_component::skin::StyleNode::collect(self, "", &mut out);
-                out
-            }
-
-            fn set_style_field(
-                &mut self,
-                path: &str,
-                value: &::kairos_editor_core::StyleValue,
-            ) -> bool {
-                ::kairos_editor_component::skin::StyleNode::write(self, path, value)
-            }
-
-            fn edit_style_list(
-                &mut self,
-                path: &str,
-                edit: ::kairos_editor_core::ListEdit,
-            ) -> bool {
-                ::kairos_editor_component::skin::StyleNode::edit_list(self, path, edit)
-            }
-        }
     })
 }
 
@@ -855,11 +684,11 @@ struct SharedDecl {
 
 /// Reads the optional `#[SharedStyle(CONST = "style.id", title = "Page title")]`.
 ///
-/// It is a helper attribute of the `StyleFields` derive: the derive is what
-/// generates the field table the type needs to be a shared style, so the
-/// declaration cannot stand alone. Absence is the normal case: most
-/// `StyleFields` structs are field tables (a nested group such as the toolbar
-/// menu), not shell-owned styles.
+/// It is a helper attribute of the `StyleRow` derive: the derive is what makes
+/// the type a self-drawing page (and therefore something the registry can hand
+/// the Preferences panel), so the declaration cannot stand alone. Absence is
+/// the normal case: most style structs are nested groups of a style (such as
+/// the toolbar's menu), not shell-owned styles.
 fn shared_decl(input: &DeriveInput) -> syn::Result<Option<SharedDecl>> {
     let mut found = None;
     for attr in &input.attrs {
@@ -944,9 +773,50 @@ mod tests {
     use super::*;
 
     fn expand(input: DeriveInput) -> String {
-        expand_style_fields(input)
+        expand_style_row(input)
             .expect("the declaration expands")
             .to_string()
+    }
+
+    #[test]
+    fn a_style_struct_walks_its_fields_as_rows() {
+        let tokens = expand(parse_quote! {
+            struct ConsoleStyle {
+                height: f32,
+                icons: Icons,
+                #[style(skip)]
+                cache: u32,
+            }
+        });
+
+        assert!(tokens.contains("StyleRow :: row"), "{tokens}");
+        assert!(tokens.contains("\"height\"") && tokens.contains("\"icons\""));
+        assert!(
+            !tokens.contains("\"cache\""),
+            "a skipped field draws no row"
+        );
+        assert!(
+            tokens.contains("sink . group"),
+            "a struct is a group of its fields"
+        );
+    }
+
+    /// A style is also a page value: the editor holds a typed copy and hands
+    /// the whole value back, so the derive emits the erased page and the blob.
+    #[test]
+    fn a_style_struct_is_also_an_erased_page() {
+        let tokens = expand(parse_quote! {
+            struct ConsoleStyle {
+                height: f32,
+            }
+        });
+
+        assert!(tokens.contains("StyleBlob"));
+        assert!(tokens.contains("StylePage"));
+        assert!(
+            tokens.contains("draw_page"),
+            "the page draws the style into the row sink"
+        );
     }
 
     #[test]
@@ -966,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn a_plain_style_fields_struct_submits_nothing() {
+    fn a_plain_style_struct_submits_nothing() {
         let tokens = expand(parse_quote! {
             struct ToolBarMenuStyle {
                 item_height: f32,
@@ -979,7 +849,7 @@ mod tests {
     }
 
     #[test]
-    fn an_enum_lists_its_variants_and_routes_the_active_payload() {
+    fn an_enum_draws_its_menu_row_then_the_active_payload() {
         let tokens = expand(parse_quote! {
             enum ShadowMode {
                 Off,
@@ -988,31 +858,26 @@ mod tests {
         });
 
         assert!(
-            !tokens.contains("StyleVariant"),
-            "the names come from strum::VariantNames, not a bespoke table"
-        );
-        assert!(tokens.contains("\"Off\""));
-        assert!(tokens.contains("\"Soft\""));
-        assert!(
-            tokens.contains("with_variants"),
-            "the enum row carries the variant names as field metadata"
+            tokens.contains("sink . variant"),
+            "the enum is one menu row: {tokens}"
         );
         assert!(
-            tokens.contains("StyleValue :: Variant"),
-            "the row's value is the active variant id"
+            tokens.contains("sink . payload"),
+            "the active variant's fields hang under the menu row"
         );
+        assert!(tokens.contains("\"Off\"") && tokens.contains("\"Soft\""));
         assert!(
             tokens.contains("Default :: default"),
             "switching to a payload variant rebuilds it from Default"
         );
         assert!(
             tokens.contains("\"radius\"") && tokens.contains("\"samples\""),
-            "payload fields become dotted tokens"
+            "payload fields become rows"
         );
     }
 
-    /// A payload field can be a non-token: it stays part of the value (and is
-    /// rebuilt from Default) but is not collected or written.
+    /// A payload field can be a non-row: it stays part of the value (and is
+    /// rebuilt from Default) but is not drawn.
     #[test]
     fn a_skipped_payload_field_is_still_part_of_the_value() {
         let tokens = expand(parse_quote! {
@@ -1036,8 +901,8 @@ mod tests {
         );
     }
 
-    /// A single-field tuple payload is transparent: the payload's own StyleNode
-    /// emits its fields at the enum row's path, with no field-name header.
+    /// A single-field tuple payload is transparent: it enters the payload scope
+    /// with an empty name, so its fields are the enum's own rows.
     #[test]
     fn a_single_tuple_payload_is_transparent() {
         let tokens = expand(parse_quote! {
@@ -1046,10 +911,10 @@ mod tests {
             }
         });
 
-        assert!(tokens.contains("StyleNode :: collect"));
+        assert!(tokens.contains("sink . payload"));
         assert!(
-            tokens.contains("StyleNode :: write"),
-            "payload writes are routed transparently"
+            tokens.contains("StyleRow :: row (payload , \"\" , sink"),
+            "the payload is drawn under an empty name: {tokens}"
         );
         assert!(
             !tokens.contains("\"0\""),
@@ -1057,11 +922,11 @@ mod tests {
         );
     }
 
-    /// Several tuple fields have no names, so there is no stable token path for
-    /// each one.
+    /// Several tuple fields have no names, so there is no stable row for each
+    /// one.
     #[test]
     fn a_multi_field_tuple_payload_is_rejected() {
-        let error = expand_style_fields(parse_quote! {
+        let error = expand_style_row(parse_quote! {
             enum Mode {
                 Soft(f32, u32),
             }
@@ -1073,7 +938,7 @@ mod tests {
 
     #[test]
     fn a_shared_declaration_requires_a_title() {
-        let error = expand_style_fields(parse_quote! {
+        let error = expand_style_row(parse_quote! {
             #[SharedStyle(TOOLBAR = "toolbar")]
             struct ToolBarStyle {
                 height: f32,

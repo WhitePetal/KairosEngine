@@ -18,10 +18,10 @@ use kairos_editor_widgets::ui_image;
 use serde::{Deserialize, Serialize};
 
 use crate::shared_style::SharedStyle;
-use crate::skin::StyleFields;
+use crate::style_row::StyleRow;
 
 /// Appearance of the editor's top menu bar and its dropdown menus.
-#[derive(Clone, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, StyleRow)]
 #[SharedStyle(TOOLBAR = "toolbar", title = "Toolbar")]
 pub struct ToolBarStyle {
     pub icons: ToolBarIconPaths,
@@ -52,7 +52,7 @@ pub struct ToolBarStyle {
 /// Dropdown appearance. Values mirror Unity/Tuanjie 2022.3 dark: a #2d2d2d
 /// square popup, 22 px rows, 1 px #4f4f4f separators and the Unity blue
 /// selection highlight.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct ToolBarMenuStyle {
     pub background_color: Color,
     pub item_hover_color: Color,
@@ -199,7 +199,7 @@ fn default_icon_size() -> f32 {
     16.0
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct ToolBarIconPaths {
     pub about: String,
 }

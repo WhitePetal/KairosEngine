@@ -24,11 +24,11 @@ use kairos_editor_widgets::text::TextStyle;
 use serde::{Deserialize, Serialize};
 
 use crate::shared_style::SharedStyle;
-use crate::skin::StyleFields;
+use crate::style_row::StyleRow;
 
 /// Appearance of one value field: its box, its name, and the wash that marks a
 /// selected value.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 #[SharedStyle(EDITOR_FIELD = "editor_field", title = "Field")]
 pub struct EditorFieldStyle {
     /// Value text.
@@ -72,7 +72,7 @@ pub struct EditorFieldStyle {
 /// box, a 1 px outline, the value text at the left and a caret at the right.
 /// The popup is the editor's shared menu: a square, dense list with the Unity
 /// blue highlight and full-width separators.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct EditorFieldMenuStyle {
     /// Fill of the menu button.
     pub button_fill: Color,
@@ -264,21 +264,10 @@ mod tests {
         assert_eq!(tokens.menu.popup_margin.top as f32, menu.padding);
     }
 
-    /// The enum dropdown is part of the field page, not a style of its own:
-    /// the Field skin lists it as a nested group, and the menu tokens reach
-    /// the widget through the same tokens() projection as the box tokens.
+    /// The enum dropdown belongs to the field page, not a style of its own: a
+    /// field's own popup must not look like a second control family.
     #[test]
-    fn the_enum_menu_is_a_group_of_the_field_skin() {
-        let fields = EditorFieldStyle::dark().style_fields();
-        let paths: Vec<&str> = fields.iter().map(|field| field.path.as_str()).collect();
-
-        assert!(paths.contains(&"menu.button_fill"), "{paths:?}");
-        assert!(paths.contains(&"menu.background"), "{paths:?}");
-        assert!(paths.contains(&"menu.highlight"), "{paths:?}");
-        assert!(
-            !paths.contains(&"menu"),
-            "the menu is a group of its fields, not a leaf"
-        );
+    fn the_enum_menu_defaults_to_the_dark_field_skin() {
         assert_eq!(
             EditorFieldMenuStyle::default(),
             EditorFieldMenuStyle::dark()

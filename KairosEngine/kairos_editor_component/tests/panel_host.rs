@@ -2,11 +2,14 @@
 //! the dock viewer adapter and the close-as-intent path. No window, no GPU.
 
 use egui::{Context, Pos2, RawInput, Rect, Vec2};
+use kairos_editor_component::panels::ConsoleStyle;
+use kairos_editor_component::skin::SkinId;
 use kairos_editor_component::{
     ConsoleLine, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelId, PanelInstanceId,
     UiOut, panels, shared_style::SharedStyles,
 };
-use kairos_editor_core::{EditorState, LayoutState, ListEdit, StyleValue};
+use kairos_editor_core::style::Skin;
+use kairos_editor_core::{EditorState, LayoutState};
 use kairos_editor_docking::viewer::TabViewer;
 use kairos_log::Level;
 use kairos_profile::profiling;
@@ -290,10 +293,10 @@ fn preferences_is_the_only_text_only_tab() {
     assert_eq!(text_only, vec![panels::PREFERENCES]);
 }
 
-/// The Preferences editor reads live panels' skins through the host, and a
-/// write lands in the panel that owns the style.
+/// The Preferences editor reads live panels' self-drawing pages through the
+/// host, and the page's whole value lands in the panel that owns the style.
 #[test]
-fn skin_fields_are_listed_and_written_through_the_host() {
+fn pages_are_listed_and_replaced_through_the_host() {
     let mut state = EditorState::new();
     state.layout.open(panels::CONSOLE);
     state.layout.open(panels::PROFILER);
@@ -301,82 +304,70 @@ fn skin_fields_are_listed_and_written_through_the_host() {
     let mut host = default_host();
     host.sync(&state.layout, &Context::default());
 
-    let skins = host.skins(&state, &shared_styles);
-    let console = skins
+    let pages = host.pages(&state, &shared_styles);
+    let console = pages
         .iter()
-        .find(|skin| skin.panel == panels::CONSOLE)
-        .expect("console skin");
+        .find(|page| page.id == SkinId::Panel(panels::CONSOLE))
+        .expect("console page");
     assert_eq!(console.file, "ConsoleStyle.ron");
     assert_eq!(
         console.title, "Console",
-        "the generated skin page is titled by Panel::title"
+        "the generated page is titled by Panel::title"
     );
-    assert!(
-        console
-            .fields
-            .iter()
-            .any(|field| field.path == "toolbar_height"),
-        "the console exposes its tokens"
-    );
-    assert!(
-        console
-            .fields
-            .iter()
-            .any(|field| field.path == "icons.info"),
-        "nested icon paths are editable too"
-    );
+    let style = console
+        .page
+        .as_any()
+        .downcast_ref::<ConsoleStyle>()
+        .expect("the page holds the console's own style type");
+    assert!(style.toolbar_height > 0.0);
 
-    // Unknown paths and wrong exact types are rejected by the panel, not applied.
-    assert!(!host.set_skin_field(panels::CONSOLE, "nope", &StyleValue::F32(1.0)));
-    assert!(!host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::Bool(true)));
+    // The metadata the app compares every frame copies no style value, and the
+    // one-page copy it takes on demand is the same page.
+    let metas = host.page_metas(&state, &shared_styles);
+    let console_meta = metas
+        .iter()
+        .find(|meta| meta.id == SkinId::Panel(panels::CONSOLE))
+        .expect("console page metadata");
+    assert_eq!(console_meta.file, "ConsoleStyle.ron");
+    assert_eq!(console_meta.title, "Console");
+    assert!(
+        !metas
+            .iter()
+            .any(|meta| meta.id == SkinId::Panel(panels::ABOUT)),
+        "a panel that is not open has no page"
+    );
+    let page = host.page(panels::CONSOLE).expect("console page copy");
+    assert!(
+        page.as_any().downcast_ref::<ConsoleStyle>().is_some(),
+        "the per-page copy is the panel's own style type"
+    );
+    assert!(host.page(panels::ABOUT).is_none());
 
-    assert!(host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::F32(30.0)));
-    let updated = host.skins(&state, &shared_styles);
+    // A whole value from the page lands in the owning panel; a box of another
+    // type, or a panel that is not open, is a no-op.
+    let mut next = style.clone();
+    next.toolbar_height = 30.0;
+    assert!(host.replace_skin(panels::CONSOLE, Box::new(next.clone())));
+    assert!(!host.replace_skin(panels::CONSOLE, Box::new(0u8)));
+    assert!(!host.replace_skin(panels::ABOUT, Box::new(next.clone())));
+
+    let updated = host.pages(&state, &shared_styles);
     let console = updated
         .iter()
-        .find(|skin| skin.panel == panels::CONSOLE)
-        .expect("console skin");
-    let height = console
-        .fields
-        .iter()
-        .find(|field| field.path == "toolbar_height")
-        .expect("toolbar_height");
-    assert_eq!(height.value, StyleValue::F32(30.0));
-
-    // A list token grows, shrinks and reorders through the same host path.
-    let palette_len = |host: &PanelHost| -> usize {
-        let skins = host.skins(&state, &shared_styles);
-        let profiler = skins
-            .iter()
-            .find(|skin| skin.panel == panels::PROFILER)
-            .expect("profiler skin");
-        let palette = profiler
-            .fields
-            .iter()
-            .find(|field| field.path == "category_palette")
-            .expect("the profiler palette is a list token");
-        let StyleValue::ListLen(len) = palette.value else {
-            panic!("a list token's value is its length");
-        };
-        len
-    };
-    let len = palette_len(&host);
-    assert!(host.edit_skin_list(
-        panels::PROFILER,
-        "category_palette",
-        ListEdit::Remove { index: 0 }
-    ));
-    assert_eq!(palette_len(&host), len - 1);
-    assert!(!host.edit_skin_list(
-        panels::PROFILER,
-        "category_palette",
-        ListEdit::Remove { index: 999 }
-    ));
-    assert!(!host.edit_skin_list(panels::PROFILER, "nope", ListEdit::Insert { index: 0 }));
-
-    // A panel that is not open has no instance, so it has no skin to write.
-    assert!(
-        host.set_skin_field(panels::ABOUT, "title_size", &StyleValue::F32(1.0))
-            .eq(&false)
+        .find(|page| page.id == SkinId::Panel(panels::CONSOLE))
+        .expect("console page");
+    assert_eq!(
+        console
+            .page
+            .as_any()
+            .downcast_ref::<ConsoleStyle>()
+            .map(|style| style.toolbar_height),
+        Some(30.0),
+        "the next page is the value the host accepted"
     );
+
+    // The style type also crosses the boundary through `Skin`, the shape an
+    // action and an effect carry.
+    let skin = Skin::new(next.clone());
+    assert!(host.replace_skin(panels::CONSOLE, skin.into_any()));
 }

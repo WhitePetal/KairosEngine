@@ -2,7 +2,7 @@
 //!
 //! Code defaults for `PreferencesPanelStyle`, persisted per component to
 //! `Preferences/Styles/PreferencesPanel.ron` (dark + light). The panel loads the
-//! file in `Panel::init`. Because the type derives `StyleFields`, the panel can
+//! file in `Panel::init`. Because the type derives `StyleRow`, the panel can
 //! also edit *itself* in its own field editor — the same file, the same tokens.
 //!
 //! The palette deliberately repeats the About panel's: both are dialog-shaped
@@ -18,11 +18,11 @@ use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::text::TextStyle;
 use serde::{Deserialize, Serialize};
 
-use crate::skin::StyleFields;
+use crate::style_row::StyleRow;
 
 /// Appearance tokens for the Preferences panel: palette, type sizes, the
 /// two-column geometry and the three button shapes it paints.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct PreferencesPanelStyle {
     /// Panel body, behind everything.
     pub background: Color,
@@ -296,21 +296,5 @@ mod tests {
         let defaults = StyleFile::<PreferencesPanelStyle>::defaults();
         assert_eq!(file.dark, defaults.dark, "dark skin drifted from code");
         assert_eq!(file.light, defaults.light, "light skin drifted from code");
-    }
-
-    /// The panel edits itself: every token is reachable through the same field
-    /// table the editor draws.
-    #[test]
-    fn the_style_describes_its_own_tokens() {
-        let style = PreferencesPanelStyle::dark();
-        let fields = style.style_fields();
-
-        assert!(fields.iter().any(|field| field.path == "nav_width"));
-        assert!(fields.iter().any(|field| field.path == "background"));
-        assert!(
-            fields
-                .iter()
-                .any(|field| field.path == "button_corner_radius")
-        );
     }
 }
