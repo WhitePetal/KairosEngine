@@ -106,13 +106,10 @@ ICONS = [
         "project/types/light/shader.png",
         64,
     ),
-    (
-        "d_cs Script Icon",
-        "cs Script Icon",
-        "project/types/script.png",
-        "project/types/light/script.png",
-        64,
-    ),
+    # project/types/script.png is deliberately NOT listed: the script row is
+    # project-original Rust artwork -- the C# page silhouette with a custom
+    # Unity-green 'R' in place of the '#'. A rerun of this script must leave the
+    # committed PNGs alone (see Preferences/Textures/project/README.md).
     (
         # .md/.txt/.json are TextAssets in Unity and the Project browser draws
         # them with the TextAsset icon; there is no "d_Document Icon" to use.

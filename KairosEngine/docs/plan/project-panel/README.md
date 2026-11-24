@@ -1,7 +1,7 @@
 # ProjectPanel 迁移重构计划
 
-> **状态**：已拍板（D1–D13 全部落定，见 [§7](#7-决策记录已拍板)）。**M0 / M0.5 / M1 / M2 已落地**（M1 分 M1a core + M1b app 两刀，M2 分 M2a core+widget / M2b 面板两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。M2 已按「开工前复核定稿」定稿并开工（M2a/M2b 两刀，见 M2 一节），交付后又按真机验收反馈做了 7 条修正（见 M2 一节末尾的「M2 验收修正」）。**M3 已复核并对齐定稿（T1–T16，含弹窗/类型表/图标三处分界），拆 M3a core+app+widget / M3b 面板两刀，M3a 四层已落地（画面几乎不变）、M3b 面板功能已落地（右键菜单 / 行内重命名 / 删除确认 / 多选与键盘 / 拖拽移动 / 类型图标），并已按真机验收第二轮反馈做了 7 条修正（弹窗背板 / 文件夹区域落点 / 拖拽自滚动 / 多选保持 / 幽灵 / 纹理缩略图 / 多选 anchor）、第三轮反馈做了 3 条修正（离线文件夹的区域框 / 自动滚手感 / 弹窗标题条改用项目共享的红色圆圈关闭按钮），**M3 已收口（2026-11-22）**（见 M3 一节）。**M4 已重定义为「编辑器布局持久化」**（2026-11-25 用户拍板 D13：布局落盘、面板会话态不落盘，原 M4 方案从计划删除），开工前复核定稿见 M4 一节；**实现已落地（2026-11-25），待真机验收**（见 M4 落地状态）。
-> **范围**：`kairos_editor_core`（项目领域）/ `kairos_editor_app`（扫描、监听、文件操作、持久化）/ `kairos_editor_component`（面板）/ `kairos_editor_widgets`（树控件）；旧 `kairos_editor` 只冻结，最后退役
+> **状态**：已拍板（D1–D15 全部落定，见 [§7](#7-决策记录已拍板) 与 §7.2）。**M0 / M0.5 / M1 / M2 已落地**（M1 分 M1a core + M1b app 两刀，M2 分 M2a core+widget / M2b 面板两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。M2 已按「开工前复核定稿」定稿并开工（M2a/M2b 两刀，见 M2 一节），交付后又按真机验收反馈做了 7 条修正（见 M2 一节末尾的「M2 验收修正」）。**M3 已复核并对齐定稿（T1–T16，含弹窗/类型表/图标三处分界），拆 M3a core+app+widget / M3b 面板两刀，M3a 四层已落地（画面几乎不变）、M3b 面板功能已落地（右键菜单 / 行内重命名 / 删除确认 / 多选与键盘 / 拖拽移动 / 类型图标），并已按真机验收第二轮反馈做了 7 条修正（弹窗背板 / 文件夹区域落点 / 拖拽自滚动 / 多选保持 / 幽灵 / 纹理缩略图 / 多选 anchor）、第三轮反馈做了 3 条修正（离线文件夹的区域框 / 自动滚手感 / 弹窗标题条改用项目共享的红色圆圈关闭按钮），**M3 已收口（2026-11-22）**（见 M3 一节）。**M4 已重定义为「编辑器布局持久化」**（2026-11-25 用户拍板 D13：布局落盘、面板会话态不落盘，原 M4 方案从计划删除），开工前复核定稿见 M4 一节；**实现已落地（2026-11-25），待真机验收**（见 M4 落地状态）。 **新需求（2026-11-25，用户提出）**：`Edit ▸ External Tools` 面板与 Rust 脚本图标已插入本计划——面板见 §2.14（P1–P3 已拍板），图标见 §2.15（已交付）；M5 相应拆为 M5a/M5b（见 M5 一节）。
+> **范围**：`kairos_editor_core`（项目领域）/ `kairos_editor_app`（扫描、监听、文件操作、持久化、打开方式探测与启动）/ `kairos_editor_component`（面板）/ `kairos_editor_widgets`（树控件）；旧 `kairos_editor` 只冻结，最后退役
 > **配套**：[ADR 0008](../../adr/0008-editor-ui-architecture.md)、[ADR 0009](../../adr/0009-editor-panel-host-and-viewport.md)、[rewrite-plan](../editor-ui-architecture/rewrite-plan.md)（Phase 0.5 写明「只迁 ProjectPanel 一页」）、[panel-viewport-design](../editor-ui-architecture/panel-viewport-design.md) §2.6 状态归属、§6.2 P1、[widget-layer](../editor-ui-architecture/widget-layer.md) §2.2/§5
 > **可抄的形状**：`prototypes/editor-ui/crates/editor-components/src/project_panel.rs`（派生函数 + 行渲染 + action 映射）、`prototypes/editor-ui/crates/editor-core/src/reduce/project.rs`（data-in / effects-out）
 > **旧实现**：`kairos_editor/src/{project_path_tree.rs, asset_registry.rs, project_watcher.rs, ui/project_window/*}`
@@ -22,28 +22,30 @@
 4. **你把「文件/文件夹的增删改查」列进了后端组成，但 5 步里没有任何一步在排它**。必须补 M3，而且它要早于类型任务——类型任务会新增创建入口、拖拽移动、删除确认，全靠这套协议。
 5. **「引入各种类型的资源」需要一个前置 seam**：`FileTypeRegistry`（扩展名 → 类型、图标、后缀标签、打开方式、是否伴生文件）。没有它，每个类型任务都会去改树和面板，第 4 步就会从 5 个任务变成 5 次重构。
 
-### 0.3 要补的 4 块
+### 0.3 要补的 5 块
 
 - **文件操作**（建/改名/移动/删除 + 系统回收站 + 失败可见），见 M3；
 - **外部变更**（watcher，已有实现要搬家，不是新写），见 M1；
 - **多选与拖拽**（右键菜单之外的真实使用路径），见 M3；
-- **性能上限与截断**（后台扫描、节点上限、深度上限、状态栏告警），见 M1/§5。
+- **性能上限与截断**（后台扫描、节点上限、深度上限、状态栏告警），见 M1/§5；
+- **打开方式的配置面板（External Tools，2026-11-25 新需求）**：现在打开由 OS 关联 + 硬编码嗅探决定，用户看不见也改不了；见 §2.14 / M5b。
 
 ### 0.4 工期
 
 | 阶段 | 估算（单人） |
 |---|---|
 | M0.5 资产布局迁移（D12） | **0.5–1 人日**（跨 `kairos_asset`/`kairos_engine`/`kairos_graphics`） |
-| M0 + M1–M6（面板本体，不含类型任务） | **16–22 人日 ≈ 3.5–5 周**（M3 复核后 M3 由 3–5 调为 5–6；M4 定稿后由 1.5–2.5 调为 2.5–3.5） |
+| M0 + M1–M6（面板本体，不含类型任务） | **16–22 人日 ≈ 3.5–5 周**（M3 复核后 M3 由 3–5 调为 5–6；M4 定稿后由 1.5–2.5 调为 2.5–3.5；M5 拆 M5a/M5b 后 M5a 时长不变） |
+| M5b External Tools 面板（新需求，2026-11-25） | **2.5–3.5 人日**（面板 / 菜单 / 皮肤 / 测试；M5a 的 seam 已含在上一行） |
 | M7 资产身份与引用维护 | **5–8 人日**（跨 `kairos_asset`/`kairos_graphics`） |
 | M8 收尾（冻结 + 文档） | **0.5–1 人日** |
-| **合计（不含类型任务）** | **22–32 人日 ≈ 4.5–6.5 周** |
-| M5 的 seam（已含在 M0–M6 里） | 2–3 人日 |
+| **合计（不含类型任务）** | **24–34.5 人日 ≈ 5–7 周** |
+| M5a 的 seam（已含在 M0–M6 里） | 2–2.5 人日 |
 | M5 的每个类型任务（另计） | 0.5–2 人日 / 类型 |
 
 前提：保留现有 dock、字体/样式资源与资产加载，不重写引擎侧。
 
-### 0.5 已拍板的决定（摘要，细节与理由见 §7）
+### 0.5 决定摘要（D1–D15 已拍板，细节见 §7 / §7.2）
 
 - **D1 左右两栏，第一天就定型**：右栏先只放面包屑 + 空白占位，网格/缩略图后补；分栏比例进持久化。这样布局、分割条、导航动作一次到位，后面只填内容。
 - **D2 单根 + Library 特殊待遇**：仍然是**一个根**（`Library` 就是项目里的目录）；展示上它固定排最后、前面一条分隔线、默认折叠；忽略规则从项目根的 `.kairosignore` 读，不作用于它。**搜索按 Unity 分范围**：默认 `In Assets`（不含 Library），可切 `In Library`。
@@ -58,6 +60,8 @@
 - **D11 引用维护并入**：作为 M7，5–8 人日，跨 `kairos_asset`/`kairos_graphics`/`app`/`component`；M3 先埋「移动/删除以簇为单位」的地基。
 - **D12 成品根搬进 `Library/`**：作为 M0.5，直接现在搬（`imported_assets/Default` → `Library/imported_assets/Default`），换掉 `ScanPolicy` 里的「跳过成品根」特例。
 - **D13 持久化范围 = 编辑器布局**：存 dock 布局（打开的 panel、分割树/比例、tab 顺序/焦点、浮动窗口位置尺寸）+ Project 面板左右比例；**面板会话态（展开/选中/当前目录/滚动/搜索）不落盘**，原 M4 的 `project_view.toml` 方案删除。理由：布局是用户立刻感知的收益；会话态细节低收益，架构文档本就把它归 `ViewStates`（可选、按需）。未来「打开的 World/Scene」另立文档/会话需求。
+- **D14 External Tools 面板（新需求，2026-11-25 已拍板）**：`Edit ▸ External Tools` 打开，按文件族记录/设置打开应用；嗅探结果是默认、用户设置优先、未知类型默认系统「打开方式」；见 §2.14。
+- **D15 Rust 脚本图标（2026-11-25 已交付）**：`.rs` 的类型图标从 Unity 的 C# 页（`#`）改为 Rust 页（`R` + Unity 绿，dark `#276A2A` / light `#2E7D32`）；保留页面外形，只换字符语义；见 §2.15。
 
 ---
 
@@ -123,6 +127,17 @@
 
 **不能直接抄的两处**：原型把可见行全量物化（`rows: &[TreeRow]`），10 万行时每帧几 MB 分配；原型用 FNV 哈希做行 id（生产侧可以在建树时算一次）。见 §2.6。
 
+### 1.6 打开方式的现状（2026-11-25 新需求的前置事实）
+
+| 事实 | 证据 | 后果 |
+|---|---|---|
+| 新编辑器只有一条打开路径：`open::that_detached` 交给 OS 关联；失败写进 Project 状态栏 | `kairos_editor_app/src/project.rs:282-290`、`kairos_editor_core/src/project.rs:224` | 用哪个应用打开由 OS 决定，面板/用户看不到也改不了 |
+| `FileType` 表还没有 `open` 字段；打开分发是 M5 的事 | `kairos_editor_core/src/project/file_type.rs:1-14` | 打开策略既不在类型表里，也没有消费方 |
+| 旧编辑器有 IDE 嗅探：7 个已知 IDE，先查 PATH 再查平台固定路径，`OnceLock` 缓存，按列表顺序取第一个 | `kairos_editor/src/ui/ide_detection.rs:29-168,195-234` | 行为已验证；但结果不可见、不可改，`OnceLock` 让会话中新安装的 IDE 永远发现不了 |
+| 旧编辑器按类型分发：脚本/着色器/文档/TOML/字体走 IDE 嗅探；纹理/网格/材质/音频与未知类型未实现 | `kairos_editor/src/ui/project_window.rs:334-369` | 「有的类型有默认启动方式、有的弹系统窗」是两套隐式规则叠加的结果，不是一张可配置的表 |
+| 打开是 `ProjectEffect::Open { root, path }`，app 解释 | `kairos_editor_core/src/project.rs:294`、`kairos_editor_app/src/project.rs:282` | 打开策略只能写死在 app；要可配置，必须先让「用哪个程序」成为 core 可解析的数据 |
+| 机器相关的设置没有落点：`Preferences/` 是提交进仓库的样式/字体，`Library/` 是不提交的运行期数据 | `kairos_editor_app/src/layout.rs:41`、`.gitignore:10-13` | IDE 绝对路径不能进仓库；设置文件要和布局文件一样放 `Library/`（P1） |
+
 ---
 
 ## 2. 目标设计
@@ -134,6 +149,7 @@
 | 树的形状、排序、可见行、选择/展开/过滤规则 | `core::project` | 纯函数，可单测，可回放 |
 | 扫描策略（跳过谁、上限、深度） | `core::project::ScanPolicy`（数据） | 策略是数据，不是 `if`；测试可注入 |
 | 遍历文件系统、监听、读/写文件、开进程、读编辑器设置 | `app::project` | core 不许 IO |
+| 打开方式设置与解析（嗅探结果 / 用户覆盖 / 未知类型策略） | `core::external_tools`（数据 + 纯解析）+ `app::external_tools`（嗅探、进程、设置文件） | 优先级可单测；启动进程与读写设置是宿主 IO |
 | 忽略规则的匹配语义 | `core::project::scan` | 规则是纯函数，配置读取在 app |
 | 树/行/重命名编辑器/拖拽 | `component::panels::project` | 读 `Frame`，推 `Action` |
 | 行控件的通用外观（缩进、展开三角、选中、hover） | `widgets::tree` | 只懂 `TreeRow` 数据，不懂项目 |
@@ -386,7 +402,7 @@ pub enum ProjectAction {
     DeleteRequested { paths: Vec<RelPath> },
     FsCompleted { op: FsOpId, result: Result<FsOutcome, String> },
 
-    // 打开
+    // 打开（M5a：reducer 先按 §2.14 解析出 ResolvedTarget）
     OpenRequested { path: RelPath },
     RevealRequested { path: RelPath },
 }
@@ -394,7 +410,7 @@ pub enum ProjectAction {
 pub enum ProjectEffect {
     Scan { root: PathBuf, policy: ScanPolicy, generation: u64 },
     Fs(FsOp),                                            // create/rename/move/trash
-    Open { root: PathBuf, path: RelPath, with: OpenWith },
+    Open { root: PathBuf, path: RelPath, target: ResolvedTarget },
     Reveal { root: PathBuf, path: RelPath },
 }
 
@@ -581,6 +597,7 @@ tree_split = 0.28
 - **恢复顺序**：由文件里的 tab 推导要开的面板集合（唯一真值是 dock 树，不另存一份 open 列表）→ `PanelHost::sync` 建实例 → 用 live 实例重建 `DockState` → 文件里没有、但 layout 要求打开的面板追加到当前 leaf。浮动窗口坐标交给 egui `constrain_to`，换显示器后不会跑到屏外。
 - **不设 root 守卫**：布局文件里没有项目路径，项目目录被拷贝/移动后继续用同一份布局是无害的；它就在项目根的 `Library/` 下，天然按根键化（D9）。
 - **为什么触发在 host 侧而不是 `Effect::PersistLayout`**：dock 的拖 tab / 分割 / 浮动窗口在 `Docker::show` 内部直接改 `DockState`，不产生 action（只有关闭走 viewer 回调）；core 的 `LayoutState` 只存 open/focus。布局树本来就是 host 状态，所以由 app 自己取快照，不经过 reducer。
+- **External Tools 设置不在这份文件里**：打开方式是编辑器设置而不是布局；v1 存 `<root>/Library/external_tools.toml`，同样可删、不进 git（§2.14，P1）。
 - **为什么 TOML、为什么不是 sqlite**：文件 KB 级、要人手可读可 diff；树的查询都在内存里。**项目树本身永不落盘**——它靠重扫重建，见 §2.7.1/§2.7.2 的分析。
 
 #### 2.7.1 为什么项目树不落盘：`asset_registry.toml` 是什么，不是什么
@@ -611,7 +628,7 @@ tree_split = 0.28
 ### 2.8 类型 seam（M5）
 
 ```rust
-// core/src/project/file_type.rs —— 纯数据（**M3 已落地**；open 留 M5、referenceable 留 M7）
+// core/src/project/file_type.rs —— 纯数据（**M3 已落地**；open 按 §2.14 在 M5a 落地、referenceable 留 M7）
 pub struct FileType {
     pub id: &'static str,             // "texture" | "mesh" | ...
     pub label: &'static str,          // 行尾后缀，如 "png" / "mat"
@@ -620,8 +637,19 @@ pub struct FileType {
     pub companion: bool,              // .meta/.uid 之类：默认隐藏
     pub referenceable: bool,          // 可被别的资产引用 → M7 会给它发 guid
     pub delete_confirm: bool,         // D5：默认 true（Unity 行为），按类型可关
-    pub open: OpenWith,               // ExternalEditor | SystemDefault | Inspector(..) | Preview(..)
+    pub open: OpenDefault,            // 未覆盖时的默认策略（嗅探 / 系统 / 内部视图）；见 §2.14
 }
+
+/// 默认打开策略（§2.14.3）：类型表的数据，不是用户设置。
+pub enum OpenDefault {
+    /// 代码/文档：嗅探第一个可用 IDE；检测不到就落到 fallback。
+    Sniffed(OpenFallback),
+    /// 系统关联 / 系统「打开方式」。
+    System(OpenFallback),
+    /// 编辑器内部视图（Inspector/Preview），随 M5 每类任务落地。
+    Internal(InternalOpen),
+}
+pub enum OpenFallback { SystemDefault, SystemPicker }
 
 pub struct FileTypeRegistry { types: Vec<FileType>, by_ext: HashMap<String, usize> }
 impl FileTypeRegistry {
@@ -630,10 +658,11 @@ impl FileTypeRegistry {
 }
 ```
 
-- 默认表 = 现存的 8 种（png/glb/mat/audio/wgsl/rs/md/toml/ttf）+ `meta` 伴生 + fallback；
-- 图标复用 `Preferences/Textures/` 已有文件（`folder_icon.png` / `folder_fill_icon.png` / `model_icon.png` ...），**不需要新美术**；
+- 默认表 = 现存的 8 个家族（png / glb / mat / audio / wgsl / rs / md / ttf+otf）+ `meta` 伴生 + fallback；
+- 图标走 T16 的类型图标表（`FileType.icon` 文件名 + 皮肤给根目录）；旧 `Preferences/Textures/*_icon.png` 不再作为行图标来源；脚本（`.rs`）的 Rust 图标是项目自绘，见 §2.15；
 - 加一个类型的代价 = 表里一行 + 一个打开处理器 + 测试。**验收方式**：用测试替身注册一个假类型，断言树、行、打开分发都不需要改 —— 如果改了三处，说明 seam 没做对；
-- 引擎侧的 loader 注册表（`AssetLoader::extensions`）是未来的第二真相源，v1 不接（core 不能依赖 `kairos_asset`，要接就经 app 注入）。
+- 引擎侧的 loader 注册表（`AssetLoader::extensions`）是未来的第二真相源，v1 不接（core 不能依赖 `kairos_asset`，要接就经 app 注入）；
+- **打开模型（2026-11-25 新需求）**：原文的 `open: OpenWith` 拆成 `OpenDefault`（类型表默认）+ `OpenTarget`（用户设置）+ `ResolvedTarget`（effect 载荷），详见 §2.14.3。
 
 ### 2.9 搜索（M6）
 
@@ -664,9 +693,11 @@ kairos_editor_core/src/
   project/scan.rs          ScanEntry / ScanPolicy / ScanReason（只有数据）
   project/view.rs          ProjectView / SortKey / SelectMode
   project/search.rs        查询解析 + 匹配（M6，纯函数）
-  project/file_type.rs     FileTypeRegistry + CreateEntry（M3 数据表；打开分发 M5、guid M7）
+  project/file_type.rs     FileTypeRegistry + CreateEntry（M3 数据表；OpenDefault M5a、guid M7）
   project/name.rs          名字校验（M3）
+  external_tools.rs        OpenSettings / OpenTarget / effective_open（§2.14，M5a）
   reduce/project.rs        reducer（新增 slice，注册到 reduce.rs）
+  reduce/external_tools.rs external_tools 切片 reducer（M5a）
   tests/project_*.rs
 
 kairos_editor_app/src/
@@ -677,20 +708,25 @@ kairos_editor_app/src/
   layout.rs                编辑器布局文件（`Library/editor_layout.toml`）读写 + 去抖 + 原子写 + 启动恢复
   project/ignore.rs        .kairosignore 解析（缺文件 seed 默认） + 规则匹配入口
   project/identity.rs      guid ↔ path 索引（读侧车、可重建缓存，M7）
-  project/open.rs          M2：系统默认程序（`open` crate）；M5：`OpenWith` 分发 + IDE 探测
+  external_tools/mod.rs    ExternalToolsService：boot 读设置 / poll 检测与浏览结果 / 执行 launch 与 persist
+  external_tools/detect.rs IDE 嗅探（从 `kairos_editor/src/ui/ide_detection.rs` 搬，工作线程，Windows 不闪控制台）
+  external_tools/settings.rs `Library/external_tools.toml` DTO + 原子写 + 版本/大小校验
+  external_tools/launch.rs SystemDefault / SystemPicker / Program 三条执行路径
 
 kairos_editor_component/src/
   panels/project.rs        装配：工具栏 + [树 | 面包屑+占位] + 状态栏 + 弹层
   panels/project/style.rs  ProjectStyle（RON，dark/light）
   panels/project/rows.rs   core 状态 → TreeRow 的纯映射 + 行缓存
   panels/project/content.rs 右栏占位（M9 换成网格，接口先定）
+  panels/external_tools.rs  面板：检测列表 + 每类型打开方式表 + 未知类型开关 + 错误行（M5b）
+  panels/external_tools/style.rs ExternalToolsPanelStyle（RON，dark/light）
 
   kairos_editor_widgets/src/tree.rs   TreeView / TreeStyle / TreeRow / TreeOutput
 
   kairos_editor_docking/src/{tree,docker}.rs   布局快照/恢复最小 API（`Tree::from_nodes` / `DockState::from_parts` / `DockState::surfaces`）
 ```
 
-新依赖（只进 app）：`notify-debouncer-full`、`toml`、`serde`、`trash`、`open` —— 版本与 `kairos_editor/Cargo.toml:39-49` 现有条目一致。M7 不引入新依赖：`kairos_asset` 已经依赖 `uuid`（`kairos_asset/Cargo.toml`）。
+新依赖（只进 app）：`notify-debouncer-full`、`toml`、`serde`、`trash`、`open`；外加 `native-dialog = "0.9.6"`（Browse 用，已在 workspace 锁文件里，旧编辑器同款）—— 其余版本与 `kairos_editor/Cargo.toml:39-49` 现有条目一致。M7 不引入新依赖：`kairos_asset` 已经依赖 `uuid`（`kairos_asset/Cargo.toml`）。
 
 **M0.5 会改到的 crate**：`kairos_asset`（成品根常量、processor 日志路径）、`kairos_engine`（`kairos_paths`/`kairos_game` 的加载字面量）、`kairos_graphics`（白纹理字面量）——只改常量与字面量，不改行为。
 
@@ -752,14 +788,321 @@ kairos_editor_component/src/
 D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来接「打开工程」会返工：
 
 1. **根是数据，不是环境推论**：`ProjectState.root` 存绝对路径，core 里所有路径都是它下面的 `RelPath`；除 app 的 IO 边界外，任何地方都不出现 `std::env::current_dir()`。
-2. **配置按根键化**：编辑器布局文件在 `<root>/Library/editor_layout.toml`（文件里没有项目路径，不需要 root 守卫，但位置天然按根）；未来的「最近打开」列表也按根键化。
+2. **配置按根键化**：编辑器布局文件在 `<root>/Library/editor_layout.toml`（文件里没有项目路径，不需要 root 守卫，但位置天然按根）；未来的「最近打开」列表也按根键化；External Tools 设置 v1 同样按根（`<root>/Library/external_tools.toml`，§2.14 P1）。
 3. **切换工程 = 一条 action**：`ProjectOpened { root }` → 清空 `ProjectState`、重置 generation、`ScanRequested`、重读 `<新 root>/Library/editor_layout.toml`。面板只认 `frame.state.project.root`，一行都不用改。
 
 **真正贵的地方不在面板，在引擎**：`kairos_asset` 的 source root 是进程级的（ADR 0004：cwd + `KAIROS_ASSET_ROOT` 覆盖），换工程要重配 asset server / 处理器 / watcher。那是引擎侧的一整套改动，所以「打开工程」不进本计划 —— 但上面三条保证它将来只需要动 app + 引擎，不碰面板。
 
 ### 2.13 词表（写进 `kairos_editor/CONTEXT.md`）
 
-**Project**：编辑器的资产工作区，一个根目录 + 它的文件树 + 用户意图（展开、选中、当前目录）。**System dir**：正常扫描但有三条特殊待遇的目录（当前只有 `Library`）——根级排最后、带分隔线、独立预算、不受 ignore 影响。**ProjectTree**：某一时刻文件系统结构的快照，身份是相对路径。**ScanPolicy**：扫描规则（忽略 + 系统目录预算 + 节点/深度上限）。**ProjectView**：树之上的用户意图（展开/选中/当前目录/排序/分栏比例），运行期状态、**不落盘**（D13）。**Editor Layout**：打开的面板集合 + dock 停靠树（分割方向/比例）+ tab 顺序/焦点 + 浮动窗口位置尺寸；M4 落盘的只有它和 `tree_split`。**Layout file**：`<root>/Library/editor_layout.toml`，可删可重建、带 `version`。**FileType**：一个扩展名族的显示与打开方式，不含任何文件操作。**Cluster**：一个资产的主文件 + 它的伴生侧车（`.meta` 等），移动/删除以簇为单位。**AssetId / Guid**：资产的持久身份（写在 `.meta` 里，见 M7），与树的路径身份正交。
+**Project**：编辑器的资产工作区，一个根目录 + 它的文件树 + 用户意图（展开、选中、当前目录）。**System dir**：正常扫描但有三条特殊待遇的目录（当前只有 `Library`）——根级排最后、带分隔线、独立预算、不受 ignore 影响。**ProjectTree**：某一时刻文件系统结构的快照，身份是相对路径。**ScanPolicy**：扫描规则（忽略 + 系统目录预算 + 节点/深度上限）。**ProjectView**：树之上的用户意图（展开/选中/当前目录/排序/分栏比例），运行期状态、**不落盘**（D13）。**Editor Layout**：打开的面板集合 + dock 停靠树（分割方向/比例）+ tab 顺序/焦点 + 浮动窗口位置尺寸；M4 落盘的只有它和 `tree_split`。**Layout file**：`<root>/Library/editor_layout.toml`，可删可重建、带 `version`。**FileType**：一个扩展名族的显示与打开方式，不含任何文件操作。**Cluster**：一个资产的主文件 + 它的伴生侧车（`.meta` 等），移动/删除以簇为单位。**AssetId / Guid**：资产的持久身份（写在 `.meta` 里，见 M7），与树的路径身份正交。**External Tools**：按文件族记录和覆盖打开应用的编辑器设置（§2.14）。**Open default**：`FileType` 表里的默认打开策略（嗅探 / 系统默认 / 系统选择器 / 内部视图）。**Effective open target**：一次打开实际使用的目标——用户覆盖 > 嗅探结果 > 类型默认，由 `effective_open()` 纯函数解析并随 `ProjectEffect::Open` 传给 app。**Sniffing**：扫描 PATH 与平台固定路径检测已安装 IDE，作为「跟随默认」的候选来源。
+
+### 2.14 External Tools 面板（2026-11-25 新需求）
+
+> **状态**：需求由用户提出（2026-11-25）；**P1–P3 已于 2026-11-25 拍板（§2.14.9）：设置存 `Library/external_tools.toml`、Browse 用 `native-dialog`、`SystemPicker` 先做 Windows**。按本节方案执行，M5a / M5b 均可开工。
+
+**需求原文**（用户 2026-11-25）：
+
+> 我们现在一些类型文件有默认的启动方式(通过嗅探的方式), 还有一些则会调系统弹窗来选启动方式。我想要有一个 Panel，专门来记录和设置这些文件的启动应用，就像 Unity/Tuanjie 的 External Tools。这个 Panel 的打开路径就是 Edit -> External Tools。
+
+**一句话**：把「这个文件会用哪个程序打开」从 OS 关联 + 硬编码嗅探，变成一张**按文件族**的、可见、可改、可恢复默认的设置表。
+
+#### 2.14.1 现状（2026-11-25 HEAD 实读）
+
+| 事实 | 证据 | 后果 |
+|---|---|---|
+| 新编辑器只有一条打开路径：`open::that_detached` 交给 OS 关联；失败写进 Project 状态栏 | `kairos_editor_app/src/project.rs:282-290`、`kairos_editor_core/src/project.rs:224` | 用哪个应用打开由 OS 决定，面板/用户看不到也改不了 |
+| `FileType` 表还没有 `open` 字段；打开分发是 M5 的事 | `kairos_editor_core/src/project/file_type.rs:1-14` | 打开策略既不在类型表里，也没有消费方 |
+| 旧编辑器有 IDE 嗅探：7 个已知 IDE，先查 PATH 再查平台固定路径，`OnceLock` 缓存，按列表顺序取第一个 | `kairos_editor/src/ui/ide_detection.rs:29-168,195-234` | 行为已验证；但结果不可见、不可改，`OnceLock` 让会话中新安装的 IDE 永远发现不了 |
+| 旧编辑器按类型分发：脚本/着色器/文档/TOML/字体走 IDE 嗅探；纹理/网格/材质/音频与未知类型未实现 | `kairos_editor/src/ui/project_window.rs:334-369` | 「有的类型有默认启动方式、有的弹系统窗」是两套隐式规则叠加的结果，不是一张可配置的表 |
+| 打开是 `ProjectEffect::Open { root, path }`，app 解释 | `kairos_editor_core/src/project.rs:294`、`kairos_editor_app/src/project.rs:282` | 打开策略只能写死在 app；要可配置，必须先让「用哪个程序」成为 core 可解析的数据 |
+| 机器相关的设置没有落点：`Preferences/` 是提交进仓库的样式/字体，`Library/` 是不提交的运行期数据 | `kairos_editor_app/src/layout.rs:41`、`.gitignore:10-13` | IDE 绝对路径不能进仓库；设置文件要和布局文件一样放 `Library/`（P1） |
+
+**结论**：需求不是「再加一个设置窗口」，而是补上打开路径里缺的三件事：**类型表里的默认策略**（现在空白）、**可配置的用户覆盖**（现在没有）、**两者的解析优先级**（现在隐含在 app 的 `open::that_detached` 和旧编辑器的硬编码分支里）。
+
+#### 2.14.2 目标行为
+
+1. **一个面板**：`Edit ▸ External Tools` 打开（与 Preferences/About 同一条 `LayoutAction::ShowPanel` 路径；无 dock tab 时浮成窗口，可拖回 dock）。面板本身是普通 `Panel`，随 M4 布局持久化，不需要新存储。
+2. **按文件族一行**：每个 `FileType` 一行 + 一行「未知类型」。行内显示类型图标/名称/扩展名、当前**生效**打开方式、来源（`用户设置` / `嗅探` / `类型默认`）、状态（路径存在 / 缺失 / 未检测到 IDE）。
+3. **可设置**：从检测到的应用里选、Browse 自选程序、系统默认、每次询问、恢复默认。改完立即生效（下一次双击文件就用它），不要求重启。
+4. **嗅探只负责「默认值」**：启动时后台检测已安装 IDE，面板显示检测结果；用户选择覆盖嗅探，选择「恢复默认」回到嗅探。
+5. **未知类型保持现状**：默认走系统「打开方式」弹窗（`SystemPicker`）；用户可以把开关改成「系统默认」。
+6. **失败必须可见**：配置的程序路径丢失、启动失败、设置写盘失败，都要在面板/状态栏显示；**不静默换成别的打开方式**（用户明确设置了 A，就不能偷偷打开 B）。
+7. **嗅探/打开不阻塞 UI 帧**：检测在工作线程；启动进程只 spawn 不等待。
+8. **「记录」的边界**：系统「打开方式」弹窗里用户选了什么，OS 不会回传给进程（ShellExecute 只返回成功/失败），所以面板无法自动记录那一次临时选择；要固定打开方式，必须从检测列表或 `Choose program…` 设置一次。系统默认（`SystemDefault`）同理只显示为「System default」，不尝试反查 OS 关联到了哪个程序。
+
+#### 2.14.3 模型：三张表，三个所有者
+
+原计划的 `OpenWith` 是一个枚举同时承担三件事；本需求把它拆开，因为所有者不同：
+
+```rust
+// ① 静态数据：kairos_editor_core/src/project/file_type.rs
+/// 一个文件族「没有被用户覆盖时」的默认打开策略。
+pub enum OpenDefault {
+    /// 代码/文档：嗅探第一个可用 IDE；没有检测到就落到 fallback。
+    Sniffed(OpenFallback),
+    /// 系统关联（OS 默认程序）或系统「打开方式」弹窗。
+    System(OpenFallback),
+    /// 编辑器内部视图（Inspector/Preview），随 M5 的每类任务落地。
+    Internal(InternalOpen),
+}
+pub enum OpenFallback { SystemDefault, SystemPicker }
+
+pub struct FileType {
+    // ... id / label / extensions / icon / companion / thumbnail / delete_confirm ...
+    pub open: OpenDefault,
+}
+
+// ② 用户意图：kairos_editor_core/src/external_tools.rs（唯一持久化部分）
+pub struct OpenSettings {
+    /// 未知类型是否每次弹系统选择器（默认 true，保持现状）。
+    pub ask_unknown: bool,
+    /// 按文件族覆盖；缺省 = 跟随类型默认。
+    pub overrides: BTreeMap<OpenKey, OpenTarget>,
+}
+pub enum OpenKey { Type(&'static str), Unknown }   // 落盘为 "script" / "*"
+pub enum OpenTarget { SystemDefault, SystemPicker, Program(ProgramSpec) }
+pub struct ProgramSpec {
+    pub label: String,        // 面板显示名："Cursor" / "My Editor"
+    pub path: PathBuf,        // 绝对路径或 PATH 中的命令名；原样 spawn，不走 shell
+    pub args: Vec<String>,    // "$FILE" 替换为绝对路径；不含 "$FILE" 时把路径追加为最后一个参数
+}
+
+// ③ 宿主执行载荷：reducer 解析后随 effect 传给 app
+pub enum ResolvedTarget { Internal(InternalOpen), Program(ProgramSpec), SystemDefault, SystemPicker }
+pub enum InternalOpen { Inspector, Preview }   // 具体随 M5 每类任务定
+pub enum OpenSource { User, Sniffed, TypeDefault, AskUnknown, Internal }
+pub struct EffectiveOpen {
+    pub key: OpenKey,
+    pub target: ResolvedTarget,
+    pub source: OpenSource,       // User | Sniffed | TypeDefault | AskUnknown | Internal
+    pub warning: Option<String>,  // 配置的程序缺失等；面板黄字，打开时按失败处理
+}
+```
+
+面板 → reducer → app 的协议（与 Project 同款 request / completion）：
+
+```rust
+pub enum ExternalToolsAction {
+    Loaded { settings: OpenSettings },        // boot 读文件后
+    Detected { apps: Vec<DetectedApp> },      // 检测完成
+    DetectionFailed { message: String },
+    DetectRequested,
+    SetTarget { key: OpenKey, target: OpenTarget },
+    SetArgs { key: OpenKey, args: Vec<String> },
+    ClearTarget { key: OpenKey },             // = Follow default
+    SetAskUnknown(bool),
+    BrowseRequested { key: OpenKey },         // 面板要系统文件选择器
+    ProgramPicked { key: OpenKey, path: PathBuf },
+    PersistFailed { message: String },
+}
+pub enum ExternalToolsEffect {
+    Detect,
+    Browse { key: OpenKey },
+    Persist { root: PathBuf, settings: OpenSettings },
+}
+```
+
+路由：aggregate 增加 `Action::ExternalTools(..)` / `Effect::ExternalTools(..)`，`EditorState` 加 `external_tools: ExternalToolsState` 字段；面板只读它、写 action，app 的 executor 处理 `Detect` / `Browse` / `Persist`。
+
+**解析优先级**（`core::external_tools::effective_open()`，纯函数，一张表一测试）：
+
+| # | 条件 | 结果 | 来源徽标 |
+|---|---|---|---|
+| 1 | 该类型有 `overrides` 条目 | 用户设置的目标 | `用户设置` |
+| 2 | 无覆盖、`OpenDefault::Sniffed` 且检测到至少一个 IDE | 检测列表顺序第一个 | `嗅探：<IDE>` |
+| 3 | 无覆盖、`OpenDefault::Sniffed` 但未检测到 IDE | `OpenFallback`（v1 = `SystemPicker`） | `类型默认` |
+| 4 | 无覆盖、`OpenDefault::System(..)` | 表中的 `SystemDefault` / `SystemPicker` | `类型默认` |
+| 5 | 无覆盖、`OpenDefault::Internal(..)` 且该构建有内部视图 | 内部视图 | `类型默认` |
+| 6 | 类型未知（没有 `FileType`） | `ask_unknown ? SystemPicker : SystemDefault` | `未知类型` |
+| 7 | 配置的 `Program` 路径缺失 | 保留配置、`warning` 置位；打开拒绝并报错 | `用户设置` + 警告 |
+
+**替换原文的 `OpenWith`**：§2.8 写 `open: OpenWith`，M5 原文写「`OpenWith` 五类」但注释只列了四类（`ExternalEditor | SystemDefault | Inspector | Preview`），两处本来就不一致。本节用 `OpenDefault`（静态表）+ `OpenTarget`（用户设置）+ `ResolvedTarget`（effect 载荷）替代；§2.5 的 `ProjectEffect::Open { .., with: OpenWith }` 同步改为 `target: ResolvedTarget`。M5a 落地时以本节为准，不再引入名为 `OpenWith` 的枚举。
+
+**默认类型表**（v1，M5a）：
+
+| 类型 | 默认 | 理由 |
+|---|---|---|
+| script (.rs)、shader (.wgsl)、document (.md) | `OpenDefault::Sniffed(SystemPicker)` | 旧编辑器对脚本/着色器/文档就是嗅探 IDE；没有 IDE 时让系统弹窗选，和用户描述的现状一致 |
+| texture (.png)、mesh (.glb)、material (.mat)、audio | `OpenDefault::System(SystemDefault)` | 这些类型的内部预览/Inspector 还没落地；先交给 OS 关联，不阻断工作 |
+| font (.ttf/.otf) | `OpenDefault::System(SystemDefault)` | 字体没有「用 IDE 打开」的语义 |
+| companion (.meta) | 不显示、不打开 | 伴生文件不是资产入口 |
+| 未知类型 | `SystemPicker`（`ask_unknown` 默认 true） | 保持现状：系统「打开方式」弹窗 |
+
+> 每类任务（M5 之后）把 `OpenDefault` 从 `System(..)` 改成 `Internal(..)` 时，面板与解析器都不需要改：行数据来自类型表，解析器只认三个枚举。
+
+#### 2.14.4 嗅探（app，M5a）
+
+- 从旧 crate 的 `kairos_editor/src/ui/ide_detection.rs` 搬到 `kairos_editor_app/src/external_tools/detect.rs`，**不照抄 `OnceLock`**：启动时检测一次 + 面板「重新检测」再检测一次；结果进 `ExternalToolsAction::Detected`。
+- 候选表是数据（`const CANDIDATES: &[IdeDescriptor]`），顺序即嗅探优先级：
+
+| id | 显示名 | CLI | 说明 |
+|---|---|---|---|
+| `cursor` | Cursor | `cursor` | 旧表第一优先 |
+| `code` | VS Code | `code` | |
+| `code-insiders` | VS Code Insiders | `code-insiders` | |
+| `zed` | Zed | `zed` | |
+| `windsurf` | Windsurf | `windsurf` | |
+| `idea` | IntelliJ IDEA | `idea` | Rust 插件用户 |
+| `fleet` | Fleet | `fleet` | |
+| `rustrover` | RustRover | `rustrover` | **新增**；JetBrains 的 Rust 专用 IDE |
+
+- 候选顺序沿用旧表（Cursor 第一），RustRover 追加在末尾；面板里用户可任意覆盖，所以顺序只影响「跟随默认」的初值。
+- 检测在工作线程 `external-tools-detect` 跑：每候选先 `--version`（或 `--help`）探 PATH，再查固定路径（沿用 `%USERNAME%` 展开）；Windows 用 `CREATE_NO_WINDOW` 避免每个候选闪一次控制台；单个候选失败只 debug 日志，最终「一个都没检测到」才是一条可见提示。
+- 结果只存在内存（`ExternalToolsState.detected`），**不落盘**：路径会因升级/卸载变化，落盘只会过期。用户选择某个嗅探结果时，存的是当时的 `ProgramSpec` 快照，所以检测结果消失也不影响已配置的行。
+- 面板顶部显示检测列表（名称 + 路径）；空列表时提示「未检测到 IDE，脚本类将使用系统『打开方式』」。
+
+#### 2.14.5 打开执行（app，M5a）
+
+`kairos_editor_app/src/external_tools/launch.rs`，三条路径：
+
+| target | 实现 | 平台说明 |
+|---|---|---|
+| `SystemDefault` | `open::that_detached(absolute)`（沿用 M2） | 三平台 |
+| `SystemPicker` | Windows：`rundll32 shell32.dll,OpenAs_RunDLL <absolute>`；调用前校验路径存在 | v1 只在 Windows 实现（P3）；macOS/Linux 没有等价的「选择应用后打开文件」入口，回退 `SystemDefault` 并在面板标「该系统不支持每次询问」 |
+| `Program(spec)` | `std::process::Command::new(path).args(substituted).spawn()`，detached；Windows 的 `.cmd/.bat` 用 `cmd /C` 包裹，`CREATE_NO_WINDOW` | 三平台；**绝不拼 shell 字符串** |
+
+- `$FILE` 替换发生在 argv 元素内部（例如 `["-g", "$FILE"]` → `["-g", "C:/proj/a.rs"]`），不是把整个命令拼成一行；没有 `$FILE` 时把文件路径追加为最后一个参数。
+- 启动失败（找不到可执行文件、OS 拒绝、权限不足）→ `ProjectAction::Failed { message }`，复用 Project 面板状态栏；External Tools 面板同时显示该行警告。
+- 不做「失败后自动换下一个应用」：配置是用户意图，静默改变打开方式比失败更难排查；「恢复默认」是显式操作。
+- 路径校验：`Program.path` 存在性在设置加载/保存时检查一次，缺失时行内显示警告而不是删除配置（用户可能只是换了盘符/重装）。
+
+#### 2.14.6 设置文件（app，M5a）
+
+`<root>/Library/external_tools.toml`，与 `editor_layout.toml` 同族：可删、可重建、**不进 git**、watcher 已过滤 `Library/`（M1 的系统目录规则），不会自激重扫。
+
+```toml
+# External Tools written by Kairos. Machine-specific; delete to reset.
+version = 1
+ask_unknown = true
+
+[open.script]
+kind = "program"
+label = "Cursor"
+path = "C:/Users/me/AppData/Local/Programs/cursor/resources/app/bin/cursor.cmd"
+args = ["$FILE"]
+
+[open.texture]
+kind = "system_default"
+```
+
+- **DTO 在 app**（core 无 serde，与 `layout.rs` 的分工一致）：app 的 `settings.rs` 定义 serde 结构、读写、原子替换、64KB 上限、版本/坏文件回退（与布局文件同款纪律）；core 只收 `OpenSettings`。
+- 缺失 → 默认设置；首次打开面板时**不**自动写文件（用户没改就不落盘，与布局文件「干净启动不写文件」一致）；写坏 → 整份忽略 + warn，不阻塞编辑器。
+- 写时机：设置变化即写（点击/选择是一次手势）；参数文本输入 500ms 去抖；`Layer::on_exit` flush。写失败 → 面板错误行 + `kairos_log::warn`，内存设置继续生效（下次可重试）。
+- 类型 id 在升级中消失：读侧忽略该条并 warn，写侧按当前 DTO 重写（配置丢失可接受；类型表删除本就意味着不再有该类型）。
+- **为什么放 `Library/` 而不是 `Preferences/`**：`Preferences/` 是提交进仓库的编辑器外观（样式/字体/语法高亮），External Tools 的绝对路径因机器而异，提交会立刻在别人机器上失效；`Library/` 是已经确立的 per-project 运行期数据位置（D9/D13）。P1 已拍板 v1 按项目存；将来若升用户级，只动 `settings.rs` 的路径。
+
+#### 2.14.7 面板 UI（M5b）
+
+```text
+┌ External Tools ───────────────────────────────────────────────────────────┐
+│ Detected applications                                             [Detect] │ ← 区块头 20px
+│  Cursor        C:/Users/…/cursor.cmd                                        │
+│  VS Code       C:/Users/…/code.cmd                                          │
+│  (none detected — script/shader/document fall back to the system picker)    │
+├───────────────────────────────────────────────────────────────────────────┤
+│ Open with                                                      [Reset all]  │
+│  Type            Open with                         Source          Status   │
+│  ▣ Script        [Cursor ▾]                        Sniffed         ✓        │
+│  ▣ Shader        [Cursor ▾]                        Sniffed         ✓        │
+│  ▣ Document      [Follow default ▾]                Type default              │
+│  ▣ Texture       [System default ▾]                Type default              │
+│  …                                                                          │
+│  ○ Other files   [Ask every time ▾]                Unknown                   │
+├───────────────────────────────────────────────────────────────────────────┤
+│ <error / status line: save failed, missing program, detection failed…>     │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+- 入口：`toolbar.rs` 的 Edit 菜单在 Preferences 后加一条 `External Tools` → `LayoutAction::ShowPanel { panel: panels::EXTERNAL_TOOLS }`；面板声明 `#[crate::panel(EXTERNAL_TOOLS = "external_tools", skin = ExternalToolsPanelStyle)]`，标题 `External Tools`。
+- 顶部区块 = **检测结果**（只读列表）+ `Detect`。`Detect` 发 `ExternalToolsAction::DetectRequested`；检测中按钮禁用并显示 `Detecting…`。选择程序入口在行内菜单的 `Choose program…`（打开系统文件选择器 `native-dialog 0.9.6`，已在 workspace 锁文件里、旧编辑器同款），选中后只影响那一行。
+- 中间区块 = **打开方式表**，每行一个 `FileType`（按类型表顺序；`companion` 不显示）+「Other files」。行内 menu button 的选项：
+  - 每个检测到的应用（写 `Program` 快照，label = 应用名）；
+  - `System default`；`Ask every time`（`SystemPicker`）；
+  - `Follow default`（删除覆盖，回到类型默认；只有存在覆盖时出现）；
+  - `Choose program…`（等价于该行的 Browse）。
+- 当前值由 `effective_open()` 算出来：若被覆盖，显示覆盖目标 + `用户设置` 徽标；否则显示解析结果 + `嗅探`/`类型默认`。状态列：路径存在 ✓；配置路径缺失 ⚠（黄）+ 行内 tooltip；检测不到 IDE 时脚本行显示「类型默认」而不是错误（不是用户配置的问题）。
+- 交互：菜单选择后立即写设置（一次点击一次落盘），不需要 Apply；参数编辑只对自定义 `Program` 出现（缩进一行，`Arguments` 文本框，默认 `$FILE`，500ms 去抖）；`Reset all` 有确认弹窗（复用 `widgets::modal` 与 T13 的皮肤），单行 Reset 不需要确认（重新选一次即可撤销）。
+- 面板皮肤 `ExternalToolsPanelStyle`（`Preferences/Styles/ExternalToolsPanel.ron`）：沿用 Console/Project 的暗色 token 语言，约 20 个标量（背景、区块头、表头、行文字/次要文字、hover、选中、警告/错误色、分隔线、行高、状态行）；`#[derive(StyleRow)]` 自动进 Preferences 页。**不新造主题系统**。
+- tab 图标 v1 不做（`Panel::icon` 返回 `None`，标题文字 tab）；要加时从 Tuanjie 资源包抽一张（同类新增一张图，不在本需求范围）。
+- 面板不持有设置副本：读 `frame.state.external_tools`，写动作；关闭重开/重启后设置从文件恢复，面板无「脏」状态。
+
+#### 2.14.8 归属与里程碑（M5a / M5b）
+
+| 层 | M5a（打开分发 + 嗅探 + 设置） | M5b（面板） |
+|---|---|---|
+| core | `FileType::open`、`external_tools` 切片（state/action/effect/reducer）、`effective_open` 纯解析、`ProjectEffect::Open { target }` | 无（面板只读 state） |
+| app | `external_tools/{mod,detect,settings,launch}.rs`；启动顺序（读设置 → 起检测 → inbox）；`native-dialog` 依赖；`ProjectEffect::Open` 执行 | 把检测/浏览完成的 action 接进 inbox；设置变更写盘（若 M5a 未含）；无新逻辑 |
+| component | 无可见变化：`OpenRequested` 仍只发路径，解析在 core | `panels/external_tools.rs` + `style.rs` + RON；Edit 菜单项；面板测试 |
+| widgets | 无 | 复用 `menu`/`button`/`field`/`modal`；不新增 widget |
+
+**为什么先 M5a**：面板只是解析结果的可视化；如果先做面板，`OpenDefault`/`effective_open` 都还没有，面板会现场发明数据结构（与此前 M3a/M3b 的教训一致）。
+
+#### 2.14.9 已拍板项（P1–P3，2026-11-25）
+
+| # | 问题 | 拍板结果（2026-11-25 用户确认） |
+|---|---|---|
+| **P1** | 设置存哪 | **`<root>/Library/external_tools.toml`**：per-project、机器相关、不进 git（原选项 a）。 |
+| **P2** | Browse 怎么选程序 | **系统原生文件选择器 `native-dialog`**（原选项 a；已在 workspace 锁文件里，旧编辑器同款）。 |
+| **P3** | 「每次询问」的平台范围 | **先做 Windows**（原选项 a）：只有 Windows 实现系统选择器；macOS/Linux 回退 `SystemDefault` 并在面板标注。 |
+
+> P1–P3 已拍板，M5a / M5b 按此执行，不再阻塞。P1 若将来改为用户级设置，只动 `settings.rs` 的路径，不改解析器与面板。
+
+#### 2.14.10 验收 / 测试 / 风险
+
+**M5a 验收**（headless 为主）：
+- 测试替身注册一个 `foo` 类型，`open: Sniffed(SystemPicker)`：无覆盖时解析为 `SystemPicker`；放一个假 `Program` 覆盖后解析为该程序；删除覆盖后回到默认；配置路径不存在 → 解析结果保留 + `warning` 置位；未知文件名走 `ask_unknown` 两个分支。
+- 设置 DTO：round-trip、坏 TOML / 版本不认识 / 超过大小上限 → 默认设置 + warn、原子写、去抖/flush、`Library/` 写入不触发重扫（复用 M1 的 watcher 测试口径）。
+- 嗅探：候选表顺序、`%USERNAME%` 展开、同一应用去重、PATH 与固定路径两种命中（用临时可执行文件替身，不启动真 IDE）；Windows 下 `CREATE_NO_WINDOW` 的构造断言（不依赖真实进程）。
+- 启动：临时 `.cmd`/shell 脚本写 marker 文件 → `Program` 带 `$FILE` / 不带 `$FILE` 两种 argv 断言；缺路径 → `ProjectAction::Failed`；`SystemDefault` 只做 smoke（不在测试里真的开编辑器）。
+- 打开链：`OpenRequested` → reducer 解析 → effect 带 `ResolvedTarget`；app 执行后失败回 `Failed`。
+
+**M5b 验收**（手动 smoke + harness）：
+- `Edit ▸ External Tools` 打开面板（无 tab 时浮窗；拖进 dock 后 tab 标题正确；重启后随布局恢复）；
+- 面板列出检测到的 IDE 与全部文件族；把 Script 设为检测到的 IDE → 回 Project 面板双击 `.rs` 用该 IDE 打开；把 Texture 设为自定义程序 → 双击 `.png` 用该程序打开；
+- 设置 `Ask every time` 后双击未知扩展名文件 → 系统「打开方式」弹窗；改回 `System default` → 走 OS 关联；
+- 故意把配置路径改坏 → 面板黄字警告；双击文件 → 状态栏显示失败，**不**偷偷换应用；
+- 重启编辑器 → 设置仍在；删掉 `Library/external_tools.toml` → 回到默认 + 嗅探；
+- 选择某 IDE 后把它从检测列表移除（模拟重装）→ 行显示路径缺失警告；`Follow default` 可恢复；
+- 写盘失败（把 `Library/` 设只读/占位）→ 面板错误行可见，设置仍在内存生效；
+- 面板帧耗时（Profiler）：空转 < 1ms；检测在后台，打开面板不卡顿。
+
+**风险**：
+
+| 风险 | 缓解 |
+|---|---|
+| 探测进程闪控制台/拖慢启动 | 工作线程 + `CREATE_NO_WINDOW` + 每候选超时（`--version` 最长 ~500ms 级）；M5 已把「Windows 不闪控制台」列为要求 |
+| 配置路径含空格/参数注入 | argv 直传、`$FILE` 按元素替换、绝不拼 shell；路径存在性校验 + 启动失败可见 |
+| 设置静默丢失 | 原子写 + 写失败进面板错误；读取坏文件回退默认；测试覆盖 |
+| 项目内容注入可执行路径 | 设置只从 `Library/`（不提交、不参与资产源）读，不从项目资产/`.meta` 里读；打开必须由用户手势触发 |
+| 嗅探结果过期/误导 | 不落盘、启动重测、面板显式 `Detect`；已选应用存路径快照，检测消失不影响已有配置 |
+| P1 的 per-project 设置导致多工程重复配置 | 若用户经常切工程，再升用户级；只动 `settings.rs` 的路径，不改解析器/面板 |
+
+### 2.15 Rust 脚本图标（2026-11-25 新需求，已交付）
+
+**需求原文**（用户 2026-11-25）：
+
+> 另一个需求就是我要你基于当前的 scripts icon(Unity的脚本 icon)重新设计一个 icon 出来，把 icon 里的 "#" 换成 "R" 或其他你觉得会更好的样子, 即从代表 C# 换成代表 Rust。
+
+**结论**：保留 Unity/Tuanjie 的「折角页面 + 语言字形」构图，把页面里的 `#`（C#）换成 **R**（Rust），R 沿用原 C# `#` 的 **Unity 绿**（dark `#276A2A` / light `#2E7D32`）。2026-11-25 用户两次反馈：红色 R 不协调 → 改 Unity 同款绿；R 过大 → 缩到 `#` 的约 85% 高、同样 8.3° 斜体、墨迹 0.92× `#`。只换字形，不新增品牌色。理由：
+
+1. 这是 18 px 的树行图标（64 px 资产）；Rust 齿轮 logo 的齿在 18 px 会糊成一团，而「页面 + 单字符」是 Unity 脚本图标已经教给用户的语法，只换字符语义最省认知成本。
+2. Unity 用 `#` 代表 C#（sharp），Rust 没有等价的单字符符号；R 是 Rust 最短、最不会认错的语言标记。
+
+**交付**：
+
+| 文件 | 内容 |
+|---|---|
+| `Preferences/Textures/project/types/script.png` | dark skin 的 Rust 脚本图标（64×64 RGBA） |
+| `Preferences/Textures/project/types/light/script.png` | light skin 版本（同形：白页面 + 灰边框） |
+| `scripts/extract_tuanjie_icons.py` | 从抽取表移除 `cs Script Icon`：脚本图标改为项目自绘，重跑脚本不会覆盖 |
+| `Preferences/Textures/project/README.md` | provenance 改为「页面外形沿用 Tuanjie `d_cs Script Icon`，R 字形为项目原创，颜色沿用原 C# 绿」，记录色值 |
+
+**不新增类型、不改代码**：`FileType::icon` 仍是 `"script.png"`，`.rs` 家族不变；M5 的类型表/面板不需要知道「图标是自绘的」。如果将来重新支持 C#，加一个 `script_cs.png` 和一个新 `FileType` 行，不覆盖这张图。
+
+**实现细节**（交付时实测）：页面取自 Tuanjie 256×256 源图，R 在 1024×1024 上绘制后 Lanczos 降到 64×64；R 与 `#` 一样倾斜 **8.3°（右上→左下，同原 `#` 方向）**。按 256 源尺度，R 高 120（=30.0 px@64）、宽 108（=27 px@64，含斜体位移）、笔画 24（=6.0 px@64），64 px 下字形外框中心 (31.0, 32.5)，原 `#` 为 (30.5, 33.0)——比 `#` 矮约 14%，视觉上更收敛。R 墨迹面积约为 `#` 的 0.92×。颜色沿用原 `#` 的绿：dark `#276A2A`（`rgb(39, 106, 42)`）、light `#2E7D32`（`rgb(46, 125, 50)`）。对比度（WCAG 2.x）：对 dark 页 `#F0F0F0` = 5.79:1，对 light 页 `#FFFFFF` = 5.13:1，均高于图形对象 3:1、也高于正文文本 4.5:1。
+
+**验收**：dark/light 两张 64² 图在 18 px 显示尺寸下可辨认 R；放大检查无残留 `#` 像素/抠图锯齿；`git diff --stat` 只涉及上表 4 个文件（外加本计划文档）；`cargo test-crate kairos_editor_component` 不受影响（图标路径不变）。
 
 ---
 
@@ -875,7 +1218,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 > | N1 | **导航照 Unity/Tuanjie**：行左端是**独立的展开/收起三角**；**单击 = 选中 + 内容头跟随**（写 `selection`，同时 `active` = 命中项的目录：文件夹 → 自身，文件 → 父目录）；**双击 = 打开**（文件夹 → `Navigate` + 展开；文件 → 系统默认程序）。三角与行是两个命中区 | 参考编辑器的行为；「单击选、双击开」要求三角和行各管一件事。单击移动内容头是 Unity 的浏览行为（验收修正 #3/#4），双击仍只负责展开/打开 |
 > | N2 | **可见行缓存归面板**（`Vec<NodeId>` + 失效键），core 只留 `visible_rows` 纯函数 | M6 的 query/scope 是面板视图状态，core 里的缓存服务不了它；放面板 = M6 不用搬 |
 > | N3 | **TreeView 用最小 API**：不做 `renaming` / `drag_started` / `dropped_on` / 右键菜单通道；F2/Delete 归 M3 | 没有消费者的通道不可测，M3 一定会按真实需求重画 |
-> | N4 | **M2 的打开 = 系统默认程序**（`open` crate）；IDE 探测 + `OpenWith` 分发 + `ui/ide_detection.rs` 搬迁归 M5 | `OpenWith` 是 `FileType` 的字段，M5 才有消费者；提前搬 311 行只会返工 |
+> | N4 | **M2 的打开 = 系统默认程序**（`open` crate）；IDE 探测 + `OpenWith` 分发 + `ui/ide_detection.rs` 搬迁归 M5 | `OpenWith` 是 `FileType` 的字段，M5 才有消费者；提前搬 311 行只会返工（2026-11-25：接口改为 `OpenDefault`/`OpenTarget`/`ResolvedTarget`，见 §2.14.3） |
 > | N5 | **图标取自本机 Tuanjie 编辑器资源包**（`d_Folder Icon` / `d_FolderOpened Icon` / `d_DefaultAsset Icon`），Lanczos 缩到 64²，提交到 `Preferences/Textures/project/{,light/}`；重跑脚本 `scripts/extract_tuanjie_icons.py` | 现存 `Preferences/Textures/*.png` 是 2048²，而 egui_extras 的图片加载器忽略 size hint（不降采样）→ 一张 16 MB 纹理；64² 一张 16 KB。M2 文件行统一泛型 file 图标，按类型图标归 M5 |
 > | N6 | **先定稿再开工**；M2 拆 **M2a**（core + widget + 纯映射，画面零变化）/ **M2b**（面板装配 + 皮肤 + 打开 + 键盘） | 与 M1 同款刀法：M2a 100% headless 可验收 |
 >
@@ -996,13 +1339,13 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 > | material | mat | `d_Material Icon` | `Material Icon` | |
 > | audio | ogg, wav, audio | `d_AudioClip Icon` | `AudioClip Icon` | |
 > | shader | wgsl | `d_Shader Icon` | `Shader Icon` | |
-> | script | rs | `d_cs Script Icon` | `cs Script Icon` | |
+> | script | rs | **项目自绘 Rust 图标**（§2.15） | 同左 | 页面外形沿用 `d_cs Script Icon`；`#` 换成 `R` + Unity 绿（dark `#276A2A` / light `#2E7D32`）（2026-11-25） |
 > | document | md | `d_TextAsset Icon` | `TextAsset Icon` | **没有 `d_Document Icon`**；.md/.txt/.json 在 Unity 里就是 TextAsset |
 > | font | ttf, otf | `d_Font Icon` | `Font Icon` | |
 >
-> 源尺寸 64² 或 256²，按现有脚本 Lanczos 到 64²（与已提交的 folder/file 图标同规格）；落点 `Preferences/Textures/project/types/` + `.../types/light/`；仓库里"暗色皮肤只有一个"（`app.rs` 把主题钉死 Dark），light 版本先提交、暂不消费。
+> 源尺寸 64² 或 256²，按现有脚本 Lanczos 到 64²（与已提交的 folder/file 图标同规格）；**脚本图标是例外**：Rust 版为项目自绘，不再从 bundle 抽取（§2.15）；落点 `Preferences/Textures/project/types/` + `.../types/light/`；仓库里"暗色皮肤只有一个"（`app.rs` 把主题钉死 Dark），light 版本先提交、暂不消费。
 >
-> **已落地**：脚本表 13 条（5 张通用 + 8 家族 ×2 皮肤），16 张 64² 图写入 `Preferences/Textures/project/types{,/light}/`；`FileType.icon` 只存文件名，`ProjectStyle::type_icon_root` 给目录（dark/light 各一份），面板按类型表解析、未注册家族回退通用 file 图标；`Preferences/Textures/project/README.md` 记了 provenance 与重跑命令。
+> **已落地**：脚本表 13→12 条（脚本图标 2026-11-25 改为项目自绘，不再抽取；其余 5 张通用 + 7 家族 ×2 皮肤），16 张 64² 图仍在 `Preferences/Textures/project/types{,/light}/`；`FileType.icon` 只存文件名，`ProjectStyle::type_icon_root` 给目录（dark/light 各一份），面板按类型表解析、未注册家族回退通用 file 图标；`Preferences/Textures/project/README.md` 记了 provenance 与重跑命令。
 >
 > **M3 定稿补充 3 — 两处文档自相矛盾的修正**
 >
@@ -1137,17 +1480,38 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 >   6. 布局文件写在 `Library/`，watcher 按系统目录过滤，不会自激重扫（M1 的系统目录事件测试已覆盖；M4 未新增 watcher 测试）。
 > - **待办**：真机 smoke（上面 9 条验收清单）。本轮验证全部走 headless / 集成测试，未启动 GUI。
 
-### M5 — 类型 seam + 每种类型（2–3 天 + 每类 0.5–2 天）
+### M5 — 类型 seam + 打开方式（2026-11-25 拆 M5a / M5b；2–2.5 天 + 2.5–3.5 天 + 每类 0.5–2 天）
 
-**目标**：加一个类型不再触碰树和面板。
+**目标**：加一个类型不再触碰树和面板；同时把「文件用哪个程序打开」从隐式嗅探变成 External Tools 设置（§2.14）。
+
+> **M5 修订（2026-11-25，新需求）**：原 M5 只写「`OpenWith` 五类 + IDE 探测从旧 crate 搬来」；按 §2.14 拆成两刀：**M5a**（core 解析 + app 嗅探/启动/设置，画面无变化）、**M5b**（External Tools 面板，可见）。M5a 先做，因为面板只是解析结果的视图。**P1–P3 已于 2026-11-25 拍板，M5a / M5b 均可开工。**
+
+**M5a — 打开分发 + 嗅探 + 设置（2–2.5 天）**
 
 **交付**
-- core：**`FileTypeRegistry` 的数据表与伴生规则 M3 已落地（T14）**；M5 只补 `FileType::open`（`OpenWith` 五类）+ `referenceable`（M7 用）与按类型图标；
-- component：行图标/后缀来自注册表 —— **图标 M3 已接入（T16：`FileType.icon` 文件名 + `ProjectStyle::type_icon_root`）**，M5 只补新家族数据与 `open` 分发；未注册类型显示通用图标（不隐藏）；「只看资产」开关（用注册表过滤，D2）；
-- app：打开分发实现（`OpenWith` 五类）+ IDE 探测从旧 crate 搬来（`ui/ide_detection.rs`，改成惰性检测、Windows 下不闪控制台窗口），未知类型回退系统默认；
-- **之后每类一个任务**：纹理（缩略图 + `.meta` 是否有 / 是否已导入）、网格（预览）、材质（Inspector）、音频（试听）、着色器/代码（IDE）、文档（Markdown 只读）。凡依赖「文档/预览」的能力，都依赖 Inspector 与视口迁移，不在本计划排期。
+- core：`FileType::open: OpenDefault`（§2.8 / §2.14.3）；`external_tools` 切片（`ExternalToolsState` / `ExternalToolsAction` / `ExternalToolsEffect` / reducer）与 `effective_open()` 纯解析；`ProjectEffect::Open { root, path, target: ResolvedTarget }`；`referenceable` 仍留 M7；
+- app：`external_tools/mod.rs`（boot 读设置 + 起检测、`poll` 收检测/浏览/启动结果、`execute` 执行 effect）、`detect.rs`（旧 `ui/ide_detection.rs` 的 7 个候选 + **RustRover**；工作线程；Windows `CREATE_NO_WINDOW`；无 `OnceLock`）、`settings.rs`（`Library/external_tools.toml` DTO + 原子写 + 版本/大小/坏文件回退）、`launch.rs`（`SystemDefault` / `SystemPicker` / `Program` 三条路径，`$FILE` 按 argv 替换、不拼 shell）；`Browse…` 用 `native-dialog`（P2 已拍板）；
+- app 启动顺序：读设置 → `ExternalToolsAction::Loaded` → 起检测 → 原有 `PolicyLoaded` / `ScanRequested`；打开 effect 的失败仍回 `ProjectAction::Failed`；
+- `.gitignore`：加 `/Library/external_tools.toml*`（与布局文件同规则：可删、可重建、不进 git）；
+- 测试：§2.14.10 的 core / app 清单。
 
-**验收**：测试替身注册一个 `foo` 类型 → 树里出现带图标的行 → `Enter` 走它自己的处理器 → 删掉这个类型后行为回到通用文件。整个过程不改 `tree.rs` / `panels/project.rs`。
+**验收**：headless 全绿；未配置时 `.rs` 用嗅探到的 IDE 打开、无 IDE 时弹系统选择器；未知类型弹系统「打开方式」；把 `Library/external_tools.toml` 手写一条覆盖，打开行为随之改变；删掉文件回默认。
+
+**M5b — External Tools 面板（2.5–3.5 天）**
+
+**交付**
+- component：`panels/external_tools.rs`（检测列表 + 每类型表 + 未知类型开关 + 错误行，§2.14.7）、`panels/external_tools/style.rs` + `Preferences/Styles/ExternalToolsPanel.ron`（`#[derive(StyleRow)]`，dark/light）；`#[crate::panel(EXTERNAL_TOOLS = "external_tools", skin = ExternalToolsPanelStyle)]`；`panels.rs` 增加 `mod` / `pub use`；
+- toolbar：Edit 菜单加 `External Tools` → `ShowPanel`；工具栏测试补一条「点 Edit → External Tools 产出 ShowPanel」；
+- app：面板的动作接进 inbox（检测 / 浏览完成 / 设置写盘），保存失败进面板错误；
+- 测试：面板 harness（行渲染、menu 选择、Reset、Detect、浏览取消、错误态）、`Edit` 菜单、设置的启动集成（tempdir 预写文件 → boot 后解析生效）。
+
+**验收**：§2.14.10 的手动 smoke 清单；`cargo test-crate kairos_editor_core` / `kairos_editor_widgets` / `kairos_editor_component` 绿；`cargo test -p kairos_editor_app --bins` 绿；`cargo check --workspace --all-targets` 绿。
+
+- **之后每类一个任务**：纹理（缩略图 + `.meta` 是否有 / 是否已导入）、网格（预览）、材质（Inspector）、音频（试听）、着色器/代码（IDE）、文档（Markdown 只读）。凡依赖「文档/预览」的能力，都依赖 Inspector 与视口迁移，不在本计划排期。**每类任务把该类型的 `OpenDefault` 从 `System(..)` 改成 `Internal(..)` 即可，面板与解析器不改。**
+
+**原文其余交付（保留）**：component：未注册类型显示通用图标（不隐藏）；「只看资产」开关（用注册表过滤，D2）；M5 的类型图标/新家族数据沿用 T16 的 `FileType.icon` + `ProjectStyle::type_icon_root`，不为 External Tools 新增图标。
+
+**验收（类型 seam）**：测试替身注册一个 `foo` 类型 → 树里出现带图标的行 → `Enter` 走它自己的处理器 → 删掉这个类型后行为回到通用文件。整个过程不改 `tree.rs` / `panels/project.rs`。
 
 ### M6 — 搜索与过滤语法（2–3 天）
 
@@ -1192,12 +1556,13 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 **交付**
 - 新 ADR：`0015-project-tree-and-panel.md`（路径身份、扫描协议、忽略规则、**布局文件格式与恢复规则（含 host 侧持久化触发的理由）**、类型注册表、删除语义）；
 - 新 ADR：`0016-asset-guid-and-references.md`（M7 的身份与引用；与 ADR 0002 的 meta 格式如何兼容）；
+- 新 ADR：`0019-external-tools-and-open-targets.md`（External Tools 设置文件格式、打开目标解析优先级、嗅探协议、系统选择器的平台能力矩阵）；
 - 交叉链接 ADR 0017（M0.5 的成品根布局）到 ADR 0004/0005 与 `rewrite-plan.md`；
 - `rewrite-plan.md` 的模块映射表加一行：旧 project 子树已由 `core::project` + `app::project` + `panels::project` 取代，随 `kairos_editor` 退役删除；
 - `docs/plan/editor-ui-architecture/README.md` 的面板清单把 Project 标为已迁移；`kairos_editor/CONTEXT.md` 加 §2.13 词表；
 - `docs/research` 里引用旧项目窗口的地方标注「已被 docs/plan/project-panel 取代」。
 
-**验收**：两份 ADR 合入；仓库里只剩文档层面的「旧实现在哪、为什么不删」说明，没有新的旧代码改动；`cargo check --workspace --all-targets` 通过（本阶段不改代码，跑它是为了确认前几个里程碑没留编译债）。
+**验收**：三份 ADR 合入；仓库里只剩文档层面的「旧实现在哪、为什么不删」说明，没有新的旧代码改动；`cargo check --workspace --all-targets` 通过（本阶段不改代码，跑它是为了确认前几个里程碑没留编译债）。
 
 ---
 
@@ -1211,7 +1576,8 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 | app | 扫描器（含忽略与系统目录预算）、watcher 去抖、fs 操作、持久化、`.kairosignore` 读取与 seed | `tempfile` + 真实文件系统 | 十毫秒级 |
 | asset/graphics | guid 侧车往返、改名后引用仍解析、缺失回退（M7）；成品根新路径下 processor/loader 仍工作（M0.5） | tempdir + 真 `.mat`/`.meta` | 十毫秒级 |
 | widgets | 行绘制、展开三角命中、选中、键盘、改名提交/取消 | `Context::run` + 合成事件 | 毫秒级 |
-| component | 面板装配：点击 → action、双击 → 导航、右键 → 菜单项 | `Context::run` + 断言 `UiOut` | 毫秒级 |
+| component | 面板装配：点击 → action、双击 → 导航、右键 → 菜单项；External Tools 的检测列表/打开方式表 | `Context::run` + 断言 `UiOut` | 毫秒级 |
+| external tools | 打开目标解析（覆盖/嗅探/默认/未知/缺失路径）、设置文件 round-trip 与坏文件、嗅探候选、启动 argv | core 纯函数表 + `tempfile` + 临时可执行文件写 marker | 毫秒–十毫秒级 |
 
 **断言风格**：不测像素。组件层断言「这次点击产生了 `Action::Project(Select { .. })`」，因为这正是 `UiOut` 存在的意义（`frame.rs:194`）。
 
@@ -1228,6 +1594,8 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 | `Library` 子树 | 独立预算（默认 2 万节点），超出不再深入 | 它是产物目录，不吃主扫描预算；截断只在展开时提示 |
 | 面板单帧（全展开 10 万节点） | < 8ms | 只画可见行；可见行缓存按（generation, expanded, filter）失效；过滤 O(n) 单趟 |
 | 搜索输入延迟 | 单帧内完成，无去抖 | 同上；行 id 建树时算好 |
+| 打开方式解析 | 单次 O(类型数 + 检测数) | 纯函数；只在打开/面板绘制时算 |
+| IDE 嗅探（启动 / Detect） | 不占 UI 帧；单次 < 1s（8 个候选的 `--version` + 固定路径 stat） | 工作线程 + 每候选超时 + 结果只存内存（不落盘） |
 | 内存（10 万节点） | < 20MB | `Node` + 路径字符串；相对路径不重复存绝对前缀 |
 
 **怎么量**：5 万 / 20 万节点的耗时用 `#[ignore]` 的一次性脚本（或 `examples/`）在 tempdir 里建好 fixture 后只计扫描时间——建 fixture 比扫它慢一个数量级，**不要放进日常 `cargo test-crate`**。M1 收尾量一次，把实测数字补到本表下面。
@@ -1252,6 +1620,10 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 | 两套实现长期分叉 | 旧 crate 里还在修 project 的 bug | 旧实现冻结；M7 删除。期间**不在 `kairos_editor/src/project*` 改任何东西** |
 | 非 UTF-8 文件名 | 显示成 `?`，操作报错 | 明确限制：显示用 lossy，操作前校验「可表示」，不可表示则给明确错误（不静默） |
 | 范围蔓延到资产导入 | 讨论「自动生成 .meta」「缩略图缓存」 | 属 M5 类型任务且依赖 processor；本计划只做「显示与打开」 |
+| 嗅探在启动时闪控制台/拖慢启动 | Windows 弹黑框、启动卡顿 | 工作线程 + `CREATE_NO_WINDOW` + 候选超时；结果不落盘、面板可「Detect」重测 |
+| 打开方式设置静默丢失/静默回退 | 重启后回默认、配置路径不存在却“成功”打开 | 原子写 + 写失败进面板错误；缺失路径黄字且打开报错，不静默回退 |
+| 打开命令拼接引号注入 | 路径/参数含空格、引号 | argv 直传 + `$FILE` 按 argv 元素替换，绝不拼 shell 字符串 |
+| 项目内容注入可执行路径 | 打开项目就触发外部进程 | 设置只从 `Library/`（不提交、不进资产源）读；打开必须由用户手势触发 |
 
 ---
 
@@ -1277,6 +1649,15 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 
 早稿里的 D5a（文件夹是否确认）、D10（忽略规则放哪）、D11（引用维护是否并入）已全部落定，分别落在 **M3**（默认确认）、**M1**（`.kairosignore`）、**M7**（身份与引用）。这里不再重复，避免与本表分叉。
 
+### 7.2 2026-11-25 新需求（用户已拍板）
+
+| # | 决定 | 一句话理由 | 落在哪 |
+|---|---|---|---|
+| **D14** | **External Tools 面板**：`Edit ▸ External Tools`；按文件族记录/设置打开应用；嗅探结果是默认、用户设置优先、未知类型默认系统「打开方式」；设置存 `Library/external_tools.toml`、Browse 用 `native-dialog`、系统选择器先做 Windows | 当前打开方式由 OS 关联 + 硬编码嗅探决定，不可见不可改；用户明确要求一个 Panel | §2.14、M5a/M5b；**P1–P3 已拍板（§2.14.9）** |
+| **D15** | **Rust 脚本图标**：`.rs` 的类型图标从 Unity C# 页（`#`）改为 Rust 页（8.3° 斜体 `R` + Unity 绿，dark `#276A2A` / light `#2E7D32`），保留页面外形 | 引擎主语言是 Rust，C# 图标语义错误；用户明确要求换 R，并两次反馈：红色不协调 → 改 Unity 绿，R 过大 → 缩小并斜体化 | §2.15；**已交付** |
+
+> D14 的细节（设置位置、Browse 方式、系统选择器平台范围）已拍板：`Library/external_tools.toml`、`native-dialog`、先做 Windows（§2.14.9）。D15 已交付，并按 2026-11-25 反馈把橙色改为 Unity 绿（§2.15）。
+
 ---
 
 ## 8. 与原 5 步的映射
@@ -1288,10 +1669,12 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 | 2 面板 hierarchy + 导航 | **M2** | 增加 TreeView widget 这个前置；按 D1 一次做成左右两栏（右栏先占位） |
 | 3 持久化 | **M4** | 存编辑器布局（dock 树/焦点/浮动窗口/Project 分栏）；面板会话态不落盘（D13）；皮肤已有；GUID 注册表删除 |
 | 4 引入类型资源 | **M5**（seam + 每类一个任务） | 增加 `FileTypeRegistry` 这个前置 |
+| （新增 2026-11-25）External Tools 面板 | **M5b** | 打开方式从隐式变可配置：`Edit ▸ External Tools`；嗅探默认 + 用户覆盖 + 系统选择器兜底；设置存 `Library/`（P1 已拍板） |
+| （新增 2026-11-25）Rust 脚本图标 | **M3 后续修正 / §2.15** | `script.png` 从 C# `#` 换成 Rust `R`；不改代码、不新增类型 |
 | 5 搜索 | **M6** | 名字/路径 + `t:` 类型过滤语法；内容搜索单独立项 |
 | （你的后端清单里的 CRUD） | **M3** | 你列了它但 5 步没排；它必须早于类型 |
 | （你强调的引用维护） | **M7** | 资产身份进 `.meta` + 材质引用 `AssetRef` + 派生索引（D11 并入） |
-| — | **M8** | 冻结旧实现（D8：不删）+ 两份 ADR + 文档 |
+| — | **M8** | 冻结旧实现（D8：不删）+ 三份 ADR + 文档 |
 
 ---
 
@@ -1308,6 +1691,11 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 - **工程清单 / 多工程切换 / 打开工程对话框**（D9 选 a）；
 - **撤销/重做**：删除走回收站 + 确认覆盖 v1；
 - **文件变更的增量 diff**（watcher 一律整树重扫，靠 generation 保证正确）；
+- **Unity External Tools 的其它区块**：版本控制 diff/merge 工具、生成工程文件（`.csproj` / IDE 集成）、参数模板/行号跳转；本需求只做「按类型的打开应用」；
+- **系统文件关联的读写**：面板不写 Windows 注册表、不改 OS 默认应用；`System default` 只调用 OS 关联，`SystemPicker` 只调用系统「打开方式」；
+- **用户级（跨工程）设置目录**：v1 按项目存 `Library/`（P1）；升级为用户级是后续独立需求；
+- **按文件内容/语言嗅探打开方式**：v1 只按扩展名家族；多扩展名家族（audio wav/ogg）共享一行；
+- **内置编辑器/预览**：`OpenDefault::Internal` 的落地归 M5 的每类任务与 Inspector/视口迁移，不在本需求；
 - **旧 `kairos_editor` 其他面板的迁移**。
 
 ---
