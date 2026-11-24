@@ -5,6 +5,13 @@
 //! file in `Panel::init`. Because the type derives `StyleRow`, the panel can
 //! also edit *itself* in its own field editor — the same file, the same tokens.
 //!
+//! This is the *panel*: the page list column, the page heading and its file
+//! line, the rules, the padding and the Reset button. The rows themselves are
+//! not the panel's — a form page is drawn by the widget kit's `FormRows`, whose
+//! row grid is the shared `Form` skin (`EditorFormStyle`), and the value boxes
+//! are the shared `Field` skin. A second form (an object inspector) must not
+//! inherit this panel's geometry by accident.
+//!
 //! The palette deliberately repeats the About panel's: both are dialog-shaped
 //! panels on the same dark chrome, and the component convention is one skin per
 //! panel. When a second dialog panel appears, the shared tokens move into a
@@ -20,8 +27,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::style_row::StyleRow;
 
-/// Appearance tokens for the Preferences panel: palette, type sizes, the
-/// two-column geometry and the three button shapes it paints.
+/// Appearance tokens for the Preferences panel: panel body, page-list column,
+/// heading, rules, padding and the dialog button.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleRow)]
 pub struct PreferencesPanelStyle {
     /// Panel body, behind everything.
@@ -37,18 +44,8 @@ pub struct PreferencesPanelStyle {
     pub title: Color,
     /// The RON file the page writes to, under the heading.
     pub path: Color,
-    /// Foldout header text (a group of tokens, named "Icons").
-    pub group: Color,
-    /// Foldout header band. A band, not a label: the header is clickable.
-    pub group_background: Color,
-    pub group_hover: Color,
     /// Rules between the heading, the rows and the footer.
     pub divider: Color,
-
-    /// The two field-row greys, alternating row by row. Unity's inspector
-    /// stripes its property list to keep long pages readable.
-    pub row_odd: Color,
-    pub row_even: Color,
 
     /// Selected outline, active slider fill, and the page-list stripe.
     pub accent: Color,
@@ -58,7 +55,6 @@ pub struct PreferencesPanelStyle {
 
     pub title_size: f32,
     pub body_size: f32,
-    pub group_size: f32,
 
     /// Inner margin of the panel body.
     pub padding: f32,
@@ -71,24 +67,6 @@ pub struct PreferencesPanelStyle {
     pub column_gap: f32,
     /// Space above and below the rule under a page heading.
     pub section_spacing: f32,
-    /// Space between rows. The default is zero: rows are contiguous bands.
-    pub row_gap: f32,
-    /// Ideal width of a row's label column; the value box starts after it.
-    pub label_width: f32,
-    /// Minimum width left for the value box; below it the label column
-    /// shrinks instead of the box clipping off the right edge.
-    pub field_width: f32,
-    /// Gap between the label column and the value box.
-    pub label_gap: f32,
-    /// Height of one field row.
-    pub row_height: f32,
-
-    /// Height of a foldout header row.
-    pub group_height: f32,
-    /// Indent of one nesting level in the token tree.
-    pub group_indent: f32,
-    /// Left and right content inset inside a row band.
-    pub row_inset: f32,
     /// Right-hand gutter kept clear of the page scroll bar.
     pub scrollbar_gap: f32,
 
@@ -96,7 +74,7 @@ pub struct PreferencesPanelStyle {
     pub footer_gap: f32,
     pub footer_height: f32,
 
-    /// Dialog buttons (Close): filled and outlined, so they do not read as
+    /// Dialog buttons (Reset): filled and outlined, so they do not read as
     /// labels on the panel background.
     pub button_fill: Color,
     pub button_hover: Color,
@@ -128,13 +106,7 @@ impl Style for PreferencesPanelStyle {
 
             title: Color::from_srgb8([0xEE, 0xEE, 0xEE, 255]),
             path: Color::from_srgb8([0x8C, 0x8C, 0x8C, 255]),
-            group: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
-            group_background: Color::from_srgb8([0x3C, 0x3C, 0x3C, 255]),
-            group_hover: Color::from_srgb8([0x46, 0x46, 0x46, 255]),
             divider: Color::from_srgb8([0x2A, 0x2A, 0x2A, 255]),
-
-            row_odd: Color::from_srgb8([0x38, 0x38, 0x38, 255]),
-            row_even: Color::from_srgb8([0x33, 0x33, 0x33, 255]),
 
             accent: Color::from_srgb8([0x4A, 0x90, 0xD9, 255]),
 
@@ -143,7 +115,6 @@ impl Style for PreferencesPanelStyle {
 
             title_size: 15.0,
             body_size: 12.0,
-            group_size: 12.0,
 
             padding: 14.0,
             nav_width: 118.0,
@@ -152,15 +123,6 @@ impl Style for PreferencesPanelStyle {
             nav_shrink: 4.0,
             column_gap: 14.0,
             section_spacing: 8.0,
-            row_gap: 0.0,
-            label_width: 170.0,
-            field_width: 120.0,
-            label_gap: 8.0,
-            row_height: 20.0,
-
-            group_height: 20.0,
-            group_indent: 16.0,
-            row_inset: 8.0,
             scrollbar_gap: 8.0,
 
             footer_gap: 10.0,
@@ -188,13 +150,7 @@ impl Style for PreferencesPanelStyle {
 
             title: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
             path: Color::from_srgb8([0x6E, 0x6E, 0x6E, 255]),
-            group: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
-            group_background: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
-            group_hover: Color::from_srgb8([0xD2, 0xD2, 0xD2, 255]),
             divider: Color::from_srgb8([0xC4, 0xC4, 0xC4, 255]),
-
-            row_odd: Color::from_srgb8([0xF6, 0xF6, 0xF6, 255]),
-            row_even: Color::from_srgb8([0xED, 0xED, 0xED, 255]),
 
             accent: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
 
@@ -238,15 +194,6 @@ impl PreferencesPanelStyle {
             .padding(Vec2::new(8.0, 0.0))
             .height(self.nav_row_height)
     }
-
-    /// The band behind a field row: two greys, alternating row by row.
-    pub fn row_fill(&self, row: usize) -> Color {
-        if row.is_multiple_of(2) {
-            self.row_odd
-        } else {
-            self.row_even
-        }
-    }
 }
 
 #[cfg(test)]
@@ -271,18 +218,6 @@ mod tests {
         assert_eq!(nav.fill, egui::Color32::TRANSPARENT);
         assert_eq!(nav.hover_fill, style.nav_hover.to_egui());
         assert_eq!(nav.active_fill, style.nav_selected.to_egui());
-    }
-
-    /// The property list is a Unity-style Zebra: two greys, one per row, and a
-    /// blue outline only once the field is selected.
-    #[test]
-    fn field_rows_alternate_and_selected_values_get_the_accent_edge() {
-        let style = PreferencesPanelStyle::dark();
-
-        assert_eq!(style.row_fill(0), style.row_odd);
-        assert_eq!(style.row_fill(1), style.row_even);
-        assert_eq!(style.row_fill(2), style.row_odd);
-        assert_ne!(style.row_odd, style.row_even);
     }
 
     /// The checked-in reference skin and the code defaults are the same skin.

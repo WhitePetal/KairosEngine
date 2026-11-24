@@ -2,9 +2,9 @@
 //! not by a panel.
 //!
 //! A panel owns its skin and loads it in [`Panel::init`](crate::Panel::init).
-//! The toolbar is app chrome; the color picker, the value fields, the
-//! reorderable list and the modal dialog are widgets; the font list is a global
-//! resource. None has a per-instance lifecycle to hang a skin on.
+//! The toolbar is app chrome; the color picker, the value fields, the form rows,
+//! the reorderable list and the modal dialog are widgets; the font list is a
+//! global resource. None has a per-instance lifecycle to hang a skin on.
 //! They declare themselves with
 //! `#[SharedStyle(...)]` next to `#[derive(StyleRow)]`; the derive emits the
 //! id constant and submits a [`SharedStyleDef`]. The app collects the
@@ -45,6 +45,7 @@ mod registry;
 
 pub mod color_picker;
 pub mod field;
+pub mod form;
 pub mod list;
 
 pub use crate::toolbar::style::TOOLBAR;
@@ -52,6 +53,7 @@ pub use catalog::{SharedStyleDef, StyleCatalog};
 pub use color_picker::{COLOR_PICKER, ColorPickerSkin};
 pub use field::{EDITOR_FIELD, EditorFieldStyle};
 pub use fonts::{EditorFontPriority, EditorFonts, FONTS};
+pub use form::{FORM, EditorFormStyle};
 pub use list::{LIST, ListStyle};
 pub use modal::{MODAL, ModalSkin};
 pub use registry::SharedStyles;

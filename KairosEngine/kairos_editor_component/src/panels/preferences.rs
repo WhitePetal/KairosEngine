@@ -29,9 +29,10 @@
 //! A style walks itself into a row sink, so the page has no field tree of its
 //! own: a nested RON struct is a full-width foldout band with a triangle, leaf
 //! rows alternate between two greys, names are left-aligned, and a selected
-//! field gets a blue label and a blue value outline. The row widget
-//! (`crate::form::FormRows`) owns that layout, the fold/selection state and the
-//! edit buffers.
+//! field gets a blue label and a blue value outline. The row widget is the
+//! widget kit's `kairos_editor_widgets::form::FormRows`; it owns that layout, the
+//! fold/selection state and the edit buffers, and draws it from the shared
+//! `Form` skin — not from this panel's style.
 //!
 //! # Live apply and save
 //!
@@ -52,15 +53,16 @@ use egui::{
     vec2,
 };
 use kairos_editor_core::style::Skin;
-use kairos_editor_core::{Action, PanelId, SharedStyleAction, SharedStyleId, StyleAction};
+use kairos_editor_core::{Action, SharedStyleAction, StyleAction};
 use kairos_editor_widgets::button::Button;
 use kairos_editor_widgets::color_picker::ColorPickerStyle;
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::field::FieldStyle;
+use kairos_editor_widgets::form::{FormRows, FormState, FormStyle};
 use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::text::TextStyle;
 
-use crate::form::{FormRows, FormState};
+use crate::PageSkin;
 use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
 use crate::shared_style::ListStyle;
@@ -69,55 +71,12 @@ use crate::style_row::StylePage;
 
 use self::style::PreferencesPanelStyle;
 
-/// One page in the Preferences editor: a live panel's skin or a shared style.
-///
-/// Panel skins stay keyed by PanelId; shared styles have their own stable id
-/// and their own action path. A local enum keeps the two lists in one nav
-/// without teaching core about a second kind of skin.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum PageKey {
-    Panel(PanelId),
-    Shared(SharedStyleId),
-}
 
-impl From<PanelId> for PageKey {
-    fn from(panel: PanelId) -> Self {
-        Self::Panel(panel)
-    }
-}
-
-impl From<SharedStyleId> for PageKey {
-    fn from(style: SharedStyleId) -> Self {
-        Self::Shared(style)
-    }
-}
-
-impl From<SkinId> for PageKey {
-    fn from(id: SkinId) -> Self {
-        match id {
-            SkinId::Panel(panel) => Self::Panel(panel),
-            SkinId::Shared(style) => Self::Shared(style),
-        }
-    }
-}
-
-/// One page's borrowed metadata and value for this pass.
-struct PageInfo<'a> {
-    key: PageKey,
-    title: &'a str,
-    file: &'static str,
-    /// The app's snapshot of the owner's style. The page copies it only when
-    /// the selection changes; from then on the page draws and edits its own
-    /// copy and hands it back whole when it changed. The snapshot is kept in
-    /// step with the owner by the app, so a switch back reads the edited value.
-    page: &'a dyn StylePage,
-}
-
-fn nav_id(page: impl Into<PageKey>) -> Id {
+fn nav_id(page: impl Into<SkinId>) -> Id {
     Id::new(("kairos.preferences.nav", page.into()))
 }
 
-fn reset_id(page: impl Into<PageKey>) -> Id {
+fn reset_id(page: impl Into<SkinId>) -> Id {
     Id::new(("kairos.preferences.reset", page.into()))
 }
 
@@ -126,7 +85,7 @@ fn reset_id(page: impl Into<PageKey>) -> Id {
 #[derive(Default)]
 struct PageState {
     /// The page the copy belongs to.
-    key: Option<PageKey>,
+    key: Option<SkinId>,
     title: String,
     file: &'static str,
     /// The typed page this page draws: the owner's style, copied, edited here
@@ -147,8 +106,8 @@ impl PageState {
     /// Show the selected page's copy, committing a pending edit on the page
     /// being left. The copy is re-read on a page change, or after a reset
     /// marked it stale; ordinary edits stay in the local copy.
-    fn select(&mut self, pages: &[PageInfo<'_>], selected: Option<PageKey>, out: &mut UiOut) {
-        let page = selected.and_then(|key| pages.iter().find(|page| page.key == key));
+    fn select(&mut self, pages: &[&PageSkin], selected: Option<SkinId>, out: &mut UiOut) {
+        let page = selected.and_then(|key| pages.iter().find(|page| page.id == key));
 
         if self.key == selected {
             let Some(page) = page else {
@@ -183,7 +142,7 @@ impl PageState {
     }
 
     /// Take a fresh copy of the owner's style and its heading.
-    fn take(&mut self, page: &PageInfo<'_>) {
+    fn take(&mut self, page: &PageSkin) {
         self.page = Some(page.page.clone_box());
         self.title = page.title.to_owned();
         self.file = page.file;
@@ -213,10 +172,10 @@ impl PageState {
             out.push(replace_action(key, page));
         }
         match self.key {
-            Some(PageKey::Panel(panel)) => {
+            Some(SkinId::Panel(panel)) => {
                 out.push(Action::Style(StyleAction::Commit { panel }));
             }
-            Some(PageKey::Shared(style)) => {
+            Some(SkinId::Shared(style)) => {
                 out.push(Action::SharedStyle(SharedStyleAction::Commit { style }));
             }
             None => {}
@@ -229,8 +188,8 @@ impl PageState {
 pub struct PreferencesPanel {
     style: PreferencesPanelStyle,
     /// Page list selection; falls back to the first available page.
-    selected: Option<PageKey>,
-    page: PageState,
+    selected: Option<SkinId>,
+    page_state: PageState,
 }
 
 impl PreferencesPanel {
@@ -239,7 +198,7 @@ impl PreferencesPanel {
         Self {
             style: PreferencesPanelStyle::default(),
             selected: None,
-            page: PageState::default(),
+            page_state: PageState::default(),
         }
     }
 }
@@ -278,7 +237,7 @@ impl Panel for PreferencesPanel {
         let Self {
             style,
             selected,
-            page,
+            page_state,
         } = self;
 
         // The dock builds a body Ui from the context style, so the app's
@@ -295,23 +254,18 @@ impl Panel for PreferencesPanel {
 
         // Panel pages first (the existing editor order), then the shared
         // styles, which are always present even when no panel is open.
-        let pages: Vec<PageInfo<'_>> = frame
-            .pages
+        let pages: Vec<&PageSkin> = frame
+            .page_skins
             .iter()
-            .map(|page| PageInfo {
-                key: PageKey::from(page.id),
-                title: &page.title,
-                file: page.file,
-                page: &*page.page,
-            })
             .collect();
 
         let picker_style = frame.color_picker_style();
         let field_style = frame.field_style();
         let list_style = frame.list_style();
+        let form_style = frame.form_style().tokens();
         let mut current = match *selected {
-            Some(page) if pages.iter().any(|entry| entry.key == page) => Some(page),
-            _ => pages.first().map(|page| page.key),
+            Some(page) if pages.iter().any(|entry| entry.id == page) => Some(page),
+            _ => pages.first().map(|page| page.id),
         };
 
         egui::Frame::NONE
@@ -376,7 +330,7 @@ impl Panel for PreferencesPanel {
                     },
                 );
 
-                page.select(&pages, current, out);
+                page_state.select(&pages, current, out);
 
                 ui.scope_builder(UiBuilder::new().max_rect(page_rect), |ui| {
                     page_body(
@@ -384,13 +338,14 @@ impl Panel for PreferencesPanel {
                         style,
                         &field_style,
                         list_style,
+                        &form_style,
                         &picker_style,
-                        page,
+                        page_state,
                         out,
                     );
                 });
 
-                footer(ui, style, footer_rect, page, out);
+                footer(ui, style, footer_rect, page_state, out);
             });
 
         // A click ends the interaction: one write per gesture, however many
@@ -400,8 +355,8 @@ impl Panel for PreferencesPanel {
         let released = ui.input(|input| input.pointer.any_released());
         let keyboard_end =
             ui.input(|input| input.key_pressed(Key::Enter) || input.key_pressed(Key::Escape));
-        if page.form.dirty && (released || keyboard_end) {
-            page.commit(out);
+        if page_state.form.dirty && (released || keyboard_end) {
+            page_state.commit(out);
         }
 
         *selected = current;
@@ -416,7 +371,7 @@ impl Panel for PreferencesPanel {
     /// Closing with an edit still pending (a value typed but never released)
     /// saves it before the panel goes away.
     fn on_close(&mut self, _frame: &Frame, out: &mut UiOut) -> bool {
-        self.page.commit(out);
+        self.page_state.commit(out);
         true
     }
 }
@@ -432,14 +387,14 @@ impl Panel for PreferencesPanel {
 fn page_list(
     ui: &mut Ui,
     style: &PreferencesPanelStyle,
-    pages: &[PageInfo<'_>],
-    selected: Option<PageKey>,
-) -> Option<PageKey> {
+    pages: &[&PageSkin],
+    selected: Option<SkinId>,
+) -> Option<SkinId> {
     let mut chosen = selected;
     let nav = style.nav_style();
 
     egui::ScrollArea::vertical()
-        .id_salt("kairos-preferences-pages")
+        .id_salt("kairos-preferences-pages-list")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
@@ -454,12 +409,12 @@ fn page_list(
                     );
                 }
 
-                let is_current = Some(page.key) == selected;
+                let is_current = Some(page.id) == selected;
                 let response = ui.add(
-                    Button::new(page.title, &nav)
+                    Button::new(&page.title, &nav)
                         .width(width)
                         .selected(is_current)
-                        .id(nav_id(page.key)),
+                        .id(nav_id(page.id)),
                 );
                 if is_current {
                     // A 2 px accent stripe reads as "this page" even when the pointer
@@ -474,7 +429,7 @@ fn page_list(
                     );
                 }
                 if response.clicked() {
-                    chosen = Some(page.key);
+                    chosen = Some(page.id);
                 }
             }
         });
@@ -489,13 +444,14 @@ fn page_body(
     style: &PreferencesPanelStyle,
     field_style: &FieldStyle,
     list_style: &ListStyle,
+    form_style: &FormStyle,
     picker_style: &ColorPickerStyle,
-    page: &mut PageState,
+    page_state: &mut PageState,
     out: &mut UiOut,
 ) {
-    let page_key = page.key;
+    let page_key = page_state.key;
     egui::ScrollArea::vertical()
-        .id_salt("kairos-preferences-page")
+        .id_salt("kairos-preferences-page-body")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
@@ -510,37 +466,45 @@ fn page_body(
 
             TextStyle::sized(style.title.to_egui(), style.title_size)
                 .strong()
-                .label(ui, page.title.clone());
-            ui.add_space(2.0);
-            TextStyle::sized(style.path.to_egui(), style.group_size).label(
+                .label(ui, page_state.title.clone());
+            ui.add_space(style.section_spacing * 0.3);
+            TextStyle::sized(style.path.to_egui(), style.body_size).label(
                 ui,
                 format!(
                     "Preferences/Styles/{} - edits apply live, saved on release",
-                    page.file
+                    page_state.file
                 ),
             );
             ui.add_space(style.section_spacing);
             ui.add(Divider::horizontal().color(style.divider.to_egui()));
-            ui.add_space(style.section_spacing);
 
-            typed_rows(ui, style, field_style, list_style, picker_style, page, out);
+            typed_rows(
+                ui,
+                style,
+                field_style,
+                list_style,
+                form_style,
+                picker_style,
+                page_state,
+                out,
+            );
         });
 }
 
 /// The widget id seed of one typed page: every row id derives from it, so focus
 /// and the selection survive page changes.
-fn form_seed(key: PageKey) -> Id {
+fn form_seed(key: SkinId) -> Id {
     Id::new(("kairos.preferences.form", key))
 }
 
 /// A whole-style write for the page's owner. The page drew its copy, so the
 /// new value goes back in one piece; no path and no per-token value.
-fn replace_action(key: PageKey, page: &dyn StylePage) -> Action {
+fn replace_action(key: SkinId, page: &dyn StylePage) -> Action {
     let blob: Box<dyn kairos_editor_core::style::StyleBlob> = page.clone_box();
     let skin = Skin::from_blob(blob);
     match key {
-        PageKey::Panel(panel) => Action::Style(StyleAction::Replace { panel, skin }),
-        PageKey::Shared(style) => Action::SharedStyle(SharedStyleAction::Replace { style, skin }),
+        SkinId::Panel(panel) => Action::Style(StyleAction::Replace { panel, skin }),
+        SkinId::Shared(style) => Action::SharedStyle(SharedStyleAction::Replace { style, skin }),
     }
 }
 
@@ -552,15 +516,20 @@ fn typed_rows(
     style: &PreferencesPanelStyle,
     field_style: &FieldStyle,
     list_style: &ListStyle,
+    form_style: &FormStyle,
     picker_style: &ColorPickerStyle,
     page: &mut PageState,
     out: &mut UiOut,
 ) {
-    let key = page.key.expect("a typed page has a key");
+    let Some(key) = page.key else {
+        return;
+    };
     let row_width = (ui.available_width() - style.scrollbar_gap).max(1.0);
     let chrome = list_style.tokens(field_style);
     let PageState {
-        page: typed, form, ..
+        page: typed,
+        form,
+        ..
     } = page;
     let Some(typed) = typed.as_mut() else {
         return;
@@ -574,7 +543,7 @@ fn typed_rows(
         let mut rows = FormRows::new(
             ui,
             form_seed(key),
-            style,
+            form_style,
             field_style,
             &chrome,
             picker_style,
@@ -589,7 +558,7 @@ fn typed_rows(
     }
 
     if changed {
-        out.push(replace_action(key, &**typed));
+        out.push(replace_action(key, typed.as_ref()));
     }
     page.typed_changed = changed;
     // A click that no row, group or list consumed means "elsewhere on the
@@ -631,10 +600,10 @@ fn footer(
             {
                 page.reset();
                 match key {
-                    PageKey::Panel(panel) => {
+                    SkinId::Panel(panel) => {
                         out.push(Action::Style(StyleAction::Reset { panel }));
                     }
-                    PageKey::Shared(shared) => {
+                    SkinId::Shared(shared) => {
                         out.push(Action::SharedStyle(SharedStyleAction::Reset {
                             style: shared,
                         }));
@@ -652,7 +621,7 @@ mod tests {
     use crate::panels;
     use egui::{Color32 as EguiColor32, Key, Modifiers, Stroke, vec2};
     use kairos_color::Color;
-    use kairos_editor_core::EditorState;
+    use kairos_editor_core::{EditorState, PanelId};
     use kairos_editor_widgets::color_picker::{
         ColorProperty, color_hex_id, color_mode_id, color_swatch_id,
     };
@@ -660,7 +629,7 @@ mod tests {
     use kairos_editor_widgets::style::Style;
 
     use crate::shared_style::{
-        COLOR_PICKER, ColorPickerSkin, FONTS, LIST, ListStyle, SharedStyles,
+        COLOR_PICKER, ColorPickerSkin, EditorFormStyle, FONTS, FORM, LIST, ListStyle, SharedStyles,
     };
     use crate::skin::{PageSkin, SkinId};
     use crate::style_row::StyleRow;
@@ -944,7 +913,7 @@ mod tests {
         /// The copy the selected page is drawing.
         fn page_style<T: 'static>(&self) -> &T {
             self.panel
-                .page
+                .page_state
                 .page
                 .as_deref()
                 .expect("a page is selected")
@@ -968,39 +937,39 @@ mod tests {
     // the same id the widget used.
     // ---------------------------------------------------------------------
 
-    fn seed(key: impl Into<PageKey>) -> Id {
+    fn seed(key: impl Into<SkinId>) -> Id {
         form_seed(key.into())
     }
 
-    fn field(key: impl Into<PageKey>, path: &str) -> Id {
+    fn field(key: impl Into<SkinId>, path: &str) -> Id {
         seed(key).with(("field", path))
     }
 
-    fn label(key: impl Into<PageKey>, path: &str) -> Id {
+    fn label(key: impl Into<SkinId>, path: &str) -> Id {
         seed(key).with(("label", path))
     }
 
-    fn group(key: impl Into<PageKey>, path: &str) -> Id {
+    fn group(key: impl Into<SkinId>, path: &str) -> Id {
         seed(key).with(("group", path))
     }
 
-    fn toggle(key: impl Into<PageKey>, path: &str) -> Id {
+    fn toggle(key: impl Into<SkinId>, path: &str) -> Id {
         seed(key).with(("toggle", path))
     }
 
-    fn list_add(key: impl Into<PageKey>, path: &str) -> Id {
+    fn list_add(key: impl Into<SkinId>, path: &str) -> Id {
         seed(key).with(("list.add", path))
     }
 
-    fn list_remove(key: impl Into<PageKey>, path: &str) -> Id {
+    fn list_remove(key: impl Into<SkinId>, path: &str) -> Id {
         seed(key).with(("list.remove", path))
     }
 
-    fn list_handle(key: impl Into<PageKey>, path: &str) -> Id {
+    fn list_handle(key: impl Into<SkinId>, path: &str) -> Id {
         seed(key).with(("list.handle", path))
     }
 
-    fn list_chrome(key: impl Into<PageKey>, path: &str) -> Id {
+    fn list_chrome(key: impl Into<SkinId>, path: &str) -> Id {
         seed(key).with(("list", path))
     }
 
@@ -1365,7 +1334,7 @@ mod tests {
     fn switching_pages_hands_over_and_commits_the_edit() {
         let mut harness = Harness::new(skins());
         harness.frame(Vec::new());
-        harness.panel.page.form.dirty = true;
+        harness.panel.page_state.form.dirty = true;
 
         let (_, actions) = harness.click(nav_id(panels::PROFILER));
 
@@ -1387,14 +1356,14 @@ mod tests {
                 panel: panels::CONSOLE,
             })
         );
-        assert!(!harness.panel.page.form.dirty);
+        assert!(!harness.panel.page_state.form.dirty);
     }
 
     #[test]
     fn closing_with_a_pending_edit_saves_it() {
         let mut harness = Harness::new(skins());
         harness.frame(Vec::new());
-        harness.panel.page.form.dirty = true;
+        harness.panel.page_state.form.dirty = true;
 
         let state = EditorState::new();
         let host = NoHost;
@@ -1407,7 +1376,7 @@ mod tests {
         );
         assert_eq!(out.len(), 2, "hand the value over, then write: {out:?}");
         assert!(
-            !harness.panel.page.form.dirty,
+            !harness.panel.page_state.form.dirty,
             "the same edit is not committed twice"
         );
     }
@@ -1418,7 +1387,7 @@ mod tests {
     fn the_footer_reset_button_asks_the_owner_for_code_defaults() {
         let mut harness = Harness::new(skins());
         harness.frame(Vec::new());
-        harness.panel.page.form.dirty = true;
+        harness.panel.page_state.form.dirty = true;
 
         let (_, actions) = harness.click(reset_id(panels::CONSOLE));
 
@@ -1429,11 +1398,11 @@ mod tests {
             })]
         );
         assert!(
-            harness.panel.page.stale,
+            harness.panel.page_state.stale,
             "the next pass re-reads the owner's value"
         );
         assert!(
-            !harness.panel.page.form.dirty,
+            !harness.panel.page_state.form.dirty,
             "a reset discards the pending edit instead of committing it"
         );
     }
@@ -1542,7 +1511,7 @@ mod tests {
         let mut harness = Harness::with_size(Vec::new(), vec2(700.0, 620.0));
 
         let _ = harness.frame(Vec::new());
-        let _ = harness.click(nav_id(PageKey::Shared(LIST)));
+        let _ = harness.click(nav_id(SkinId::Shared(LIST)));
         let (output, _) = harness.frame(Vec::new());
         let text = painted_text(&output);
         assert!(text.contains("List"), "{text}");
@@ -1564,7 +1533,7 @@ mod tests {
         )];
 
         let _ = harness.frame(Vec::new());
-        let _ = harness.click(nav_id(PageKey::Panel(panel)));
+        let _ = harness.click(nav_id(SkinId::Panel(panel)));
         let (output, _) = harness.frame(Vec::new());
         let text = painted_text(&output);
         assert!(text.contains("Proportional"), "{text}");
@@ -1577,7 +1546,7 @@ mod tests {
     #[test]
     fn a_shared_commit_hands_the_value_over_and_asks_for_the_file() {
         let mut page = PageState {
-            key: Some(PageKey::Shared(COLOR_PICKER)),
+            key: Some(SkinId::Shared(COLOR_PICKER)),
             page: Some(Box::new(ColorPickerSkin::dark())),
             ..PageState::default()
         };
@@ -1694,7 +1663,7 @@ mod tests {
             "the page keeps the picked colour"
         );
         assert_eq!(
-            harness.panel.page.form.selected.as_deref(),
+            harness.panel.page_state.form.selected.as_deref(),
             Some("background"),
             "working inside the popup keeps the row selected"
         );
@@ -1792,7 +1761,7 @@ mod tests {
         harness.frame(Vec::new());
 
         harness.click(nav_id(FONTS));
-        assert_eq!(harness.panel.selected, Some(PageKey::Shared(FONTS)));
+        assert_eq!(harness.panel.selected, Some(SkinId::Shared(FONTS)));
     }
 
     // ---------------------------------------------------------------------
@@ -1801,18 +1770,22 @@ mod tests {
 
     #[test]
     fn field_rows_alternate_between_two_greys() {
-        let style = PreferencesPanelStyle::dark();
         let mut harness = Harness::new(skins());
+        let form = harness
+            .shared
+            .form_style()
+            .expect("the form skin is registered")
+            .tokens();
 
         let (output, _) = harness.frame(Vec::new());
 
-        let odd = style.row_odd.to_egui();
-        let even = style.row_even.to_egui();
+        let odd = form.row_odd;
+        let even = form.row_even;
         let mut bands: Vec<PaintedRect> = painted_rects(&output)
             .into_iter()
             .filter(|rect| {
                 (rect.fill == odd || rect.fill == even)
-                    && approx(rect.rect.height(), style.row_height)
+                    && approx(rect.rect.height(), form.row_height)
             })
             .collect();
         bands.sort_by(|a, b| a.rect.top().total_cmp(&b.rect.top()));
@@ -1823,10 +1796,38 @@ mod tests {
         assert_eq!(actual, expected, "the five leaf rows stripe odd/even");
     }
 
+    /// The form rows draw from the shared `Form` skin, not from the panel: a
+    /// live replacement restripes them on the next pass, the same way every
+    /// other shared style reaches its widget.
+    #[test]
+    fn the_form_rows_draw_from_the_shared_skin() {
+        let mut harness = Harness::new(skins());
+        harness.frame(Vec::new());
+
+        let mut skin = EditorFormStyle::dark();
+        skin.row_odd = Color::from_srgb8([1, 2, 3, 255]);
+        assert!(
+            harness.shared.replace(FORM, Box::new(skin.clone())),
+            "the form skin is registered"
+        );
+
+        let (output, _) = harness.frame(Vec::new());
+        assert!(
+            painted_rects(&output)
+                .iter()
+                .any(|painted| painted.fill == skin.row_odd.to_egui()),
+            "the edited form skin is what the rows paint"
+        );
+    }
+
     #[test]
     fn labels_are_left_aligned_and_indented_by_group_depth() {
-        let style = PreferencesPanelStyle::dark();
         let mut harness = Harness::new(skins());
+        let form = harness
+            .shared
+            .form_style()
+            .expect("the form skin is registered")
+            .tokens();
 
         let (output, _) = harness.frame(Vec::new());
         let runs = painted_texts(&output);
@@ -1842,7 +1843,7 @@ mod tests {
             enabled.rect
         );
         assert!(
-            approx(warning.rect.left(), height.rect.left() + style.group_indent),
+            approx(warning.rect.left(), height.rect.left() + form.group_indent),
             "a group's leaf is indented one level: Warning {:?} vs Height {:?}",
             warning.rect,
             height.rect
@@ -1850,7 +1851,7 @@ mod tests {
         assert!(
             approx(
                 tint.rect.left(),
-                height.rect.left() + 2.0 * style.group_indent
+                height.rect.left() + 2.0 * form.group_indent
             ),
             "a nested group's leaf is indented two levels: Tint {:?}",
             tint.rect
@@ -1889,7 +1890,7 @@ mod tests {
             "folding is view state, not an action: {actions:?}"
         );
         assert!(
-            harness.panel.page.form.collapsed.contains("icons"),
+            harness.panel.page_state.form.collapsed.contains("icons"),
             "the fold is remembered across passes"
         );
 
@@ -1920,7 +1921,7 @@ mod tests {
 
         let (_, actions) = harness.click(label(panels::CONSOLE, "height"));
         assert!(actions.is_empty(), "selecting is view state: {actions:?}");
-        assert_eq!(harness.panel.page.form.selected.as_deref(), Some("height"));
+        assert_eq!(harness.panel.page_state.form.selected.as_deref(), Some("height"));
 
         // A press the rows do not consume clears the highlight.
         let heading = painted_texts(&output)
@@ -1930,7 +1931,7 @@ mod tests {
             .rect;
         harness.click_at(heading.center());
         assert_eq!(
-            harness.panel.page.form.selected, None,
+            harness.panel.page_state.form.selected, None,
             "an outside click drops the selection"
         );
     }
@@ -2126,7 +2127,7 @@ mod tests {
     fn the_list_header_adds_and_removes_entries() {
         let mut harness = fonts_harness();
         open_fonts(&mut harness);
-        let key = PageKey::Shared(FONTS);
+        let key = SkinId::Shared(FONTS);
         let before = font_count(&harness);
 
         let (_, actions) = harness.click(list_add(key, "proportional"));
@@ -2168,7 +2169,7 @@ mod tests {
     fn dragging_the_entry_count_writes_the_new_length() {
         let mut harness = fonts_harness();
         open_fonts(&mut harness);
-        let key = PageKey::Shared(FONTS);
+        let key = SkinId::Shared(FONTS);
         let count = harness.rect_of(field(key, "proportional")).center();
 
         harness.frame(vec![egui::Event::PointerMoved(count)]);
@@ -2197,12 +2198,12 @@ mod tests {
     fn clicking_a_drag_handle_selects_the_element() {
         let mut harness = fonts_harness();
         open_fonts(&mut harness);
-        let key = PageKey::Shared(FONTS);
+        let key = SkinId::Shared(FONTS);
 
         harness.click(list_handle(key, "proportional.0"));
 
         assert_eq!(
-            harness.panel.page.form.selected.as_deref(),
+            harness.panel.page_state.form.selected.as_deref(),
             Some("proportional.0")
         );
     }
@@ -2213,7 +2214,7 @@ mod tests {
     fn dragging_an_element_handle_reorders_on_release() {
         let mut harness = fonts_harness();
         open_fonts(&mut harness);
-        let key = PageKey::Shared(FONTS);
+        let key = SkinId::Shared(FONTS);
         let handle = harness.rect_of(list_handle(key, "proportional.0")).center();
         let target = harness.rect_of(label(key, "proportional.1")).center();
 
@@ -2239,7 +2240,7 @@ mod tests {
     fn dragging_an_element_lifts_its_whole_block() {
         let mut harness = fonts_harness();
         open_fonts(&mut harness);
-        let key = PageKey::Shared(FONTS);
+        let key = SkinId::Shared(FONTS);
         let handle = harness.rect_of(list_handle(key, "proportional.0")).center();
         let first = harness.rect_of(label(key, "proportional.0"));
         let second = harness.rect_of(label(key, "proportional.1"));
@@ -2324,7 +2325,7 @@ mod tests {
     fn the_font_list_has_one_header_and_folds_each_element() {
         let mut harness = fonts_harness();
         open_fonts(&mut harness);
-        let key = PageKey::Shared(FONTS);
+        let key = SkinId::Shared(FONTS);
         let (output, _) = harness.frame(Vec::new());
 
         let runs = painted_texts(&output);
@@ -2370,7 +2371,7 @@ mod tests {
             "folding is view state, not an action: {actions:?}"
         );
         assert!(
-            harness.panel.page.form.collapsed.contains("proportional.0"),
+            harness.panel.page_state.form.collapsed.contains("proportional.0"),
             "the element folds under its own dotted path"
         );
         assert!(
@@ -2444,13 +2445,12 @@ mod tests {
         );
         assert!(approx(radius_value, samples_value));
 
-        let style = PreferencesPanelStyle::dark();
+        let form = EditorFormStyle::dark().tokens();
         let striped = painted_rects(&output)
             .into_iter()
             .filter(|painted| {
-                (painted.fill == style.row_odd.to_egui()
-                    || painted.fill == style.row_even.to_egui())
-                    && approx(painted.rect.height(), style.row_height)
+                (painted.fill == form.row_odd || painted.fill == form.row_even)
+                    && approx(painted.rect.height(), form.row_height)
             })
             .count();
         assert_eq!(
@@ -2506,7 +2506,7 @@ mod tests {
     fn the_font_priority_menu_writes_the_install_order() {
         let mut harness = fonts_harness();
         open_fonts(&mut harness);
-        let key = PageKey::Shared(FONTS);
+        let key = SkinId::Shared(FONTS);
         let priority = field(key, "proportional.1.priority");
         assert_eq!(
             harness
@@ -2546,8 +2546,8 @@ mod tests {
     #[test]
     fn two_lists_on_one_page_keep_separate_chrome_state() {
         assert_ne!(
-            list_chrome(PageKey::Shared(FONTS), "proportional"),
-            list_chrome(PageKey::Shared(FONTS), "monospace")
+            list_chrome(SkinId::Shared(FONTS), "proportional"),
+            list_chrome(SkinId::Shared(FONTS), "monospace")
         );
     }
 }

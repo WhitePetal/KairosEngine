@@ -1,6 +1,7 @@
 # 样式页由类型自己绘制：`StyleRow` + 宏生成
 
 > **状态**：已实现（2026-11-24）。五步全部落地：接口 + 宏生成、`FormRows`、页面切换到类型自绘、删掉字段表路径（`StyleValue`/`StyleNode`/`StyleFields`/`PanelSkin` 已从代码中删除）、收尾（页面快照只切页/换所有者时 clone + 列表整块拖拽 ghost + 真机目视对照）。
+> **2026-11-24 后续**：`FormRows` 与行协议已移入 widget kit，行版式成为共享样式 `Form`（见 §9）。
 > **范围**：把 Preferences 的「字段表 + 一个通用页面」换成「每个样式类型自己绘制自己的页」，并让将来的对象 Inspector 复用同一套行版式。
 > **配套**：[preferences-panel.md](./preferences-panel.md)（现状与已知边界）· [ADR 0008](../../adr/0008-editor-ui-architecture.md) · [widget-layer.md](./widget-layer.md)
 
@@ -27,6 +28,8 @@
 ---
 
 ## 2. 接口
+
+> **2026-11-24 后续**：`RowSink`/`StyleRow`/`StyleEnum` 现在定义在 `kairos_editor_widgets::form`（行协议 + 绘制都是 widget kit 的事，且不含任何领域类型），`kairos_editor_component::style_row`/`skin` 以 `pub use` 保留同名路径，derive 生成的代码不用改；`StylePage` 仍留在 component（它需要 core 的 `StyleBlob`）。见 §9。
 
 ```rust
 /// 绘制侧：一行一个 token。
@@ -184,3 +187,37 @@ impl StyleRow for EditorFontPriority {
 - **枚举载荷**：生成代码里 `sink.variant` 之后才 match 载荷，切换变体后本 pass 画的是新变体的行；页面不再需要 `stale` 重读。
 - **拖动预览（已做，2026-11-24）**：`FormRows` 用 `element_block` 把被拖块整块画进 tooltip 层的子 `Ui`（`disable()` 半透明、无输入），`with_visual_transform` 平移到指针，父布局按子 `Ui` 的 rect 前进——行数/高度/嵌套都由同一份绘制代码得出，drop 数学看到的仍是真实高度；邻居按 `ListChromeState::shift` 整体平移（band、行、id 一起）。被拖块不再在原地画任何东西，所以不会盖住滑进来的邻居。回归测试见第 5 步。
 - **视觉回归**：表页测试的像素断言（斑马纹、缩进、列宽、值框填充）已随测试迁移；真实编辑器的目视对照见第 5 步的验收记录（2026-11-24：启动编辑器、打开 Preferences 截图对照）。
+
+---
+
+## 9. 后续（2026-11-24）：`FormRows` 移入 widget kit，行版式成为共享样式
+
+### 问题
+
+`form.rs` 里的 `FormRows` 直接拿 `&PreferencesPanelStyle` 取行高、列宽、斑马纹和组头颜色：**「表单行怎么画」被绑在 Preferences 一个面板的皮肤上**。于是
+
+- 行版式没有通用性：将来的对象 Inspector（同样是「值自己画成行」）要么继承 Preferences 面板的几何，要么复制一份；
+- `fn color` / `fn number` / 折叠带 / 页码带这些方法本来就不含面板知识，却和面板类型放在同一个文件里；
+- 想单独测「行怎么排」要构造整个 Preferences 皮肤。
+
+### 拆分
+
+| 归属 | 内容 |
+|---|---|
+| `kairos_editor_widgets::form`（新） | 行协议 `RowSink`/`StyleRow`/`StyleEnum`、`humanize`，以及绘制侧 `FormRows`、跨帧状态 `FormState`/`FormEdit`、行版式 token `FormStyle`。布局、斑马纹、折叠带、列表 chrome + 整块拖拽 ghost、选中/编辑 buffer、dirty/changed 标记都在这里；不认任何领域类型。 |
+| `kairos_editor_component::shared_style::form`（新） | `EditorFormStyle`：行版式的 serde 皮肤（斑马两灰、标签/值列宽与间距、行高、组头底色/悬停/字号/高/缩进、行内边距），`Preferences/Styles/EditorForm.ron`，Preferences 自动多出 `Form` 页。和 Field/List 一样由 shell 所有，面板从 `Frame::form_style()` 取，在调用点 `tokens()` 投影成 `FormStyle`。 |
+| `kairos_editor_component`（保留） | 页面机制：`StylePage`（object-safe + core `StyleBlob`）、`#[derive(StyleRow)]` 宏、`SharedStyle` 注册、`Replace`/`Commit`/`Reset`、`LIST_MAX`（作为 `FormRows::new` 的 cap 参数传入，策略不跟 widget 走）。`style_row`/`skin` 用 `pub use` 重新导出 widget 的 trait，所以 derive 生成的路径与 `#[derive(StyleRow)]` 的调用点都不变；宏只把 `StylePage::draw_page` 的 `FormRows` 路径指向 `kairos_editor_widgets::form`。 |
+| `panels/preferences`（收缩） | 只剩面板 chrome：页列表、标题与文件行、分隔线、内边距、页脚 Reset；`PreferencesPanelStyle` 删掉 13 个行版式 token，`PreferencesPanel.ron` 同步收缩。 |
+
+### 为什么这么放
+
+- **删除测试**：删掉 `FormRows`，行版式、列表 ghost、选中/编辑状态会重新散落回每个画表单的面板——它确实在承担复杂性，不是 pass-through。
+- **crate 边界即约束**：行协议只用到 `f32`/`String`/`bool`/`Color`/`ColorProperty` 和 `StyleEnum` 的变体表，没有一个领域类型，所以它可以整体放进只依赖 egui + `kairos_color` 的 widget crate；而 `StylePage` 需要 `kairos_editor_core::style::StyleBlob`，不能进去，于是页面机制留在 component。这条切线和 §2 里「绘制侧 / 值侧」的分法正好重合。
+- **二期一致性**：行版式与 Field/List/ColorPicker 一样是 widget 家的皮肤——一个 RON 文件重排整个编辑器的属性行；Preferences 自己的 `PreferencesPanel.ron` 不再兼职当「全编辑器表单皮肤」。
+
+### 验收
+
+- `cargo test-crate kairos_editor_widgets`：195 passed（新增 4 个 `form` 单测：两帧无输入不脏、toggle 点击写回、斑马纹、`humanize`）。
+- `cargo test-crate kairos_editor_component`：251 passed；新增 `shared_style::form` 投影/参考皮肤/斑马纹 3 个测试、`style_row::tests::a_boxed_page_draws_itself_into_the_form_widget`，以及 `panels::preferences::tests::the_form_rows_draw_from_the_shared_skin`（替换注册表里的 `Form` 皮肤会在下一帧重新给行上色，证明页面读的是共享皮肤而不是本地常量）。
+- `cargo check --workspace --all-targets` 通过。
+

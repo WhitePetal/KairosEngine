@@ -1340,7 +1340,6 @@ impl ListChrome {
         folded: bool,
         depth: usize,
         row_width: f32,
-        max: usize,
     ) -> ListHeaderOutcome {
         let (band, _) = ui.allocate_exact_size(vec2(row_width, style.group_height), Sense::hover());
         let hovered = ui.rect_contains_pointer(band);
@@ -1394,13 +1393,12 @@ impl ListChrome {
         };
         let count_outcome = NumberField::new(ids.count, &mut len_value, &style.field)
             .label(label)
-            .range(0.0, max as f64)
             .show(ui, count, &mut edit);
         let mut edit_out = None;
         if count_outcome.changed() {
             edit_out = Some(ListChromeEdit::SetLen {
                 list,
-                len: len_value.min(max),
+                len: len_value,
             });
         }
         if let Some(edit) = edit {
@@ -1587,7 +1585,6 @@ impl ListChrome {
         len: usize,
         selected: Option<usize>,
         row_width: f32,
-        max: usize,
     ) -> ListFooterOutcome {
         let (rect, _) =
             ui.allocate_exact_size(vec2(row_width, style.button_height + 2.0), Sense::hover());
@@ -1609,7 +1606,7 @@ impl ListChrome {
             pos2(group.left() + style.button_cell, group.top()),
             vec2(style.button_cell, style.button_height),
         );
-        let can_add = len < max;
+        let can_add = len < usize::MAX;
         let can_remove = len > 0;
         let add = ui
             .interact(

@@ -131,7 +131,6 @@ pub(crate) mod __sealed {
     }
 }
 pub mod console;
-pub mod form;
 pub mod frame;
 pub mod panel;
 pub mod panels;

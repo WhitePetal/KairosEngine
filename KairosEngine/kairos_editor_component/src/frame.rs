@@ -37,8 +37,8 @@ use kairos_log::{Level, StackFrame};
 use kairos_profile::Profiler;
 
 use crate::shared_style::{
-    COLOR_PICKER, ColorPickerSkin, EDITOR_FIELD, EditorFieldStyle, LIST, ListStyle, MODAL,
-    ModalSkin, SharedStyle, SharedStyles, TOOLBAR,
+    COLOR_PICKER, ColorPickerSkin, EDITOR_FIELD, EditorFieldStyle, EditorFormStyle, FORM, LIST,
+    ListStyle, MODAL, ModalSkin, SharedStyle, SharedStyles, TOOLBAR,
 };
 use crate::toolbar::style::ToolBarStyle;
 
@@ -142,10 +142,10 @@ pub struct Frame<'a> {
     /// the snapshot across frames and copies a style only when the page list
     /// changes or an owner is reset; the panel takes its copy of one page when
     /// the user switches to it.
-    pub pages: &'a [crate::skin::PageSkin],
-    /// Appearance owned by the editor shell (toolbar, color picker), shared by
-    /// every panel. `with_host` points this at the pure code defaults so tests
-    /// and embedders do not need to own a registry.
+    pub page_skins: &'a [crate::skin::PageSkin],
+    /// Appearance owned by the editor shell (toolbar, fields, form rows, lists,
+    /// color picker), shared by every panel. `with_host` points this at the pure
+    /// code defaults so tests and embedders do not need to own a registry.
     pub shared_styles: &'a SharedStyles,
 }
 
@@ -159,13 +159,13 @@ impl<'a> Frame<'a> {
         Self {
             state,
             host,
-            pages: &[],
+            page_skins: &[],
             shared_styles,
         }
     }
 
-    pub fn with_pages(mut self, pages: &'a [crate::skin::PageSkin]) -> Self {
-        self.pages = pages;
+    pub fn with_pages(mut self, page_skins: &'a [crate::skin::PageSkin]) -> Self {
+        self.page_skins = page_skins;
         self
     }
 
@@ -183,6 +183,13 @@ impl<'a> Frame<'a> {
     /// style, so every list in the editor shares one skin.
     pub fn list_style(&self) -> &'a ListStyle {
         self.shared_style(LIST)
+    }
+
+    /// The form rows' live skin. A property page reads this instead of a panel's
+    /// style, so every form in the editor shares one row grid: the Preferences
+    /// editor today, an object inspector later.
+    pub fn form_style(&self) -> &'a EditorFormStyle {
+        self.shared_style(FORM)
     }
 
     /// The color picker's runtime tokens, projected from the shared skin.

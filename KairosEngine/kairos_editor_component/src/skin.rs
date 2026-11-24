@@ -3,9 +3,9 @@
 //!
 //! A style is a plain Rust value that draws itself
 //! ([`StyleRow`](crate::style_row::StyleRow) walking into
-//! [`FormRows`](crate::form::FormRows)); the Preferences panel holds a typed copy
-//! and hands the whole value back when it changed. This module keeps the pieces
-//! *around* that value:
+//! `kairos_editor_widgets::form::FormRows`); the Preferences panel holds a typed
+//! copy and hands the whole value back when it changed. This module keeps the
+//! pieces *around* that value:
 //!
 //! * [`SkinId`] — which owner a page belongs to (a panel instance or a shared
 //!   style), so one page list can hold both kinds;
@@ -14,8 +14,10 @@
 //!   the app compares to keep its snapshot current;
 //! * [`PageSkin`] — one page: the metadata plus the self-drawing copy of the
 //!   style, which is what the panel clones when the user switches pages;
-//! * [`StyleEnum`] — the token protocol an enum needs to be a variant menu;
-//! * [`humanize`] and [`LIST_MAX`] — a row's label and a list's growth cap;
+//! * [`StyleEnum`] — the token protocol an enum needs to be a variant menu; the
+//!   trait itself is a row-protocol concept and lives with the form widget,
+//!   re-exported here so the derive's generated path stays stable;
+//! * [`LIST_MAX`] — a list token's growth cap;
 //! * [`save_skin`] — persist one live style into its RON file.
 //!
 //! Live apply and persistence are two separate steps: the page hands the value
@@ -27,58 +29,32 @@
 use kairos_editor_core::{PanelId, SharedStyleId};
 use kairos_editor_widgets::style::{Style, StyleFile};
 
-/// Largest list the editor will grow a `Vec<T>` token to.
-///
-/// A list token is a hand-authored style value (a font fallback chain, the
-/// profiler's category palette), not a user document, so a few dozen entries
-/// is the whole range that exists. The cap keeps a dragged or typed count from
-/// allocating an unbounded number of default entries; a file may still author
-/// more, it just cannot be grown past this from the editor.
-pub const LIST_MAX: u32 = 64;
-
 /// An enum token: its variants, the active one, and how to rebuild a variant.
 ///
-/// `#[derive(StyleRow)]` generates this for an enum, so the menu labels, the
-/// row and the rebuild path cannot drift from the declaration. The enum also
-/// derives `strum::VariantNames`: that is the one table of names the
-/// `VariantMenu` reads. The id written to RON is the Rust variant ident; do not
-/// override the strum name (`#[strum(serialize = ...)]`) on a style enum, or the
-/// menu and the stored id would diverge.
-///
-/// A type from another crate cannot take the derive; if a style needs one,
-/// declare a parallel enum in this crate and project it onto the runtime type
-/// (the font list's `EditorFontPriority` -> `FontPriority` is the example).
-///
-/// A variant with named fields is a *payload*: `StyleRow` draws its fields under
-/// the enum's menu row, in a payload scope. A single-field tuple variant is
-/// transparent: its payload's fields are the enum's rows directly, with no
-/// header for the unnamed field. Switching variants rebuilds the new one from
-/// `Default`, which is the value semantics of a Rust enum.
-///
-/// A style enum that a typed editor should own also derives strum's `Display`
-/// and `EnumIter`; the Preferences page needs neither, because `VariantMenu`
-/// edits the id against [`StyleEnum::variants`].
-pub trait StyleEnum: Sized + strum::VariantNames {
-    /// Every variant name, in declaration order.
-    fn variants() -> &'static [&'static str] {
-        Self::VARIANTS
-    }
-
-    /// The active variant's stable id.
-    fn variant_id(&self) -> &'static str;
-
-    /// Rebuild the enum as the named variant, with a default payload.
-    ///
-    /// `None` for an id this enum does not have: an unknown choice leaves the
-    /// value untouched rather than panicking on a stale menu.
-    fn with_variant(id: &str) -> Option<Self>;
-}
+/// The trait is the row protocol's (`kairos_editor_widgets::form`, the same
+/// module that owns [`StyleRow`](crate::style_row::StyleRow) and the menu row),
+/// because a variant menu is a widget concern. It is re-exported under this path
+/// because `#[derive(StyleRow)]` generates its impl there, next to the style
+/// vocabulary the menu labels come from.
+pub use kairos_editor_widgets::form::StyleEnum;
 
 /// Which owner a typed page belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SkinId {
     Panel(PanelId),
     Shared(SharedStyleId),
+}
+
+impl From<PanelId> for SkinId {
+    fn from(id: PanelId) -> Self {
+        Self::Panel(id)
+    }
+}
+
+impl From<SharedStyleId> for SkinId {
+    fn from(id: SharedStyleId) -> Self {
+        Self::Shared(id)
+    }
 }
 
 /// One page's owner, heading and file, without the style value.
@@ -130,43 +106,4 @@ pub fn save_skin<S: Style>(style: &S, theme: egui::Theme) -> Result<(), String> 
         egui::Theme::Dark => file.dark = style.clone(),
     }
     file.save_to(&path)
-}
-
-/// `toolbar_bg` -> `"Toolbar bg"`: the editor label for a token.
-///
-/// The label comes from the field name, so a row cannot be shown under a
-/// hand-written label that drifted; this is the one place the naming rule lives.
-pub fn humanize(path: &str) -> String {
-    let leaf = path.rsplit('.').next().unwrap_or(path);
-    let mut name = String::with_capacity(leaf.len());
-    for (index, word) in leaf.split('_').filter(|word| !word.is_empty()).enumerate() {
-        if index > 0 {
-            name.push(' ');
-        }
-        if index == 0 {
-            // Sentence case: only the first word is capitalized, because these
-            // labels sit in a dense form where Title Case on every word reads
-            // like an acronym.
-            let mut chars = word.chars();
-            if let Some(first) = chars.next() {
-                name.extend(first.to_uppercase());
-                name.push_str(chars.as_str());
-            }
-        } else {
-            name.push_str(word);
-        }
-    }
-    name
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_label_is_derived_from_the_field_name() {
-        assert_eq!(humanize("toolbar_bg"), "Toolbar bg");
-        assert_eq!(humanize("icons.warning"), "Warning");
-        assert_eq!(humanize("x"), "X");
-    }
 }

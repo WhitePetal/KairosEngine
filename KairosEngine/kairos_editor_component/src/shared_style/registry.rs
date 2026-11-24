@@ -19,8 +19,8 @@ use crate::toolbar::style::ToolBarStyle;
 use super::catalog::{SharedStyleDef, StyleCatalog};
 use super::color_picker::ColorPickerSkin;
 use super::{
-    COLOR_PICKER, EDITOR_FIELD, EditorFieldStyle, LIST, ListStyle, MODAL, ModalSkin, SharedStyle,
-    TOOLBAR,
+    COLOR_PICKER, EDITOR_FIELD, EditorFieldStyle, EditorFormStyle, FORM, LIST, ListStyle, MODAL,
+    ModalSkin, SharedStyle, TOOLBAR,
 };
 
 struct SharedStyleEntry {
@@ -91,6 +91,12 @@ impl SharedStyles {
     /// test catalog without it).
     pub fn list_style(&self) -> Option<&ListStyle> {
         self.get(LIST)
+    }
+
+    /// The form rows' live skin; `None` when it is not registered (a test
+    /// catalog without it).
+    pub fn form_style(&self) -> Option<&EditorFormStyle> {
+        self.get(FORM)
     }
 
     /// The modal dialog's live skin; `None` when it is not registered (a test
@@ -203,7 +209,7 @@ impl Default for SharedStyles {
 mod tests {
     use super::*;
     use crate::shared_style::{
-        COLOR_PICKER, EDITOR_FIELD, EditorFonts, FONTS, LIST, MODAL, TOOLBAR,
+        COLOR_PICKER, EDITOR_FIELD, EditorFonts, FONTS, FORM, LIST, MODAL, TOOLBAR,
     };
     use crate::skin::SkinId;
 
@@ -237,7 +243,7 @@ mod tests {
         let shared = SharedStyles::default();
         let pages = shared.pages();
 
-        for id in [TOOLBAR, COLOR_PICKER, EDITOR_FIELD, LIST, MODAL, FONTS] {
+        for id in [TOOLBAR, COLOR_PICKER, EDITOR_FIELD, FORM, LIST, MODAL, FONTS] {
             assert!(
                 pages.iter().any(|page| page.id == SkinId::Shared(id)),
                 "no page for {id}"

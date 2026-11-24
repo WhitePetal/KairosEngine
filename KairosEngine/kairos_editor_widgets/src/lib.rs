@@ -4,6 +4,7 @@ pub mod color_picker;
 pub mod divider;
 pub mod field;
 pub mod fonts;
+pub mod form;
 pub mod menu;
 pub mod min_max_scroll;
 pub mod modal;

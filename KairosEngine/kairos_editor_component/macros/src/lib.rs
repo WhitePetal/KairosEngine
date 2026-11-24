@@ -490,7 +490,7 @@ fn expand_struct_style_row(
         }
 
         impl ::kairos_editor_component::style_row::StylePage for #name {
-            fn draw_page(&mut self, rows: &mut ::kairos_editor_component::form::FormRows<'_>) {
+            fn draw_page(&mut self, rows: &mut ::kairos_editor_widgets::form::FormRows<'_>) {
                 ::kairos_editor_component::style_row::StyleRow::row(self, "", rows);
             }
 

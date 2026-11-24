@@ -1,34 +1,257 @@
-//! The rows a style draws itself into.
+//! The rows of a form: one token per row, drawn by the widget that owns the
+//! row grid.
 //!
-//! A style type walks itself here ([`StyleRow`](crate::style_row::StyleRow));
-//! this module owns everything the value cannot know: the two-column geometry,
-//! foldout bands, list blocks, selection, the edit buffers, and the list of
-//! dirty flag to write back. It replaces the page's field table: the caller
-//! draws a typed copy of the style itself and hands the whole value back when
-//! it changed.
+//! A value tree walks itself here ([`StyleRow`]): a token becomes a row, a
+//! nested struct a foldout band, an enum a menu row plus its payload rows, a
+//! `Vec<T>` a header plus one block per element. The walk knows nothing about
+//! layout, selection or editing: it only names rows and hands out its leaves.
 //!
-//! The pass owns the values, so nothing here touches `Action`/`Effect`: a page
-//! turns `dirty` into one whole-style write and keeps the gesture boundary
-//! (commit on release) where it is today.
+//! [`FormRows`] is the drawing half: the two-column geometry, the zebra bands,
+//! the foldout bands, the list chrome and its drag ghost, the selection, the
+//! edit buffers and the dirty/changed flags the caller turns into writes. The
+//! cross-pass state is [`FormState`], owned by the caller and handed back every
+//! pass, the way [`NumberEdit`] is.
+//!
+//! The widget knows no domain types: a form value is a plain Rust value and the
+//! colours are the shared [`Color`]. The component layer keeps what is not a
+//! widget concern — which owner a page belongs to, when the edited copy is
+//! handed back, how the file is persisted: `kairos_editor_component`'s
+//! `StylePage`.
+//!
+//! The appearance is the widget's own skin ([`FormStyle`]), not a panel's:
+//! `kairos_editor_component` owns the serializable skin (`EditorFormStyle`) and
+//! projects it onto these tokens at the call site, so every form row in the
+//! editor looks the same and one file restyles them all.
 
 use std::collections::HashSet;
 
-use egui::{CornerRadius, CursorIcon, Id, LayerId, Order, Rect, Sense, Ui, UiBuilder, pos2, vec2};
+use egui::{
+    Color32, CornerRadius, CursorIcon, Id, LayerId, Order, Rect, Sense, Ui, UiBuilder, pos2, vec2,
+};
 use kairos_color::{Color, ColorUsage};
-use kairos_editor_widgets::color::ColorExt;
-use kairos_editor_widgets::color_picker::{
+
+use crate::color_picker::{
     ColorField, ColorPickerStyle, ColorProperty, eyedropper, is_color_picker_open,
 };
-use kairos_editor_widgets::field::{
+use crate::field::{
     FieldLabel, FieldLabelResponse, FieldOutcome, FieldStyle, ListBandIds, ListChrome,
     ListChromeEdit, ListChromeIds, ListChromeOutcome, ListChromeState, ListChromeStyle, Number,
     NumberEdit, NumberField, TextField, ToggleField, VariantMenu,
 };
-use kairos_editor_widgets::text::TextStyle;
+use crate::text::TextStyle;
 
-use crate::panels::PreferencesPanelStyle;
-use crate::skin::{LIST_MAX, StyleEnum, humanize};
-use crate::style_row::{RowSink, StyleRow};
+/// An enum token: its variants, the active one, and how to rebuild a variant.
+///
+/// `#[derive(StyleRow)]` generates this for an enum, so the menu labels, the
+/// row and the rebuild path cannot drift from the declaration. The enum also
+/// derives `strum::VariantNames`: that is the one table of names the
+/// `VariantMenu` reads. The id written to RON is the Rust variant ident; do not
+/// override the strum name (`#[strum(serialize = ...)]`) on a style enum, or the
+/// menu and the stored id would diverge.
+///
+/// A variant with named fields is a *payload*: `StyleRow` draws its fields under
+/// the enum's menu row, in a payload scope. A single-field tuple variant is
+/// transparent: its payload's fields are the enum's rows directly, with no
+/// header for the unnamed field. Switching variants rebuilds the new one from
+/// `Default`, which is the value semantics of a Rust enum.
+///
+/// A type from another crate cannot take the derive; if a form needs one, declare
+/// a parallel enum and project it onto the runtime value (the editor font list's
+/// `EditorFontPriority` -> `FontPriority` is the example).
+///
+/// A style enum that a typed editor should own also derives strum's `Display`
+/// and `EnumIter`; the Preferences page needs neither, because `VariantMenu`
+/// edits the id against [`StyleEnum::variants`].
+pub trait StyleEnum: Sized + strum::VariantNames {
+    /// Every variant name, in declaration order.
+    fn variants() -> &'static [&'static str] {
+        Self::VARIANTS
+    }
+
+    /// The active variant's stable id.
+    fn variant_id(&self) -> &'static str;
+
+    /// Rebuild the enum as the named variant, with a default payload.
+    ///
+    /// `None` for an id this enum does not have: an unknown choice leaves the
+    /// value untouched rather than panicking on a stale menu.
+    fn with_variant(id: &str) -> Option<Self>;
+}
+
+/// The drawing side of the row protocol.
+///
+/// One method per leaf kind, plus the three scopes a form tree can open: a group
+/// (a foldout band), an enum payload (rows laid out under the enum's menu
+/// button) and a list (a header plus one block per element). The sink keeps the
+/// current path, so the generated walk never joins strings.
+pub trait RowSink {
+    /// One number box, over the token's own type.
+    fn number<N: Number>(&mut self, name: &str, value: &mut N);
+
+    /// One single-line text box.
+    fn text(&mut self, name: &str, value: &mut String);
+
+    /// One checkbox.
+    fn toggle(&mut self, name: &str, value: &mut bool);
+
+    /// One colour swatch. The token is an LDR colour.
+    fn color(&mut self, name: &str, value: &mut Color);
+
+    /// One colour that carries its own usage (HDR or LDR).
+    fn color_property(&mut self, name: &str, value: &mut ColorProperty);
+
+    /// One enum row: a menu over `E`'s variants, writing the chosen variant
+    /// back into the value.
+    fn variant<E: StyleEnum>(&mut self, name: &str, value: &mut E);
+
+    /// One nested group, drawn as a foldout band.
+    ///
+    /// An empty `name` is a transparent scope: the root of a form, or a
+    /// single-field tuple payload whose fields belong to the enum's own path.
+    fn group(&mut self, name: &str, body: impl FnOnce(&mut Self));
+
+    /// The active variant's payload rows, under the enum row `name`.
+    ///
+    /// Rows inside hang under the enum's menu button instead of starting a
+    /// new indent level, and they are addressed below the enum's own path
+    /// (`mode.radius`). Only variants with rows call in here, so a unit variant
+    /// simply draws its menu row.
+    fn payload(&mut self, name: &str, body: impl FnOnce(&mut Self));
+
+    /// One list token: a header with the element count, then one block per
+    /// element. The vector is resized, reordered and edited in place.
+    fn list<T: StyleRow + Default>(&mut self, name: &str, values: &mut Vec<T>);
+}
+
+/// One value that draws itself as form rows.
+///
+/// `#[derive(StyleRow)]` generates the implementation for a style struct or
+/// enum. Hand-written implementations are the leaves (numbers, text, toggles,
+/// colours), project types of other crates into a local enum, and any type whose
+/// tokens are not its own fields.
+pub trait StyleRow {
+    /// Draw this token — or this group of tokens — under `name`.
+    fn row(&mut self, name: &str, sink: &mut impl RowSink);
+}
+
+macro_rules! number_rows {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl StyleRow for $ty {
+                fn row(&mut self, name: &str, sink: &mut impl RowSink) {
+                    sink.number(name, self);
+                }
+            }
+        )*
+    };
+}
+
+// Each integer keeps its own type: the sink draws the concrete `NumberField<N>`,
+// so no widened integer and no type-bound clamp is involved here.
+number_rows!(f32, f64);
+number_rows!(i8, i16, i32, i64, isize);
+number_rows!(u8, u16, u32, u64, usize);
+
+impl StyleRow for bool {
+    fn row(&mut self, name: &str, sink: &mut impl RowSink) {
+        sink.toggle(name, self);
+    }
+}
+
+impl StyleRow for String {
+    fn row(&mut self, name: &str, sink: &mut impl RowSink) {
+        sink.text(name, self);
+    }
+}
+
+impl StyleRow for Color {
+    fn row(&mut self, name: &str, sink: &mut impl RowSink) {
+        sink.color(name, self);
+    }
+}
+
+impl StyleRow for ColorProperty {
+    fn row(&mut self, name: &str, sink: &mut impl RowSink) {
+        sink.color_property(name, self);
+    }
+}
+
+/// A list token is one row (its header) plus one sub-walk per element; the
+/// sink decides where the element blocks sit and how a drag reorders them.
+impl<T: StyleRow + Default> StyleRow for Vec<T> {
+    fn row(&mut self, name: &str, sink: &mut impl RowSink) {
+        sink.list(name, self);
+    }
+}
+
+/// The visual tokens of one form page.
+///
+/// The row grid belongs to the widget, not to a panel: the Preferences editor
+/// and a future object inspector draw the same rows from these tokens. Field
+/// *values* keep [`FieldStyle`] and list element blocks keep [`ListChromeStyle`];
+/// this struct owns only the page-level row geometry, the two zebra greys and
+/// the foldout header.
+pub struct FormStyle {
+    /// Row band fill on the first, third, ... (even, zero-based) rows.
+    pub row_odd: Color32,
+    /// Row band fill on the second, fourth, ... rows.
+    pub row_even: Color32,
+    /// Height of one field row.
+    pub row_height: f32,
+    /// Left and right content inset inside a row band.
+    pub row_inset: f32,
+    /// Ideal width of a row's label column; the value box starts after it.
+    pub label_width: f32,
+    /// Minimum width left for the value box; below it the label column shrinks
+    /// instead of the box clipping off the right edge.
+    pub field_width: f32,
+    /// Gap between the label column and the value box.
+    pub label_gap: f32,
+    /// Foldout header text.
+    pub group_text: TextStyle,
+    /// Foldout header band at rest and under the pointer.
+    pub group_fill: Color32,
+    pub group_hover: Color32,
+    /// Height of a foldout header row.
+    pub group_height: f32,
+    /// Indent of one nesting level in the form tree.
+    pub group_indent: f32,
+}
+
+impl Default for FormStyle {
+    fn default() -> Self {
+        Self::dark()
+    }
+}
+
+impl FormStyle {
+    /// The editor's dark form tokens, matching the shipped `EditorForm.ron`.
+    pub fn dark() -> Self {
+        Self {
+            row_odd: Color32::from_rgb(0x38, 0x38, 0x38),
+            row_even: Color32::from_rgb(0x33, 0x33, 0x33),
+            row_height: 20.0,
+            row_inset: 8.0,
+            label_width: 170.0,
+            field_width: 120.0,
+            label_gap: 8.0,
+            group_text: TextStyle::sized(Color32::from_rgb(0xDC, 0xDC, 0xDC), 12.0),
+            group_fill: Color32::from_rgb(0x3C, 0x3C, 0x3C),
+            group_hover: Color32::from_rgb(0x46, 0x46, 0x46),
+            group_height: 20.0,
+            group_indent: 16.0,
+        }
+    }
+
+    /// The band fill for a zero-based row index: two greys, alternating.
+    pub fn row_fill(&self, row: usize) -> Color32 {
+        if row.is_multiple_of(2) {
+            self.row_odd
+        } else {
+            self.row_even
+        }
+    }
+}
 
 /// A numeric token being typed into, keyed by its dotted path.
 pub struct FormEdit {
@@ -36,7 +259,7 @@ pub struct FormEdit {
     pub number: NumberEdit,
 }
 
-/// The page's state across passes: what is folded, selected and being edited.
+/// The form's state across passes: what is folded, selected and being edited.
 #[derive(Default)]
 pub struct FormState {
     /// Folded group and element paths.
@@ -69,10 +292,10 @@ struct Row {
     active: bool,
 }
 
-/// The rows of one page, drawn into one `Ui`.
+/// The rows of one form, drawn into one `Ui`.
 pub struct FormRows<'a> {
     ui: &'a mut Ui,
-    panel: &'a PreferencesPanelStyle,
+    style: &'a FormStyle,
     field_style: &'a FieldStyle,
     chrome: &'a ListChromeStyle,
     picker: &'a ColorPickerStyle,
@@ -83,7 +306,7 @@ pub struct FormRows<'a> {
     path: Vec<String>,
     /// The visual depth of the rows being drawn.
     depth: usize,
-    /// The page-level zebra counter.
+    /// The form-level zebra counter.
     rows: usize,
     /// The visual depth of the enum whose payload is being drawn.
     payload: Option<usize>,
@@ -94,30 +317,31 @@ pub struct FormRows<'a> {
     in_ghost: bool,
     clicked: bool,
     finished: bool,
-    /// A value changed this pass (the page sends one whole-style write).
+    /// A value changed this pass (the caller sends one whole-value write).
     changed: bool,
 }
 
 impl<'a> FormRows<'a> {
-    /// One page's rows. `seed` salts every widget id; `width` is the row width
-    /// the page reserved (scroll bar and padding already removed).
+    /// One form's rows. `seed` salts every widget id; `width` is the row width
+    /// the caller reserved (scroll bar and padding already removed); `list_max`
+    /// caps how far a list token's count controls may grow it.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         ui: &'a mut Ui,
         seed: Id,
-        panel: &'a PreferencesPanelStyle,
+        style: &'a FormStyle,
         field_style: &'a FieldStyle,
         chrome: &'a ListChromeStyle,
         picker: &'a ColorPickerStyle,
         state: &'a mut FormState,
         width: f32,
     ) -> Self {
-        // One page pass: forget the list bands the previous pass recorded, so
+        // One form pass: forget the list bands the previous pass recorded, so
         // a drag resolves against this pass's layout.
         ListChrome::begin(&mut state.list_chrome);
         Self {
             ui,
-            panel,
+            style,
             field_style,
             chrome,
             picker,
@@ -136,24 +360,24 @@ impl<'a> FormRows<'a> {
         }
     }
 
-    /// A row consumed this pass's click (the page uses it to clear the
+    /// A row consumed this pass's click (the caller uses it to clear the
     /// selection only when nothing else did).
     pub fn clicked(&self) -> bool {
         self.clicked
     }
 
-    /// A typed edit ended: the page must persist now instead of waiting for
+    /// A typed edit ended: the caller must persist now instead of waiting for
     /// the pointer to come up.
     pub fn finished(&self) -> bool {
         self.finished
     }
 
-    /// A value changed this pass: the page hands the owner a new copy.
+    /// A value changed this pass: the caller hands the owner a new copy.
     pub fn changed(&self) -> bool {
         self.changed
     }
 
-    /// This page has unwritten edits (persists across passes until committed).
+    /// This form has unwritten edits (persists across passes until committed).
     pub fn dirty(&self) -> bool {
         self.state.dirty
     }
@@ -208,7 +432,7 @@ impl<'a> FormRows<'a> {
         let height = if in_element {
             self.chrome.row_height
         } else {
-            self.panel.row_height
+            self.style.row_height
         };
         let (rect, _) = self
             .ui
@@ -221,7 +445,7 @@ impl<'a> FormRows<'a> {
                 self.chrome.band_alt
             }
         } else {
-            self.panel.row_fill(self.rows).to_egui()
+            self.style.row_fill(self.rows)
         };
         self.ui
             .painter()
@@ -230,22 +454,22 @@ impl<'a> FormRows<'a> {
         let (row_inset, group_indent) = if in_element {
             (self.chrome.row_inset, self.chrome.group_indent)
         } else {
-            (self.panel.row_inset, self.panel.group_indent)
+            (self.style.row_inset, self.style.group_indent)
         };
         let content_left = rect.left() + row_inset;
         let content_right = (rect.right() - row_inset).max(content_left + 1.0);
         let content_width = content_right - content_left;
-        let max_label = (content_width - self.panel.label_gap - self.panel.field_width).max(48.0);
+        let max_label = (content_width - self.style.label_gap - self.style.field_width).max(48.0);
         let label_width = self
-            .panel
+            .style
             .label_width
             .min(max_label)
-            .min((content_width - self.panel.label_gap - 1.0).max(0.0));
-        let value_left = content_left + label_width + self.panel.label_gap;
+            .min((content_width - self.style.label_gap - 1.0).max(0.0));
+        let value_left = content_left + label_width + self.style.label_gap;
         let (label_left, value_left, value_width) = if self.payload.is_some() {
             let base_width = (content_right - value_left).max(1.0);
-            let sub_label = (base_width * 0.42).clamp(48.0, self.panel.label_width);
-            let sub_value = value_left + sub_label + self.panel.label_gap;
+            let sub_label = (base_width * 0.42).clamp(48.0, self.style.label_width);
+            let sub_value = value_left + sub_label + self.style.label_gap;
             (value_left, sub_value, (content_right - sub_value).max(1.0))
         } else {
             (
@@ -260,10 +484,10 @@ impl<'a> FormRows<'a> {
         );
         let label_rect = Rect::from_min_max(
             pos2(label_left, rect.top()),
-            pos2(value_left - self.panel.label_gap, rect.bottom()),
+            pos2(value_left - self.style.label_gap, rect.bottom()),
         );
         let label_x = if let Some(base) = self.payload {
-            label_left + self.depth.saturating_sub(base) as f32 * self.panel.group_indent
+            label_left + self.depth.saturating_sub(base) as f32 * self.style.group_indent
         } else if let Some(element) = self.element {
             let x0 =
                 rect.left() + row_inset + element.depth.saturating_sub(1) as f32 * group_indent;
@@ -272,7 +496,7 @@ impl<'a> FormRows<'a> {
                 + 16.0
                 + self.depth.saturating_sub(element.depth) as f32 * group_indent
         } else {
-            content_left + 16.0 + self.depth as f32 * self.panel.group_indent
+            content_left + 16.0 + self.depth as f32 * self.style.group_indent
         };
 
         let label_text = humanize(name);
@@ -484,32 +708,37 @@ impl RowSink for FormRows<'_> {
         let folded = self.state.collapsed.contains(&path);
         let (rect, _) = self
             .ui
-            .allocate_exact_size(vec2(self.width, self.panel.group_height), Sense::hover());
+            .allocate_exact_size(vec2(self.width, self.style.group_height), Sense::hover());
         let response = self
             .ui
             .interact(rect, self.group_id(&path), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand);
         let fill = if response.hovered() {
-            self.panel.group_hover
+            self.style.group_hover
         } else {
-            self.panel.group_background
+            self.style.group_fill
         };
         self.ui
             .painter()
-            .rect_filled(rect, CornerRadius::ZERO, fill.to_egui());
+            .rect_filled(rect, CornerRadius::ZERO, fill);
         let arrow = pos2(
-            rect.left() + self.panel.row_inset + self.depth as f32 * self.panel.group_indent + 4.0,
+            rect.left() + self.style.row_inset + self.depth as f32 * self.style.group_indent + 4.0,
             rect.center().y,
         );
-        paint_foldout_arrow(self.ui.painter(), arrow, folded, self.panel.group.to_egui());
+        paint_foldout_arrow(
+            self.ui.painter(),
+            arrow,
+            folded,
+            self.style.group_text.text_color(),
+        );
         let text_left =
-            rect.left() + self.panel.row_inset + 16.0 + self.depth as f32 * self.panel.group_indent;
-        let text = TextStyle::sized(self.panel.group.to_egui(), self.panel.group_size);
+            rect.left() + self.style.row_inset + 16.0 + self.depth as f32 * self.style.group_indent;
+        let text = self.style.group_text.clone();
         let galley = text.layout(self.ui, humanize(name));
         self.ui.painter().with_clip_rect(rect).galley(
             pos2(text_left, rect.center().y - galley.size().y * 0.5),
             galley,
-            self.panel.group.to_egui(),
+            self.style.group_text.text_color(),
         );
         if response.clicked() {
             if folded {
@@ -567,7 +796,6 @@ impl RowSink for FormRows<'_> {
             folded,
             depth,
             self.width,
-            LIST_MAX as usize,
         );
         if header.clicked {
             self.state.selected = Some(path.clone());
@@ -643,7 +871,6 @@ impl RowSink for FormRows<'_> {
             values.len(),
             selected_element,
             self.width,
-            LIST_MAX as usize,
         );
         if footer.clicked {
             self.clicked = true;
@@ -786,7 +1013,7 @@ impl<'a> FormRows<'a> {
 
         let state = &mut *self.state;
         let path = self.path.clone();
-        let panel = self.panel;
+        let style = self.style;
         let field_style = self.field_style;
         let chrome = self.chrome;
         let picker = self.picker;
@@ -798,7 +1025,7 @@ impl<'a> FormRows<'a> {
             |ui| {
                 let mut ghost = FormRows {
                     ui,
-                    panel,
+                    style,
                     field_style,
                     chrome,
                     picker,
@@ -838,7 +1065,7 @@ impl<'a> FormRows<'a> {
     fn apply_list_edit<T: Default>(&mut self, edit: ListChromeEdit, values: &mut Vec<T>) {
         match edit {
             ListChromeEdit::SetLen { len, .. } => {
-                values.resize_with(len.min(LIST_MAX as usize), T::default);
+                values.resize_with(len, T::default);
             }
             ListChromeEdit::Insert { index, .. } => {
                 let at = index.min(values.len());
@@ -899,30 +1126,75 @@ fn paint_foldout_arrow(
     ));
 }
 
-/// The color field's usage, without exposing the widget's type at every call.
-pub use kairos_color::ColorUsage as FormColorUsage;
+/// `toolbar_bg` -> `"Toolbar bg"`: the label a row is shown under.
+///
+/// The label comes from the field name, so a row cannot be shown under a
+/// hand-written label that drifted; this is the one place the naming rule lives.
+pub fn humanize(path: &str) -> String {
+    let leaf = path.rsplit('.').next().unwrap_or(path);
+    let mut name = String::with_capacity(leaf.len());
+    for (index, word) in leaf.split('_').filter(|word| !word.is_empty()).enumerate() {
+        if index > 0 {
+            name.push(' ');
+        }
+        if index == 0 {
+            // Sentence case: only the first word is capitalized, because these
+            // labels sit in a dense form where Title Case on every word reads
+            // like an acronym.
+            let mut chars = word.chars();
+            if let Some(first) = chars.next() {
+                name.extend(first.to_uppercase());
+                name.push_str(chars.as_str());
+            }
+        } else {
+            name.push_str(word);
+        }
+    }
+    name
+}
+
 #[cfg(test)]
 mod tests {
     use egui::{Event, Modifiers, PointerButton, Pos2, RawInput, Rect, vec2};
 
     use super::*;
-    use kairos_editor_widgets::style::Style;
 
-    use crate::shared_style::{ColorPickerSkin, EditorFieldStyle};
-    use crate::style_row::StyleRow;
-
-    #[derive(Clone, Debug, PartialEq, StyleRow)]
+    // A style tree without the derive: the protocol is hand-written so this
+    // crate keeps no dependency on the component crate's macro, and the test
+    // pins the walk the derive generates (a group per struct, one row per
+    // field, in declaration order).
+    #[derive(Clone, Debug, PartialEq)]
     struct Inner {
         size: f32,
     }
 
-    #[derive(Clone, Debug, PartialEq, StyleRow)]
+    impl StyleRow for Inner {
+        fn row(&mut self, name: &str, sink: &mut impl RowSink) {
+            sink.group(name, |sink| {
+                StyleRow::row(&mut self.size, "size", sink);
+            });
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
     struct TestStyle {
         height: f32,
         enabled: bool,
         name: String,
         inner: Inner,
         items: Vec<f32>,
+    }
+
+    impl StyleRow for TestStyle {
+        fn row(&mut self, name: &str, sink: &mut impl RowSink) {
+            sink.group(name, |sink| {
+                StyleRow::row(&mut self.height, "height", sink);
+                StyleRow::row(&mut self.enabled, "enabled", sink);
+                StyleRow::row(&mut self.name, "name", sink);
+                StyleRow::row(&mut self.inner, "inner", sink);
+                StyleRow::row(&mut self.items, "items", sink);
+            });
+        }
     }
 
     fn style() -> TestStyle {
@@ -937,7 +1209,7 @@ mod tests {
 
     struct Rig {
         ctx: egui::Context,
-        panel: PreferencesPanelStyle,
+        form: FormStyle,
         field: FieldStyle,
         chrome: ListChromeStyle,
         picker: ColorPickerStyle,
@@ -947,14 +1219,14 @@ mod tests {
 
     impl Rig {
         fn new() -> Self {
-            let field = EditorFieldStyle::dark().tokens();
+            let field = FieldStyle::default();
             let chrome = ListChromeStyle::from_field(&field);
             Self {
                 ctx: egui::Context::default(),
-                panel: PreferencesPanelStyle::default(),
+                form: FormStyle::dark(),
                 field,
                 chrome,
-                picker: ColorPickerSkin::dark().tokens(),
+                picker: ColorPickerStyle::default(),
                 state: FormState::default(),
                 seed: Id::new("kairos.form.test"),
             }
@@ -968,7 +1240,7 @@ mod tests {
             };
             let Self {
                 ctx,
-                panel,
+                form,
                 field,
                 chrome,
                 picker,
@@ -976,8 +1248,9 @@ mod tests {
                 seed,
             } = self;
             let _ = ctx.run_ui(input, |ui| {
-                let mut rows = FormRows::new(ui, *seed, panel, field, chrome, picker, state, 360.0);
-                style.row("", &mut rows);
+                let mut rows =
+                    FormRows::new(ui, *seed, form, field, chrome, picker, state, 360.0);
+                StyleRow::row(style, "", &mut rows);
             });
         }
     }
@@ -1010,31 +1283,8 @@ mod tests {
         assert!(!rig.state.dirty, "nothing changed without input");
     }
 
-    /// The page model: one page slot, `dyn StylePage`, no type at the call
-    /// site. The same generated walk drives it.
-    #[test]
-    fn a_boxed_page_draws_the_same_rows() {
-        let mut rig = Rig::new();
-        let mut page: Box<dyn crate::style_row::StylePage> = Box::new(style());
-        let input = RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(420.0, 620.0))),
-            ..Default::default()
-        };
-        let Rig {
-            ctx,
-            panel,
-            field,
-            chrome,
-            picker,
-            state,
-            seed,
-        } = &mut rig;
-        let _ = ctx.run_ui(input, |ui| {
-            let mut rows = FormRows::new(ui, *seed, panel, field, chrome, picker, state, 360.0);
-            page.draw_page(&mut rows);
-        });
-    }
-
+    /// The whole pass is a widget: the caller keeps the state, the same walk
+    /// draws the same rows and the same ids every pass.
     #[test]
     fn clicking_a_toggle_writes_back_its_token() {
         let mut rig = Rig::new();
@@ -1053,6 +1303,23 @@ mod tests {
         rig.frame(&mut style, vec![release(at)]);
 
         assert!(!style.enabled, "the copy took the click");
-        assert!(rig.state.dirty, "the page is told the copy changed");
+        assert!(rig.state.dirty, "the caller is told the copy changed");
+    }
+
+    #[test]
+    fn row_bands_alternate_between_two_greys() {
+        let form = FormStyle::dark();
+
+        assert_eq!(form.row_fill(0), form.row_odd);
+        assert_eq!(form.row_fill(1), form.row_even);
+        assert_eq!(form.row_fill(2), form.row_odd);
+        assert_ne!(form.row_odd, form.row_even);
+    }
+
+    #[test]
+    fn the_label_is_derived_from_the_field_name() {
+        assert_eq!(humanize("toolbar_bg"), "Toolbar bg");
+        assert_eq!(humanize("icons.warning"), "Warning");
+        assert_eq!(humanize("x"), "X");
     }
 }
