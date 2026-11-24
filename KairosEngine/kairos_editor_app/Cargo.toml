@@ -46,6 +46,11 @@ open = "5.4.4"
 # initialised per call, which is why a delete runs on its own worker thread
 # (src/project/mod.rs) instead of the host's.
 trash = "5.4.0"
+# The editor layout file (src/layout.rs, M4): a versioned, disposable TOML in
+# Library/ holding the dock tree, tab order/focus, floating windows and the
+# Project split. Same versions as the rest of the workspace.
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "1.1.2"
 
 [dev-dependencies]
 # Project-slice tests build real directory trees (src/project/scanner.rs,

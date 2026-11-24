@@ -133,6 +133,37 @@ impl<T: TabId> DockState<T> {
         }
     }
 
+    /// Rebuild a dock from surfaces the app restored from its layout file.
+    ///
+    /// Index 0 must be the main surface; floating windows follow in creation
+    /// order. The trees are expected to be validated already
+    /// ([`crate::tree::Tree::from_nodes`]); this only enforces the shape
+    /// `DockState` itself relies on. Focus starts empty — the caller restores it
+    /// with [`Self::focus_tab`] after the tabs resolve to live ids.
+    pub fn from_parts(surfaces: Vec<Surface<T>>) -> Option<Self> {
+        match surfaces.first() {
+            Some(Surface::Main(_)) => {}
+            _ => return None,
+        }
+        Some(Self {
+            surfaces,
+            focused_surface: None,
+            translations: Translations::english(),
+            style: Style::default(),
+        })
+    }
+
+    /// The surfaces this dock owns: index 0 is the main surface, the rest are
+    /// floating windows in creation order.
+    ///
+    /// The app reads this to snapshot the layout into its own file format; the
+    /// dock stays free of serde. Geometry that is recomputed every frame (node
+    /// rects, viewports, tab-bar scroll) is deliberately not part of a
+    /// snapshot.
+    pub fn surfaces(&self) -> &[Surface<T>] {
+        &self.surfaces
+    }
+
     pub fn move_tab(
         &mut self,
         (src_surface, src_node, src_tab): (SurfaceIndex, NodeIndex, TabIndex),
@@ -1496,9 +1527,7 @@ impl<T: TabId> Docker<'_, T> {
         };
 
         let DockState {
-            surfaces,
-            style,
-            ..
+            surfaces, style, ..
         } = self.dock_state;
 
         let (style, fade_factor) = fade_style

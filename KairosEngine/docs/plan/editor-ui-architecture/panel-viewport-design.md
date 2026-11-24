@@ -897,7 +897,7 @@ cd prototypes/editor-ui && cargo test && cargo run   # 手动窗口 smoke
 |---|---|---|---|
 | **P1 面板框架** | `Panel`/`PanelId`/`PanelInstanceId`/`PanelRegistry`/`PanelHost` + 四槽 dock + Project/Inspector/Console 只读面板；`EditorApp` 变组合根 | `kairos_editor_core`（LayoutState/panel ids）、`kairos_editor_component/panel*.rs`、`kairos_editor_app/{app,install}.rs` | open/close/focus/多实例测试；「新增一个测试面板只改组合根」；`cargo test-crate` 全绿 |
 | **P2 视口** | `core::ViewportState` + `ViewportHost`（离屏 target、tex 注册、相机输入、CPU picking）+ scene 视口面板；补 pan/fly | `kairos_editor_core/viewport.rs`、`kairos_editor_app/viewport_host.rs`、`kairos_editor_component/panels/viewport.rs`；`camera.rs` 补 pan | orbit/zoom/pan/fly；resize；关闭→free；重开；bind 完成/陈旧 ticket；GPU smoke |
-| **P3 dock + 布局持久化** | 四槽替身换 `kairos_editor_docking`；布局文件 `version` + 未知 id 丢弃；MCP layout 快照 | `kairos_editor_docking`、`kairos_editor_app/layout_io.rs` | 重启布局保持；旧布局不崩；dock 拖拽回归测试 |
+| **P3 dock + 布局持久化** | 四槽替身换 `kairos_editor_docking`；布局文件 `version` + 未知 id 丢弃；MCP layout 快照。**布局持久化已由 [project-panel M4](../project-panel/README.md#m4--编辑器布局持久化25-35-天d13) 先行落地**（`kairos_editor_app/layout.rs` + `Library/editor_layout.toml`；host 侧快照、不经 `Effect::PersistLayout`，理由见该文 L4） | `kairos_editor_docking`、`kairos_editor_app/layout.rs` | 重启布局保持；旧布局不崩；dock 拖拽回归测试 |
 | **P4 拾取 + gizmo A/B** | scene query 或 id-buffer readback 接入；选中高亮；gizmo 状态与几何（A/B） | `kairos_editor_core/gizmo.rs`（新）、engine pick API、editor-viewport gizmo pass | 点选/清空/重选；hover outline；gizmo 模式切换 |
 | **P5 收尾删旧** | 删 `Drawer`/`Messager`/`Message`/`UIReader`/`Context`/假 layout/旧 scene/game 窗口；`kairos_editor` 退役 | 见 §6.3 | grep 无残留；`cargo test-crate` 全绿；手动 smoke 清单全过 |
 
@@ -1029,7 +1029,7 @@ CreateViewport ViewportId(1) at 624x546 -> bound
 | 6 | 布局/多实例 | 四槽固定；每 kind 一实例；view state 在 panel struct | `kairos_editor_docking` DockState；`PanelInstanceId` 多实例；keyed `ViewStates` | `panel/host.rs`；§2.8 |
 | 7 | effect 执行 | host 内同步完成（保存写临时文件、bind/pick 同帧回填） | 异步 ticket/EffectExecutor；bind 完成跨 1 帧（present 之后） | `app/effects.rs`；§3.9 |
 | 8 | 键盘相机 | 未实现 WASD/fly（只有鼠标四件套） | 保留 fly 需加 `CameraInput.fly` + 对应 Action + `FocusScope` 仲裁 | §3.8.2/§3.8.3 |
-| 9 | 布局持久化 | `Effect::PersistLayout` 只写日志 | serde + `version` + 未知 PanelId 丢弃 + 恢复 | §6.2 P3 |
+| 9 | 布局持久化 | `Effect::PersistLayout` 只写日志 | serde（app 侧 DTO）+ `version` + 未知 PanelId 整份忽略 + 恢复；**已落地**见 [project-panel M4](../project-panel/README.md#m4--编辑器布局持久化25-35-天d13) | §6.2 P3 |
 
 ### 7.5 仍未证明 / 下一步
 

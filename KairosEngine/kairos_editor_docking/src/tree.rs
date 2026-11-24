@@ -10,6 +10,11 @@ use crate::{
     viewer::TabId,
 };
 
+/// Upper bound a restored tree may have. The dock is a UI arrangement, not a
+/// document: a file that asks for more nodes than this is corruption, not a
+/// layout (`Tree::from_nodes`).
+const MAX_RESTORED_NODES: usize = 1 << 16;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TabIndex(pub usize);
 
@@ -544,5 +549,61 @@ impl<Id: TabId> Tree<Id> {
             .get(node_index.0)
             .filter(|node| node.is_leaf())
             .map(|_| node_index)
+    }
+
+    /// Rebuild a tree from its raw heap storage (`nodes[2*i + 1]` and
+    /// `nodes[2*i + 2]` are the children of `nodes[i]`).
+    ///
+    /// The app uses this to restore a dock layout it serialized itself: the
+    /// file format is the app's, the invariant checks are ours, so a corrupt or
+    /// hand-edited layout cannot make [`crate::docker::Docker`] panic later. A
+    /// non-empty node must be reachable from the root exactly once; a split's
+    /// children must exist and not be empty; a leaf holds at least one tab and
+    /// an in-range active index. `Empty` is allowed only in heap slots no node
+    /// points at (the split/remove math keeps such holes).
+    ///
+    /// `focused_node` starts empty; focus a tab through
+    /// [`crate::docker::DockState::focus_tab`] after restoring.
+    pub fn from_nodes(nodes: Vec<Node<Id>>) -> Option<Self> {
+        if nodes.is_empty() {
+            return Some(Self {
+                nodes,
+                focused_node: None,
+            });
+        }
+        if nodes.len() > MAX_RESTORED_NODES {
+            return None;
+        }
+
+        fn visit<Id: TabId>(nodes: &[Node<Id>], index: usize, seen: &mut [bool]) -> Option<()> {
+            if index >= nodes.len() || seen[index] {
+                return None;
+            }
+            seen[index] = true;
+            match &nodes[index] {
+                Node::Empty => None,
+                Node::Leaf(leaf) => {
+                    (!leaf.tabs.is_empty() && leaf.active.0 < leaf.tabs.len()).then_some(())
+                }
+                Node::Vertical(_) | Node::Horizontal(_) => {
+                    visit(nodes, index * 2 + 1, seen)?;
+                    visit(nodes, index * 2 + 2, seen)
+                }
+            }
+        }
+
+        let mut seen = vec![false; nodes.len()];
+        visit(&nodes, 0, &mut seen)?;
+        if nodes
+            .iter()
+            .zip(&seen)
+            .any(|(node, seen)| !node.is_empty() && !seen)
+        {
+            return None;
+        }
+        Some(Self {
+            nodes,
+            focused_node: None,
+        })
     }
 }

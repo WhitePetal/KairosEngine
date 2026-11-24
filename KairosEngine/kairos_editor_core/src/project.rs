@@ -73,8 +73,8 @@ pub struct ProjectState {
     /// table drives the M5 acceptance test, and nothing outside `core` reads the
     /// built-in constants directly.
     pub file_types: FileTypeRegistry,
-    /// Persistable user intent: expanded, active directory, selection, sort,
-    /// split ratio (M2/M4).
+    /// User intent over the tree: expanded, active directory, selection, sort,
+    /// split ratio. Runtime-only; M4 persists the editor layout, not this (D13).
     pub view: ProjectView,
     /// Progress of the scan request/completion protocol.
     pub scan: ScanState,

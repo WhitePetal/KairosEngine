@@ -35,8 +35,8 @@ use egui::{
     Align2, Context, CornerRadius, Key, Pos2, Rect, Sense, Ui, Vec2, WidgetText, pos2, vec2,
 };
 use kairos_editor_core::project::{
-    CreateEntry, CreateKind, Node, NodeId, ProjectState, ProjectTree, RelPath, ScanReason,
-    SelectMode, validate_name,
+    CreateEntry, CreateKind, Node, NodeId, ProjectState, ProjectTree, ProjectView, RelPath,
+    ScanReason, SelectMode, validate_name,
 };
 use kairos_editor_core::{Action, ProjectAction};
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
@@ -412,10 +412,12 @@ impl Panel for ProjectPanel {
             pos2(boundary - grab, content_rect.top()),
             pos2(boundary + grab, content_rect.bottom()),
         );
+        let default_split = ProjectView::default().tree_split;
         let response = Splitter::vertical()
             .line(style.splitter_width)
             .grab(2.0 * grab)
             .limits(MIN_TREE_WIDTH, MIN_CONTENT_WIDTH)
+            .reset_to(default_split * total)
             .colors(
                 style.splitter_idle.to_egui(),
                 style.splitter_hover.to_egui(),
@@ -437,7 +439,13 @@ impl Panel for ProjectPanel {
             if response.changed() {
                 *split = Some(left_width / total);
             }
-            if response.drag_stopped() {
+            if response.double_clicked() {
+                // Double-click is a completed gesture like a drag release (M2
+                // known behaviour #2): one action restores the default ratio
+                // and the local override goes away again.
+                out.push(Action::Project(ProjectAction::SetTreeSplit(default_split)));
+                *split = None;
+            } else if response.drag_stopped() {
                 out.push(Action::Project(ProjectAction::SetTreeSplit(
                     left_width / total,
                 )));
@@ -2245,6 +2253,42 @@ mod tests {
         assert!(
             (splits[0] - dragged / CANVAS.x).abs() < 0.01,
             "the action must carry the dragged fraction, got {splits:?}"
+        );
+    }
+
+    /// Double-clicking the column splitter restores the default ratio (M2 known
+    /// behaviour #2): it is one completed gesture, so one SetTreeSplit action,
+    /// and the panes follow it on the next pass.
+    #[test]
+    fn double_clicking_the_column_splitter_restores_the_default_split() {
+        let mut harness = ProjectHarness::new(&[]);
+        harness.state.project.view.tree_split = 0.5;
+
+        let actions = harness.double_click(pos2(0.5 * CANVAS.x, 200.0));
+        for action in &actions {
+            let _ = kairos_editor_core::reduce(&mut harness.state, action.clone());
+        }
+        assert!(
+            actions.iter().any(|action| matches!(
+                action,
+                Action::Project(ProjectAction::SetTreeSplit(fraction))
+                    if (*fraction - 0.28).abs() < 0.001
+            )),
+            "the reset must ask core for the default ratio: {actions:?}"
+        );
+        assert!(
+            (harness.state.project.view.tree_split - 0.28).abs() < 0.001,
+            "core lands on the default ratio"
+        );
+
+        let style = ProjectStyle::dark();
+        let painted = harness.painted(Vec::new());
+        assert!(
+            painted
+                .iter()
+                .any(|painted| painted.fill == style.header_bg.to_egui()
+                    && (painted.rect.left() - 0.28 * CANVAS.x).abs() < 1.0),
+            "the next pass lays the panes out at the default boundary: {painted:?}"
         );
     }
 

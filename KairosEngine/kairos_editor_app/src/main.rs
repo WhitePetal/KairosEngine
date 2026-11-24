@@ -19,6 +19,7 @@ mod cursor;
 mod effects;
 mod eyedropper;
 mod host;
+mod layout;
 mod paths;
 mod project;
 

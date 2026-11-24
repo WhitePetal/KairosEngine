@@ -34,8 +34,8 @@ pub(crate) struct EffectExecutor<'a> {
     /// it when the user switches to it, and a switch back must show the edit.
     pages: &'a mut Vec<PageSkin>,
     /// The instant the effects run. Timing policy that depends on wall-clock
-    /// time (M4's view-file debounce, scan elapsed time) is computed here, not
-    /// in the reducer, which must stay a pure function.
+    /// time (scan elapsed time) is computed in the host, never in the reducer,
+    /// which must stay a pure function.
     now: Instant,
 }
 

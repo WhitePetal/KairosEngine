@@ -7,3 +7,7 @@
 # `Library/imported_assets/Default` are committed; regenerate them from the
 # project sources with `cargo run --bin bake_assets`).
 /Library/imported_assets/log
+# The editor layout cache (M4): per-user dock/window arrangement, safe to
+# delete (the editor falls back to the default layout). Not project data.
+/Library/editor_layout.toml*
+/Library/.editor_layout.toml.tmp-*

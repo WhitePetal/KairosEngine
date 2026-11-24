@@ -139,7 +139,7 @@ core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`
 **交付**
 - `CommandRegistry` 接入工具栏、菜单、快捷键、命令面板（先做工具栏+快捷键即可）。
 - `StyleState` + `StyleSchema` 注册表；偏好设置页由 schema 生成；`get_style_fileds`/`update_style` 删除。
-- 布局持久化（`Effect::PersistLayout`）。
+- 布局持久化（`Effect::PersistLayout`）。**2026-11-25 状态：已提前落到 [project-panel M4](../project-panel/README.md#m4--编辑器布局持久化25-35-天d13) 并落地**——dock 树归 host，app 在 `begin_frame` 取快照 + 去抖写 `Library/editor_layout.toml`（不经过 reducer effect，理由见该文 L4）；本阶段不再重复实现，验收项由该里程碑覆盖。
 - MCP 桥接：`Query` 快照 + `EditorCommand` → `Action`；替代 `docs/plan/kairos-editor-mcp/phase3` 的 `Drawer::QueryHandler` 中间层。
 
 **验收**

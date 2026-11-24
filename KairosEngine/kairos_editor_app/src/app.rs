@@ -10,8 +10,8 @@ use kairos_editor_component::{
 };
 use kairos_editor_core::project::{ScanReason, SelectMode};
 use kairos_editor_core::{
-    Action, AppAction, EditorState, Effect, LayoutAction, ProjectAction, ProjectState,
-    SharedStyleAction, StyleAction, reduce,
+    Action, AppAction, EditorState, Effect, LayoutAction, LayoutState, PanelId, ProjectAction,
+    ProjectState, SharedStyleAction, StyleAction, reduce,
 };
 use kairos_editor_docking::{
     docker::{DockState, Docker},
@@ -24,6 +24,7 @@ use kairos_profile::{Category, Profiler};
 
 use crate::consts;
 use crate::effects::EffectExecutor;
+use crate::layout::{self, LayoutFile, LayoutPersist};
 use crate::project::ProjectService;
 use crate::project::thumbnail::Thumbnails;
 
@@ -114,30 +115,48 @@ fn editor_info() -> EditorInfo {
     }
 }
 
-/// The first-run open set: the panels [`default_dock`] builds tabs for.
-///
-/// Bootstrapping is the only code allowed to call `LayoutState::open` directly;
-/// runtime opens go through `LayoutAction` so the reducer can return a
-/// placement effect. This is app policy, not panel metadata: which panels a
+/// The first-run open set: what a fresh project shows before a layout file
+/// exists. Bootstrapping is the only code allowed to call `LayoutState::open`
+/// directly; runtime opens go through `LayoutAction` so the reducer can return
+/// a placement effect. This is app policy, not panel metadata: which panels a
 /// fresh editor shows is a product decision, so it does not live in the
 /// catalog.
+const BOOT_PANELS: [PanelId; 6] = [
+    panels::SCENE,
+    panels::INSPECTOR,
+    panels::PROJECT,
+    panels::CONSOLE,
+    panels::PROFILER,
+    panels::HIERARCHY,
+];
+
+/// The boot state: layout intent from the restored file (or the first-run set),
+/// plus the project slice rooted at `root`.
 ///
 /// This is also where the project slice learns its root. The working directory
-/// is read here, at the one IO boundary the app owns, and stored as data: core
-/// never calls `current_dir` (D9 in `docs/plan/project-panel`), so pointing the
-/// editor at another project later means replacing this value, not the tree.
-fn boot_state(root: PathBuf) -> EditorState {
+/// is read in `with_root`, at the one IO boundary the app owns, and stored as
+/// data: core never calls `current_dir` (D9 in `docs/plan/project-panel`), so
+/// pointing the editor at another project later means replacing this value,
+/// not the tree.
+fn boot_state(root: PathBuf, open: Option<&[PanelId]>, tree_split: Option<f32>) -> EditorState {
     let mut state = EditorState::new();
     state.project = ProjectState::at(root);
-    for kind in [
-        panels::SCENE,
-        panels::INSPECTOR,
-        panels::PROJECT,
-        panels::CONSOLE,
-        panels::PROFILER,
-        panels::HIERARCHY,
-    ] {
-        state.layout.open(kind);
+    match open {
+        Some(kinds) => {
+            for kind in kinds {
+                state.layout.open(*kind);
+            }
+        }
+        None => {
+            for kind in BOOT_PANELS {
+                state.layout.open(kind);
+            }
+        }
+    }
+    if let Some(tree_split) = tree_split {
+        // A bootstrapping write like `layout.open`: the layout file is host IO,
+        // while every later split change goes through `SetTreeSplit`.
+        state.project.view.tree_split = layout::clamp_tree_split(tree_split);
     }
     state
 }
@@ -169,6 +188,33 @@ fn default_dock(host: &PanelHost) -> DockState<PanelInstanceId> {
     dock
 }
 
+/// Reconcile the dock with the open panel instances: a panel the saved layout
+/// does not mention (one added by a newer build, or a saved tab that was lost
+/// with the panel) is appended to the current leaf instead of disappearing.
+fn reconcile_dock(dock: &mut DockState<PanelInstanceId>, host: &PanelHost) {
+    let tabs = dock.tabs();
+    for id in host.ids() {
+        if !tabs.contains(&id) {
+            dock.append_tab(id);
+        }
+    }
+}
+
+/// The fallback when a saved layout cannot be rebuilt: the default open set and
+/// the default arrangement. The next layout change rewrites the file.
+fn default_layout(
+    state: &mut EditorState,
+    host: &mut PanelHost,
+    ctx: &egui::Context,
+) -> DockState<PanelInstanceId> {
+    state.layout = LayoutState::default();
+    for kind in BOOT_PANELS {
+        state.layout.open(kind);
+    }
+    host.sync(&state.layout, ctx);
+    default_dock(host)
+}
+
 pub struct EditorApp {
     state: EditorState,
     host: PanelHost,
@@ -186,6 +232,10 @@ pub struct EditorApp {
     /// Host side of the project slice: scanning, watching and file operations.
     /// It owns the file system so the state tree does not have to.
     project: ProjectService,
+    /// Debounced writer for `Library/editor_layout.toml` (M4). The dock tree is
+    /// host state and mutates itself while drawing, so the app observes it per
+    /// frame instead of routing persistence through an effect (M4 L4).
+    layout: LayoutPersist,
     /// The Preferences page snapshot: one self-drawing page per live skin (open
     /// panels, then shared styles), kept while the Preferences editor is open
     /// and empty otherwise.
@@ -243,10 +293,49 @@ impl EditorApp {
             root.join("Library/ColorSwatches.ron"),
         );
 
-        let state = boot_state(root.clone());
+        // The layout file is read before the host is built, so the open set can
+        // decide which panel instances to create; the dock itself is rebuilt
+        // after `sync`, when the live instance ids exist.
         let mut host = PanelHost::new(panels::catalog(), PanelContext::new(editor_info()));
+        let known: Vec<PanelId> = host.kinds().collect();
+        let restored = match layout::load(&root) {
+            Some(file) => match file.restore(&known) {
+                Ok(restored) => Some(restored),
+                Err(error) => {
+                    kairos_log::warn!(
+                        target: "kairos_editor",
+                        "editor layout: {}: {error}; using the default layout",
+                        layout::layout_path(&root).display()
+                    );
+                    None
+                }
+            },
+            None => None,
+        };
+        let mut state = boot_state(
+            root.clone(),
+            restored.as_ref().map(|restored| restored.open()),
+            restored.as_ref().map(|restored| restored.tree_split()),
+        );
         host.sync(&state.layout, egui_ctx);
-        let dock = default_dock(&host);
+        let mut dock = match restored.as_ref() {
+            Some(restored) => match restored.dock(&host) {
+                Some(dock) => dock,
+                None => {
+                    kairos_log::warn!(
+                        target: "kairos_editor",
+                        "editor layout: a saved panel has no live instance; using the default layout"
+                    );
+                    default_layout(&mut state, &mut host, egui_ctx)
+                }
+            },
+            None => default_dock(&host),
+        };
+        reconcile_dock(&mut dock, &host);
+        // Baseline = what is actually on screen now: a missing or invalid file
+        // must not make the first frame rewrite a default file.
+        let baseline = LayoutFile::capture(&dock, state.project.view.tree_split);
+        let layout = LayoutPersist::new(layout::layout_path(&root), baseline);
 
         let host_view = AppHost::new();
         let tool_bar = ToolBar::new();
@@ -271,6 +360,7 @@ impl EditorApp {
             pending_effects: Vec::new(),
             inbox,
             project,
+            layout,
             pages: Vec::new(),
             shared_styles,
         }
@@ -343,6 +433,16 @@ impl EditorApp {
         // replaced an owner (which the executor already refreshed). After the
         // effects, so a value written in this frame is already visible.
         self.refresh_pages();
+
+        // The dock mutates itself while drawing (tab drags, splits, floating
+        // window moves) without producing actions, so layout persistence
+        // observes the host's own state here: a changed snapshot restarts the
+        // debounce, and an unchanged frame costs one comparison.
+        if self.layout.enabled() {
+            let snapshot = LayoutFile::capture(&self.dock, self.state.project.view.tree_split);
+            self.layout.observe(snapshot, now);
+            self.layout.poll(now);
+        }
 
         debug_assert!(
             self.host.ids().all(|id| self.dock.contains_tab(id)),
@@ -452,6 +552,12 @@ impl EditorApp {
     fn pump(&mut self, mut out: UiOut) {
         kairos_profile::scope!(Category::Editor, "Kairos.Editor.Pump");
         self.apply_actions(out.take());
+    }
+
+    /// The engine loop is shutting down (`Layer::on_exit`): write the pending
+    /// layout so a change made in the last debounce window is not lost.
+    pub(crate) fn on_exit(&mut self) {
+        self.layout.flush(Instant::now());
     }
 }
 
@@ -730,7 +836,7 @@ mod tests {
             &ctx,
             root.join("Library/ColorSwatches.ron"),
         );
-        let state = boot_state(root);
+        let state = boot_state(root, None, None);
         let mut host = PanelHost::new(panels::catalog(), PanelContext::new(editor_info()));
         host.sync(&state.layout, &ctx);
         let dock = default_dock(&host);
@@ -746,6 +852,9 @@ mod tests {
             // Scans run on the calling thread here: the protocol is what these
             // tests assert, and a scheduler would only add timing to it.
             project: ProjectService::inline(),
+            // These tests build the app by hand and drive frames themselves;
+            // a disk-writing layout observer would only add timing.
+            layout: LayoutPersist::disabled(),
             pages: Vec::new(),
             shared_styles: SharedStyles::default(),
         }
@@ -1940,5 +2049,141 @@ mod tests {
             app.inbox.is_empty(),
             "nothing is left over after the completion was applied"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // editor layout persistence (M4): the file is read before the first frame,
+    // the dock is rebuilt from live instances, and the host flushes on exit.
+    // -----------------------------------------------------------------------
+
+    /// A project root this test owns, with any previous run removed.
+    fn fresh_root(name: &str) -> std::path::PathBuf {
+        let root = tmp_project_root().join(name);
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("create the layout test root");
+        root
+    }
+
+    #[test]
+    fn boot_restores_the_saved_layout() {
+        scratch_style_root();
+        let root = fresh_root("layout-restore");
+        let console = PanelInstanceId::new(panels::CONSOLE, 0);
+        let project = PanelInstanceId::new(panels::PROJECT, 0);
+        let mut dock: DockState<PanelInstanceId> = DockState::new();
+        dock.append_tab(console);
+        dock.main_surface_mut()
+            .split_right(NodeIndex::root(), Fraction::new(0.4), vec![project]);
+        dock.focus_tab(console);
+        let file = LayoutFile::capture(&dock, 0.42).expect("the dock is capturable");
+        layout::save(&layout::layout_path(&root), &file).expect("seed the layout file");
+
+        let ctx = egui::Context::default();
+        let app = EditorApp::with_root(&ctx, root);
+
+        assert_eq!(
+            app.state.project.view.tree_split, 0.42,
+            "the Project split rides along with the layout"
+        );
+        assert!(app.state.layout.is_open(panels::CONSOLE));
+        assert!(app.state.layout.is_open(panels::PROJECT));
+        assert!(
+            !app.state.layout.is_open(panels::SCENE),
+            "the saved open set replaces the first-run set"
+        );
+        let console_id = app.host.id_of(panels::CONSOLE).expect("console instance");
+        let project_id = app.host.id_of(panels::PROJECT).expect("project instance");
+        assert_eq!(app.dock.tabs(), vec![console_id, project_id]);
+        assert_eq!(app.dock.focused_tab(), Some(console_id));
+    }
+
+    #[test]
+    fn a_broken_layout_file_falls_back_to_the_default_layout() {
+        scratch_style_root();
+        let root = fresh_root("layout-broken");
+        let path = layout::layout_path(&root);
+        std::fs::create_dir_all(path.parent().expect("Library dir")).expect("create Library");
+        std::fs::write(
+            &path,
+            "version = 1\n[[main.nodes]]\nkind = \"leaf\"\ntabs = [\"nope\"]\n",
+        )
+        .expect("write an unknown-panel layout");
+
+        let ctx = egui::Context::default();
+        let app = EditorApp::with_root(&ctx, root);
+
+        assert!(
+            app.state.layout.is_open(panels::SCENE),
+            "an unusable file falls back to the first-run set"
+        );
+        assert_eq!(app.dock.tabs().len(), BOOT_PANELS.len());
+        assert_eq!(
+            app.state.project.view.tree_split,
+            kairos_editor_core::project::ProjectView::default().tree_split
+        );
+    }
+
+    #[test]
+    fn a_clean_boot_does_not_write_a_layout_file() {
+        scratch_style_root();
+        let root = fresh_root("layout-clean");
+        let ctx = egui::Context::default();
+        let mut app = EditorApp::with_root(&ctx, root.clone());
+        app.on_exit();
+
+        assert!(
+            !layout::layout_path(&root).exists(),
+            "nothing changed, so the default layout must not be written to disk"
+        );
+    }
+
+    #[test]
+    fn the_layout_is_flushed_on_exit() {
+        scratch_style_root();
+        let root = fresh_root("layout-flush");
+        let ctx = egui::Context::default();
+        let mut app = EditorApp::with_root(&ctx, root.clone());
+        // Close a panel the way the UI does: an action, then the host phase drops
+        // the instance and its dock tab. Removing the tab directly would break
+        // the host/dock invariant the debug assert checks.
+        let mut out = UiOut::new();
+        out.push(Action::Layout(LayoutAction::ClosePanel {
+            panel: panels::CONSOLE,
+        }));
+        app.pump(out);
+
+        app.begin_frame(&ctx);
+        assert_eq!(app.host.id_of(panels::CONSOLE), None);
+        assert!(
+            !layout::layout_path(&root).exists(),
+            "the write is debounced, not done in the frame that saw the change"
+        );
+
+        app.on_exit();
+        let text = std::fs::read_to_string(layout::layout_path(&root))
+            .expect("the exit flush wrote the layout");
+        assert!(
+            !text.contains("console"),
+            "the closed tab is not saved: {text}"
+        );
+        assert!(text.contains("project"), "the other tabs survive: {text}");
+    }
+
+    #[test]
+    fn a_panel_opened_without_a_saved_tab_is_appended_to_the_dock() {
+        scratch_style_root();
+        let ctx = egui::Context::default();
+        let mut host = PanelHost::new(panels::catalog(), PanelContext::new(editor_info()));
+        let mut state = EditorState::new();
+        state.layout.open(panels::CONSOLE);
+        state.layout.open(panels::PROJECT);
+        host.sync(&state.layout, &ctx);
+
+        let mut dock: DockState<PanelInstanceId> = DockState::new();
+        reconcile_dock(&mut dock, &host);
+
+        assert_eq!(dock.tabs().len(), 2);
+        assert!(dock.contains_tab(host.id_of(panels::CONSOLE).expect("console instance")));
+        assert!(dock.contains_tab(host.id_of(panels::PROJECT).expect("project instance")));
     }
 }

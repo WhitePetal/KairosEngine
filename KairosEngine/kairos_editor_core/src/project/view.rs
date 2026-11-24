@@ -1,11 +1,12 @@
 //! The user's intent over the tree: what is expanded, which directory is
 //! active, what is selected, and how rows are ordered.
 //!
-//! This is the half of the panel's view state that survives a restart (M4
-//! persists it in `Library/project_view.toml`). Per-frame view state — search
-//! text, rename buffer, drag paths, scroll position — belongs to the panel
-//! instance, because `PanelHost::sync` drops a closed panel and everything it
-//! holds.
+//! This is runtime state: the panel session is **not** persisted (D13 — M4
+//! persists the editor layout instead; expanded/selected/scroll detail is low
+//! value per byte). It is the half of the panel's state that survives closing
+//! the tab. Per-frame view state — search text, rename buffer, drag paths,
+//! scroll position — belongs to the panel instance, because `PanelHost::sync`
+//! drops a closed panel and everything it holds.
 
 use std::collections::BTreeSet;
 
@@ -35,7 +36,8 @@ pub enum SelectMode {
     Range,
 }
 
-/// Persistable view intent over the project tree.
+/// The user's view intent over the project tree. Runtime-only: not persisted
+/// (D13; M4 persists the editor layout, and `tree_split` rides along there).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProjectView {
     /// Folders the user opened. Files never appear here.

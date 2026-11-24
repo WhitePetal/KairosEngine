@@ -474,7 +474,7 @@ pub struct PanelHost { /* instances + slot/tab layout */ }
 - **新增面板成本**：实现 `Panel` + 组合根里 `registry.register(kind, slot, factory)` 一行；不改 `editor-core`、不改 `EditorApp`、不新增 `Message`。原型的 Gallery 面板就注册在 host crate 里，core 完全不知道它。
 - **多实例**：`PanelInstanceId(kind, serial)` 从第一天就有；两个场景视口 = `viewport#0`、`viewport#1`（kind 相同、serial 不同），view state 按实例 key 分离，布局 API 不用改。
 - **dock**：原型的四槽（left/center/right/bottom）+ tab bar 是 `PanelHost` 的最小实现；生产把现有 `DockState` 泛型化为 `PanelInstanceId` 后接到 `kairos_editor_docking`，`PanelHost` 接口不变（`TabDrawer` 只调 `Panel::draw`，不再携带 `&Vec<Box<dyn Drawer>>`/`&mut Messager`/`&Engine`）。
-- **布局持久化**：`Effect::PersistLayout` 序列化 dock 树（`serde`）；启动时恢复 `LayoutState` + dock 布局。
+- **布局持久化**：`Effect::PersistLayout` 序列化 dock 树（`serde`）；启动时恢复 `LayoutState` + dock 布局。**2026-11-25：已由 [project-panel M4](../project-panel/README.md#m4--编辑器布局持久化25-35-天d13) 落地，实现放在 app（`layout.rs`）+ `Library/editor_layout.toml`；因为 dock 拖拽不产生 action，保存触发是 host 侧帧快照而不是 reducer effect。**
 
 ### 3.6 文档、选择、撤销
 

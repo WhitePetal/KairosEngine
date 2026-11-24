@@ -334,6 +334,13 @@ impl Layer for EditorLayer {
         }
     }
 
+    /// The loop is shutting down. The app flushes the debounced editor-layout
+    /// write here (M4): a layout change made in the last half second before the
+    /// window closes must not be lost.
+    fn on_exit(&mut self, _engine: &mut Engine) {
+        self.app.on_exit();
+    }
+
     fn render(
         &mut self,
         engine: &mut Engine,

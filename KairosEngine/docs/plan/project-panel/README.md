@@ -1,8 +1,8 @@
 # ProjectPanel 迁移重构计划
 
-> **状态**：已拍板（D1–D12 全部落定，见 [§7](#7-决策记录已拍板)）。**M0 / M0.5 / M1 / M2 已落地**（M1 分 M1a core + M1b app 两刀，M2 分 M2a core+widget / M2b 面板两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。M2 已按「开工前复核定稿」定稿并开工（M2a/M2b 两刀，见 M2 一节），交付后又按真机验收反馈做了 7 条修正（见 M2 一节末尾的「M2 验收修正」）。**M3 已复核并对齐定稿（T1–T16，含弹窗/类型表/图标三处分界），拆 M3a core+app+widget / M3b 面板两刀，M3a 四层已落地（画面几乎不变）、M3b 面板功能已落地（右键菜单 / 行内重命名 / 删除确认 / 多选与键盘 / 拖拽移动 / 类型图标），并已按真机验收第二轮反馈做了 7 条修正（弹窗背板 / 文件夹区域落点 / 拖拽自滚动 / 多选保持 / 幽灵 / 纹理缩略图 / 多选 anchor）、第三轮反馈做了 3 条修正（离线文件夹的区域框 / 自动滚手感 / 弹窗标题条改用项目共享的红色圆圈关闭按钮），**M3 已收口（2026-11-22）**（见 M3 一节）。
+> **状态**：已拍板（D1–D13 全部落定，见 [§7](#7-决策记录已拍板)）。**M0 / M0.5 / M1 / M2 已落地**（M1 分 M1a core + M1b app 两刀，M2 分 M2a core+widget / M2b 面板两刀）。M1 开工前对方案做了一次复核，补上了 5 处会现场发明的设计空白、3 处自相矛盾，结论已并入 §2.2 / §2.3 / §2.5 与 §3 的 M1 一节。每个里程碑的实测与已知行为记在对应小节末尾。M2 已按「开工前复核定稿」定稿并开工（M2a/M2b 两刀，见 M2 一节），交付后又按真机验收反馈做了 7 条修正（见 M2 一节末尾的「M2 验收修正」）。**M3 已复核并对齐定稿（T1–T16，含弹窗/类型表/图标三处分界），拆 M3a core+app+widget / M3b 面板两刀，M3a 四层已落地（画面几乎不变）、M3b 面板功能已落地（右键菜单 / 行内重命名 / 删除确认 / 多选与键盘 / 拖拽移动 / 类型图标），并已按真机验收第二轮反馈做了 7 条修正（弹窗背板 / 文件夹区域落点 / 拖拽自滚动 / 多选保持 / 幽灵 / 纹理缩略图 / 多选 anchor）、第三轮反馈做了 3 条修正（离线文件夹的区域框 / 自动滚手感 / 弹窗标题条改用项目共享的红色圆圈关闭按钮），**M3 已收口（2026-11-22）**（见 M3 一节）。**M4 已重定义为「编辑器布局持久化」**（2026-11-25 用户拍板 D13：布局落盘、面板会话态不落盘，原 M4 方案从计划删除），开工前复核定稿见 M4 一节；**实现已落地（2026-11-25），待真机验收**（见 M4 落地状态）。
 > **范围**：`kairos_editor_core`（项目领域）/ `kairos_editor_app`（扫描、监听、文件操作、持久化）/ `kairos_editor_component`（面板）/ `kairos_editor_widgets`（树控件）；旧 `kairos_editor` 只冻结，最后退役
-> **配套**：[ADR 0008](../../adr/0008-editor-ui-architecture.md)、[ADR 0009](../../adr/0009-editor-panel-host-and-viewport.md)、[rewrite-plan](../editor-ui-architecture/rewrite-plan.md)（Phase 0.5 写明「只迁 ProjectPanel 一页」）、[panel-viewport-design](../editor-ui-architecture/panel-viewport-design.md) §6.2 P1、[widget-layer](../editor-ui-architecture/widget-layer.md) §2.2/§5
+> **配套**：[ADR 0008](../../adr/0008-editor-ui-architecture.md)、[ADR 0009](../../adr/0009-editor-panel-host-and-viewport.md)、[rewrite-plan](../editor-ui-architecture/rewrite-plan.md)（Phase 0.5 写明「只迁 ProjectPanel 一页」）、[panel-viewport-design](../editor-ui-architecture/panel-viewport-design.md) §2.6 状态归属、§6.2 P1、[widget-layer](../editor-ui-architecture/widget-layer.md) §2.2/§5
 > **可抄的形状**：`prototypes/editor-ui/crates/editor-components/src/project_panel.rs`（派生函数 + 行渲染 + action 映射）、`prototypes/editor-ui/crates/editor-core/src/reduce/project.rs`（data-in / effects-out）
 > **旧实现**：`kairos_editor/src/{project_path_tree.rs, asset_registry.rs, project_watcher.rs, ui/project_window/*}`
 
@@ -18,7 +18,7 @@
 
 1. **第 1 步不是「重构 ProjectTree」，而是「把树拆成三层」**：core 里的纯模型 + app 里的扫描/监听 + 删除 GUID 身份。只重构数据结构，会把 `std::fs` 调用和原生弹窗一起留在原地（现状：`project_path_tree.rs:395` 建目录时直接弹错误框，`:406-410` 五种类型是 `todo!()`，右键建个纹理就 panic）。
 2. **第 2 步之前缺一整层接缝**：新 app 目前**没有**「host 异步结果写回 state」的通道（`app.rs:250` 的 `pump` 只吃 UI 产出的 action），也**没有**树控件。不做 M0 + TreeView，面板会重新长出旧那一套 `Arc<Mutex>` / `Cell`（旧 `ProjectWindowModel` 里有 3 个 `Cell`、2 个 `Arc<Mutex>`）。
-3. **第 3 步的「持久化」是三件不同的事**，必须分开：(a) 面板视图状态（展开/选中/当前目录）→ 新增 TOML；(b) 面板皮肤 → 已由 `#[panel(skin = ...)]` 解决；(c) GUID 注册表 → **删的是"编辑器自己发号"的那份**（唯一消费者是 Inspector 显示一行文本：`ui/inspector_window.rs:170`）；**资产身份本身要保留**，只是应该搬进 `.meta`，见 §2.11 与 D11。
+3. **第 3 步的「持久化」拆开是两件事**：(a) **编辑器布局**（打开的面板、dock 停靠树与分割比例、tab 顺序/焦点、浮动窗口、Project 面板左右比例）→ 新增布局文件（M4，D13）；**面板会话态（展开/选中/当前目录/滚动/搜索）不落盘**；(b) 面板皮肤 → 已由 `#[panel(skin = ...)]` 解决；(c) GUID 注册表 → **删的是"编辑器自己发号"的那份**（唯一消费者是 Inspector 显示一行文本：`ui/inspector_window.rs:170`）；**资产身份本身要保留**，只是应该搬进 `.meta`，见 §2.11 与 D11。
 4. **你把「文件/文件夹的增删改查」列进了后端组成，但 5 步里没有任何一步在排它**。必须补 M3，而且它要早于类型任务——类型任务会新增创建入口、拖拽移动、删除确认，全靠这套协议。
 5. **「引入各种类型的资源」需要一个前置 seam**：`FileTypeRegistry`（扩展名 → 类型、图标、后缀标签、打开方式、是否伴生文件）。没有它，每个类型任务都会去改树和面板，第 4 步就会从 5 个任务变成 5 次重构。
 
@@ -34,10 +34,10 @@
 | 阶段 | 估算（单人） |
 |---|---|
 | M0.5 资产布局迁移（D12） | **0.5–1 人日**（跨 `kairos_asset`/`kairos_engine`/`kairos_graphics`） |
-| M0 + M1–M6（面板本体，不含类型任务） | **15–21 人日 ≈ 3.5–5 周**（M3 复核后由 3–5 调为 5–6，见 M3 定稿） |
+| M0 + M1–M6（面板本体，不含类型任务） | **16–22 人日 ≈ 3.5–5 周**（M3 复核后 M3 由 3–5 调为 5–6；M4 定稿后由 1.5–2.5 调为 2.5–3.5） |
 | M7 资产身份与引用维护 | **5–8 人日**（跨 `kairos_asset`/`kairos_graphics`） |
 | M8 收尾（冻结 + 文档） | **0.5–1 人日** |
-| **合计（不含类型任务）** | **21–31 人日 ≈ 4.5–6.5 周** |
+| **合计（不含类型任务）** | **22–32 人日 ≈ 4.5–6.5 周** |
 | M5 的 seam（已含在 M0–M6 里） | 2–3 人日 |
 | M5 的每个类型任务（另计） | 0.5–2 人日 / 类型 |
 
@@ -57,6 +57,7 @@
 - **D10 一开始就上 `.kairosignore`**：项目根、gitignore 风格子集、缺失时 seed 默认文件；不再另设编辑器级忽略配置。
 - **D11 引用维护并入**：作为 M7，5–8 人日，跨 `kairos_asset`/`kairos_graphics`/`app`/`component`；M3 先埋「移动/删除以簇为单位」的地基。
 - **D12 成品根搬进 `Library/`**：作为 M0.5，直接现在搬（`imported_assets/Default` → `Library/imported_assets/Default`），换掉 `ScanPolicy` 里的「跳过成品根」特例。
+- **D13 持久化范围 = 编辑器布局**：存 dock 布局（打开的 panel、分割树/比例、tab 顺序/焦点、浮动窗口位置尺寸）+ Project 面板左右比例；**面板会话态（展开/选中/当前目录/滚动/搜索）不落盘**，原 M4 的 `project_view.toml` 方案删除。理由：布局是用户立刻感知的收益；会话态细节低收益，架构文档本就把它归 `ViewStates`（可选、按需）。未来「打开的 World/Scene」另立文档/会话需求。
 
 ---
 
@@ -90,7 +91,7 @@
 | 创建 | 目录 + 3 类文本文件；其余 `todo!()` | 文件夹 + 注册表里的文件模板，走校验 + effect（M3） |
 | 改名 | 仅 stem；目录改名**不更新子孙路径**；同名判重拿 stem 比全名（bug） | 全名编辑 + 校验 + 重新扫描（M3） |
 | 删除 | 直接 `remove_file`/`remove_dir_all`，无确认、无回收站 | 回收站 + 确认 + 可见错误（M3，D5） |
-| 选中恢复 | 重扫后按 GUID 找回 | 按路径找回，失效则回退最近祖先（M1/M4） |
+| 选中恢复 | 重扫后按 GUID 找回 | 按路径找回，失效则回退最近祖先（M1；跨重启不恢复，D13） |
 | 外部变更 | 300ms 去抖 watcher，任何变更全量重扫 | 同样搬进 app，增加 generation 丢弃过期结果（M1） |
 | 拖拽 | 内部 `Drag<PathBuf>` + 幽灵图 | 树内移动（M3）；拖到视口另立（§9） |
 
@@ -250,7 +251,7 @@ impl IgnoreRules {
 - 与「显示隐藏文件」无关：被忽略的目录连扫都不扫。
 
 ```rust
-// core/src/project/view.rs —— 「用户意图」，可持久化；本帧才有效的放面板里
+// core/src/project/view.rs —— 「用户意图」，运行期状态（不落盘，D13）；本帧才有效的放面板里
 pub struct ProjectView {
     pub expanded: BTreeSet<RelPath>,
     pub active: Option<RelPath>,        // 面包屑 / 内容区当前目录
@@ -377,7 +378,6 @@ pub enum ProjectAction {
     SetSort(SortKey),
     SetShowHidden(bool),
     PolicyLoaded { policy: ScanPolicy },   // boot 读 .kairosignore 之后；改规则时也走这条
-    ViewRestored { view: ProjectView },    // M4
 
     // 变更（请求 → effect → 完成）
     CreateRequested { parent: RelPath, name: String, kind: CreateKind },
@@ -393,7 +393,6 @@ pub enum ProjectAction {
 
 pub enum ProjectEffect {
     Scan { root: PathBuf, policy: ScanPolicy, generation: u64 },
-    PersistView { view: ProjectView, root: PathBuf },   // app 侧去抖 + 原子写
     Fs(FsOp),                                            // create/rename/move/trash
     Open { root: PathBuf, path: RelPath, with: OpenWith },
     Reveal { root: PathBuf, path: RelPath },
@@ -457,7 +456,7 @@ D1 定稿：**左右两栏从第一天就存在**，右栏先只有面包屑 + �
 ```
 
 - **工具栏 M2 只放真能用的三项**：`折叠全部` / `刷新` 两个文字段 + **隐藏文件的眼睛开关**（新建 ▾ / 删除等 M3 有真实动作再加，不做灰按钮占位）；每个控件后画 1 px chrome 线（Console/Profiler 工具栏同一规则），眼睛前另加一条——没有分割线，文字按钮读起来就是标签。眼睛是 Unity 的 scene-visibility eye（开 = 显示隐藏项、叉 = 过滤），图标本身即状态，**不加计数文本**：计数会随目录变、M6 的搜索框要占这条横带，tooltip 写清动作就够；
-- 分割条用现成的 `widgets::splitter`：拖拽中的宽度**面板本地持有**（`Option<f32>`，`None` = 跟随 `ProjectView::tree_split`），松手只发一条 `SetTreeSplit`；两边宽度进 `tree_split`（M4 持久化）；
+- 分割条用现成的 `widgets::splitter`：拖拽中的宽度**面板本地持有**（`Option<f32>`，`None` = 跟随 `ProjectView::tree_split`），松手只发一条 `SetTreeSplit`；两边宽度进 `tree_split`（M4 写入布局文件）；
 - **`Library` 固定排最后**（D2）：模型里它就是顶层的一个普通目录，只是 `ordered_children` 把它排到最后、面板在它前面画一条 1px 分隔线；默认折叠，展开状态同样进 `expanded`；不受忽略规则影响，但有独立节点预算；
 - 搜索**不进入 `Library`**：里面是引擎产物，搜出来只会是噪音（要查导入产物请直接展开它）；
 - 右栏 v1 是「内容头 + 空状态」：内容头是**独立灰底**（`header_bg`）的 20 px 条 + 1 px 下边线，面包屑画在里面、每一级可点 = `Navigate`；显示目录 = `view.active`，而**单击树行就会更新它**（文件夹 → 自身，文件 → 父目录：`ProjectTree::content_dir`），双击只负责展开/打开，所以内容头不再等双击。空状态写明下一阶段做网格；
@@ -537,30 +536,56 @@ impl<'a, Id: Copy + Eq + Hash> TreeView<'a, Id> {
 
 **视觉来源（N5）**：行图标取自本机 Tuanjie 编辑器资源包，Lanczos 缩到 64² 提交在 `Preferences/Textures/project/{,light/}`（`folder.png` / `folder_open.png` / `file.png`），重跑脚本 `scripts/extract_tuanjie_icons.py`。M2 文件行统一用泛型 `file` 图标；按类型的图标（texture/mesh/material/audio/...）在 M5 从同一个包抽。工具栏的隐藏文件开关也用同一个包：`d_scenevis_visible@2x` / `d_scenevis_hidden@2x`（light 用无 `d_` 版），32²（16 px 的 2×）。
 
-### 2.7 持久化（M4）
+### 2.7 持久化（M4，D13）
 
-持久化分两类，各有各的所有者：**视图缓存**（本文档新增，一个 TOML）与**面板皮肤**（已有机制，`Preferences/Styles/ProjectStyle.ron`）。前者可删可重建：
+持久化**只存编辑器布局**：打开的面板、dock 停靠树（分割方向/比例）、每个 leaf 的 tab 顺序与当前 tab、焦点、浮动窗口（位置/尺寸/最小化/最大化），外加 Project 面板左右比例。**不存**：面板会话态（展开/当前目录/选中/anchor/滚动/搜索词）、项目树、GUID、忽略规则（编辑器设置，见 §2.2）、World/Scene 文档（未来的会话能力）。
 
-```toml
-# Library/project_view.toml —— 可删、可重建的缓存
+```
+Library/editor_layout.toml —— 可删、可重建；在项目根下，不进 git
 version = 1
-root = "D:/Projects/MyGame"      # 不匹配就整份忽略
-sort = "name"
-show_hidden = false
+focus = "scene"
+
+# 主 surface：前序（preorder）节点表；split 的两个子节点依次跟在本节点后面
+[[main.nodes]]
+kind = "horizontal"
+fraction = 0.78
+
+[[main.nodes]]
+kind = "leaf"
+tabs = ["scene"]
+active = 0
+
+[[main.nodes]]
+kind = "leaf"
+tabs = ["inspector", "hierarchy"]
+active = 0
+
+# 浮动窗口：位置/尺寸恢复后由 egui 的 constrain_to 保证回到可视区
+[[windows]]
+position = [1180.0, 80.0]
+size = [480.0, 360.0]
+minimized = false
+maximized = false
+[[windows.nodes]]
+kind = "leaf"
+tabs = ["console"]
+active = 0
+
+[panels.project]
 tree_split = 0.28
-expanded = ["res", "res/models"]
-active = "res/models"
-selection = ["res/models/Suzanne.png"]
 ```
 
-- **写**：`Effect::Project(PersistView)` → app 侧去抖（最后一次变更后 500ms）→ 临时文件 + `rename` 原子替换；
-- **读**：boot 时读一次，入 `Action::ViewRestored`；**必须等第一次 `Scanned` 之后再合并**（否则对着空树剪枝会全丢）—— 这是最容易写错的一处，写两条测试；
-- **坏文件**：解析失败 / 版本不认识 / root 不匹配 → 记一条 warn，按默认视图启动，绝不阻塞编辑器；
-- **不存**：树本身（重扫即可）、滚动位置、搜索文本、GUID、忽略规则（那是编辑器设置，见 §2.2）。
+- **身份**：tab 里存稳定的面板 kind 字符串（`PanelId` 的 `&'static str`）。当前每种面板只有一个实例；将来多实例（`viewport#0`）再引入 `kind#serial`，文件里的字符串位已留好。
+- **写**：`EditorApp::begin_frame` 对 dock 取「可持久化快照」（不含每帧重算的 rect/viewport/scroll），与上一帧比较，变化后 **500ms 去抖** → 临时文件 + `rename` 原子替换；`Layer::on_exit` 再 flush 一次。失败只 warn（用户偏好数据，不进状态栏）。
+- **读**：boot 时读一次。面板 kind 不认识 / 版本不认识 / 解析失败 / 节点形状非法 → 整份忽略 + warn，退回 `default_dock`，绝不阻塞编辑器；合法但为空（用户关掉了所有面板）→ 尊重它，工具栏 Window 菜单可以重开。
+- **恢复顺序**：由文件里的 tab 推导要开的面板集合（唯一真值是 dock 树，不另存一份 open 列表）→ `PanelHost::sync` 建实例 → 用 live 实例重建 `DockState` → 文件里没有、但 layout 要求打开的面板追加到当前 leaf。浮动窗口坐标交给 egui `constrain_to`，换显示器后不会跑到屏外。
+- **不设 root 守卫**：布局文件里没有项目路径，项目目录被拷贝/移动后继续用同一份布局是无害的；它就在项目根的 `Library/` 下，天然按根键化（D9）。
+- **为什么触发在 host 侧而不是 `Effect::PersistLayout`**：dock 的拖 tab / 分割 / 浮动窗口在 `Docker::show` 内部直接改 `DockState`，不产生 action（只有关闭走 viewer 回调）；core 的 `LayoutState` 只存 open/focus。布局树本来就是 host 状态，所以由 app 自己取快照，不经过 reducer。
+- **为什么 TOML、为什么不是 sqlite**：文件 KB 级、要人手可读可 diff；树的查询都在内存里。**项目树本身永不落盘**——它靠重扫重建，见 §2.7.1/§2.7.2 的分析。
 
-#### 2.7.1 对齐：`asset_registry.toml` 是什么，不是什么
+#### 2.7.1 为什么项目树不落盘：`asset_registry.toml` 是什么，不是什么
 
-这是 D3 里最需要说清的一点。旧注册表（`GUID ↔ 路径`）**不是用来加速重建树的**，它一条 `read_dir` 也省不掉：
+这是 D3（不持久化项目树）里最需要说清的一点。旧注册表（`GUID ↔ 路径`）**不是用来加速重建树的**，它一条 `read_dir` 也省不掉：
 
 - 旧 `ProjectPathGraph::new_at_root` 每次都完整递归遍历目录树；registry 只是在遍历途中给每个路径查/配一个 UUID（HashMap 查找），**遍历成本一分不少**；
 - 它解决的唯一问题是**身份**：重扫会 `graph.clear()` 重建全部 `NodeIndex`（`project_path_tree.rs:107`），选中项只能靠 GUID 找回；
@@ -649,18 +674,20 @@ kairos_editor_app/src/
   project/scanner.rs       后台扫描线程 + generation
   project/watcher.rs       从 kairos_editor/src/project_watcher.rs 搬来（notify-debouncer-full）
   project/fs.rs            建/改名/移动/回收站，错误转字符串
-  project/persist.rs       project_view.toml 读写 + 去抖 + 原子写
+  layout.rs                编辑器布局文件（`Library/editor_layout.toml`）读写 + 去抖 + 原子写 + 启动恢复
   project/ignore.rs        .kairosignore 解析（缺文件 seed 默认） + 规则匹配入口
   project/identity.rs      guid ↔ path 索引（读侧车、可重建缓存，M7）
   project/open.rs          M2：系统默认程序（`open` crate）；M5：`OpenWith` 分发 + IDE 探测
 
 kairos_editor_component/src/
   panels/project.rs        装配：工具栏 + [树 | 面包屑+占位] + 状态栏 + 弹层
-  panels/project/style.rs  ProjectStyle（RON，dark/light，含 tree_split 默认值）
+  panels/project/style.rs  ProjectStyle（RON，dark/light）
   panels/project/rows.rs   core 状态 → TreeRow 的纯映射 + 行缓存
   panels/project/content.rs 右栏占位（M9 换成网格，接口先定）
 
   kairos_editor_widgets/src/tree.rs   TreeView / TreeStyle / TreeRow / TreeOutput
+
+  kairos_editor_docking/src/{tree,docker}.rs   布局快照/恢复最小 API（`Tree::from_nodes` / `DockState::from_parts` / `DockState::surfaces`）
 ```
 
 新依赖（只进 app）：`notify-debouncer-full`、`toml`、`serde`、`trash`、`open` —— 版本与 `kairos_editor/Cargo.toml:39-49` 现有条目一致。M7 不引入新依赖：`kairos_asset` 已经依赖 `uuid`（`kairos_asset/Cargo.toml`）。
@@ -725,14 +752,14 @@ kairos_editor_component/src/
 D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来接「打开工程」会返工：
 
 1. **根是数据，不是环境推论**：`ProjectState.root` 存绝对路径，core 里所有路径都是它下面的 `RelPath`；除 app 的 IO 边界外，任何地方都不出现 `std::env::current_dir()`。
-2. **配置按根键化**：`Library/project_view.toml` 里已经带 `root` 守卫；未来的「最近打开」列表也按根键化。
-3. **切换工程 = 一条 action**：`ProjectOpened { root }` → 清空 `ProjectState`、重置 generation、`ScanRequested`、重读视图缓存。面板只认 `frame.state.project.root`，一行都不用改。
+2. **配置按根键化**：编辑器布局文件在 `<root>/Library/editor_layout.toml`（文件里没有项目路径，不需要 root 守卫，但位置天然按根）；未来的「最近打开」列表也按根键化。
+3. **切换工程 = 一条 action**：`ProjectOpened { root }` → 清空 `ProjectState`、重置 generation、`ScanRequested`、重读 `<新 root>/Library/editor_layout.toml`。面板只认 `frame.state.project.root`，一行都不用改。
 
 **真正贵的地方不在面板，在引擎**：`kairos_asset` 的 source root 是进程级的（ADR 0004：cwd + `KAIROS_ASSET_ROOT` 覆盖），换工程要重配 asset server / 处理器 / watcher。那是引擎侧的一整套改动，所以「打开工程」不进本计划 —— 但上面三条保证它将来只需要动 app + 引擎，不碰面板。
 
 ### 2.13 词表（写进 `kairos_editor/CONTEXT.md`）
 
-**Project**：编辑器的资产工作区，一个根目录 + 它的文件树 + 用户意图（展开、选中、当前目录）。**System dir**：正常扫描但有三条特殊待遇的目录（当前只有 `Library`）——根级排最后、带分隔线、独立预算、不受 ignore 影响。**ProjectTree**：某一时刻文件系统结构的快照，身份是相对路径。**ScanPolicy**：扫描规则（忽略 + 系统目录预算 + 节点/深度上限）。**ProjectView**：树之上可持久化的用户意图。**FileType**：一个扩展名族的显示与打开方式，不含任何文件操作。**Cluster**：一个资产的主文件 + 它的伴生侧车（`.meta` 等），移动/删除以簇为单位。**AssetId / Guid**：资产的持久身份（写在 `.meta` 里，见 M7），与树的路径身份正交。
+**Project**：编辑器的资产工作区，一个根目录 + 它的文件树 + 用户意图（展开、选中、当前目录）。**System dir**：正常扫描但有三条特殊待遇的目录（当前只有 `Library`）——根级排最后、带分隔线、独立预算、不受 ignore 影响。**ProjectTree**：某一时刻文件系统结构的快照，身份是相对路径。**ScanPolicy**：扫描规则（忽略 + 系统目录预算 + 节点/深度上限）。**ProjectView**：树之上的用户意图（展开/选中/当前目录/排序/分栏比例），运行期状态、**不落盘**（D13）。**Editor Layout**：打开的面板集合 + dock 停靠树（分割方向/比例）+ tab 顺序/焦点 + 浮动窗口位置尺寸；M4 落盘的只有它和 `tree_split`。**Layout file**：`<root>/Library/editor_layout.toml`，可删可重建、带 `version`。**FileType**：一个扩展名族的显示与打开方式，不含任何文件操作。**Cluster**：一个资产的主文件 + 它的伴生侧车（`.meta` 等），移动/删除以簇为单位。**AssetId / Guid**：资产的持久身份（写在 `.meta` 里，见 M7），与树的路径身份正交。
 
 ---
 
@@ -1046,18 +1073,69 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 > - 测试：core 141 条（`project` 71，含删除 5 条、多路径选择不动内容头 1 条、第二轮 anchor/多选/移动保持 8 条）、app 70 条（`project::fs` 12 条 tempdir + `project::thumbnail` 4 条）、widgets 183 条（tree 28、menu 7、modal 10）、component 251 + 7 + 10 条（M3b 两批 +21，第二轮 +6）；`cargo check --workspace --all-targets` 绿；本轮改动文件的 `rustfmt --check`（`skip_children=true`）干净——仓库里还有 M0–M2 留下的未格式化文件，整 crate `cargo fmt` 会顺带改它们，本里程碑不纳入（也不把它们算进 diff）。`trash` 在无桌面回收站的 CI 上按“失败且条目仍在”通过并注释原因（D5 禁止降级成永久删除）。
 > - 偏差记录：`FsOutcome` 用 `moved: Vec<(from, to)>` 而不是单个 `renamed`——多选移动需要重写每一对前缀；`FsOp` 增加 `companions` 字段，让 `app::project::fs` 不硬编码 `.meta`（成簇判据仍来自类型表）；**侧车只对文件生效**（目录是单个条目，避免误删/误改名恰好叫 `foo.meta` 的无关文件）；T9 原写“复用 scan 的单 job”，实际用 `Vec<TrashJob>`；`TreeOutput` 的拖拽通道固定 6 个字段（T1 原文的 `dragging` 是 bool、`drop_target` 只在拖拽中/松手帧有意义），行内编辑的 Enter/失焦/取消三种结局由 `edit_committed` / `edit_cancelled` 两个 bool 报，面板据此决定是否停止传 `editing`。 M3b 第二轮另记：弹窗只由 Esc 关闭（不跟 egui `should_close` 的背板点击）；纹理缩略图走 `HostView::project_thumbnail` 宿主 seam，而不是 `egui_extras` 的图片加载器（后者会把 4K 纹理全尺寸解码/上传，塞进 18 px 行图标）；拖拽会话与自滚动归 widget（egui 的 ScrollArea 在 widget drag 期间不处理滚轮）；选择 anchor 归 core 的 `ProjectView`，不是面板态。
 
-### M4 — 持久化（1.5–2.5 天）
+### M4 — 编辑器布局持久化（2.5–3.5 天，D13）
 
-**目标**：关掉编辑器再打开，展开/当前目录/选中都还在；删掉缓存文件也只是回到默认。
+**目标**：关掉编辑器再打开，**布局一模一样**（哪些面板开着、dock 怎么分、tab 顺序/焦点、浮动窗口在哪、Project 左右比例）；删掉布局文件或写坏它只是回到默认布局。**面板会话态（展开/选中/滚动/搜索）不落盘**（D13；原 M4 的 `project_view.toml` 方案已删除）。
+
+> **M4 开工前复核定稿（2026-11-25，用户已拍板）** —— 原文这一节整体重写，落地一律按这里来：
+>
+> | # | 决定 | 为什么 |
+> |---|---|---|
+> | **L1** | **范围 = 全量 dock 布局**：打开的 panel 集合（由 dock 树推导）、主 surface 停靠树（分割方向/比例）、每 leaf 的 tab 顺序与 active tab、焦点、浮动窗口位置/尺寸/min/max；外加 **Project 面板 `tree_split`** | 布局是用户立刻感知的收益；D1 早已拍板「分栏比例进持久化」。面板会话态不存（D13） |
+> | **L2** | **文件 `Library/editor_layout.toml`，`version = 1`**；TOML + 前序（preorder）节点表；面板身份是稳定 kind 字符串（将来多实例用 `kind#serial`）；**不设 root 守卫**（文件里没有项目路径，位置天然按根）；`.gitignore` 加 `/Library/editor_layout.toml*`（含原子写的隐藏临时文件）；读侧 64KB 上限 | 文件 KB 级、可读可 diff；按根是 D9 纪律；字符串身份才能在面板增删/版本升级时降级而不是崩 |
+> | **L3** | **恢复规则**：boot 读一次 → 版本不认识 / 解析失败 / 节点形状非法 / **tab kind 不认识** → 整份忽略 + warn，退回 `default_dock`；合法但为空 → 尊重；由 tab 推导 `LayoutState.open`（不另存 open 列表）→ `PanelHost::sync` → 用 live 实例重建 `DockState` → 文件里没有但 layout 要开的 panel 追加到当前 leaf | 单一真值（dock 树）；未知 id 不崩；空布局可从 Window 菜单恢复 |
+> | **L4** | **写回 = host 侧帧快照比较**（不是 `Effect::PersistLayout`）：`begin_frame` 取可持久化快照（不含每帧重算的 rect/viewport/scroll）→ 与上一帧比 → 500ms 去抖 → 临时文件 + `rename` 原子替换；`Layer::on_exit` flush；启动后的快照作基线（开机不回写）；失败只 warn | dock 的拖 tab / 分割 / 浮动窗口在 `Docker::show` 内部直接改 `DockState`，不产生 action；布局树本来就是 host 状态 |
+> | **L5** | **docking 只出纯 Rust 的最小 API**：`Tree::from_nodes`（校验 heap 形状/空节点/active 越界/孤立节点）、`DockState::from_parts`、`DockState::surfaces()`；**不引 serde** | 文件格式归 app、docking 保持依赖轻（crate 文档本来就写「布局可被 app 序列化」）；恢复前必须校验，坏文件不能把 docker 搞 panic |
+> | **L6** | **Project 面板**：`tree_split` 写进布局文件的 `[panels.project]`；**双击分割条复位 0.28**（M2 已知行为 #2 的遗留：widget 已有 `reset_to`，面板没接） | 一个标量，属于布局不属于「细节」；双击复位本次一起收口 |
+> | **L7** | **原 M4 删除**：`ViewRestored` / `PersistView` / `Library/project_view.toml` / expanded+selection+anchor 落盘 / Ctrl+A 上限，全部从计划移除（D13） | 用户拍板「持久化不需要记录那么多细节」；这些属 `ViewStates`（可选、按需），将来真需要再立项 |
+> | **L8** | **工期 2.5–3.5 天，一刀**；顺序：docking API + 测试 → app 布局读写/去抖/恢复协调 + 测试 → boot/`on_exit` 接线 → Project `tree_split` + 双击复位 → 手动 smoke → 落地状态 | 与 M1–M3 同款：先 headless 后接线；恢复协调是主要风险，必须有 app 集成测试 |
+>
+> **两条设计说明（会进 M8 的 ADR）**：
+> 1. **持久化触发放在 host 侧**：文档草图里的 `Effect::PersistLayout` 假设布局树在 core；本实现里 dock 树归 host（`LayoutState` 只有 open/focus），拖拽/分割直接改 `DockState` 且不产生 action，所以由 app 在 `begin_frame` 取快照比较。这是对草图的合理偏离，不是遗漏。
+> 2. **恢复失败一律整份回退**：坏文件、未知 version、未知 panel kind、节点形状非法都退回 `default_dock` + warn；只有「合法但为空」被尊重。v1 不做逐 tab 裁剪（那需要重排树，收益低）。
 
 **交付**
-- app：`persist.rs`（读、去抖写、原子替换、版本号、root 守卫；字段含 `tree_split`）；
-- core：`ViewRestored` + 「首次 Scanned 后再合并」的规则；
-- 面板皮肤已由 RON 持久化（`#[panel(skin)]`），本次不动。
+- `kairos_editor_docking`：`tree.rs` 的 `Tree::from_nodes`（含形状校验）、`docker.rs` 的 `DockState::from_parts` / `DockState::surfaces()`；
+- app `layout.rs`：`LayoutFile` DTO（serde + toml；`version` / `main` / `windows` / `focus` / `panels.project.tree_split`）、`load`（大小/版本/shape 校验）、`save`（原子写 + 头注释）、`LayoutPersist`（500ms 去抖、同值去重、`flush`）、`capture`（dock → DTO，跳过每帧数据）、`restore`/`dock`（校验 + tab 映射到 live `PanelInstanceId`）；
+- `EditorApp`：`with_root` 启动顺序改造（读布局 → 决定 open 集合 → `boot_state` → `host.sync` → 重建 dock / 回退 `default_dock` → 追加缺失面板 → 快照基线）；`begin_frame` 的 observe/poll；`on_exit` flush；`EditorLayer` 实现 `Layer::on_exit`；
+- `.gitignore`：`/Library/editor_layout.toml*`；
+- 面板：`tree_split` 恢复（boot 写 `state.project.view.tree_split`，clamp 到 0.15..=0.6）+ 双击分割条复位（发一条 `SetTreeSplit(0.28)`）；
+- 文档：本 README 的 §2.7 / §2.10 / D1 / D3 / D13 / §8 / §9 / M8，以及 `rewrite-plan.md` Phase 4 的交叉注记。
 
-**验收**：展开三层（含 `Library` 根）+ 拖动分割条 → 重启 → 展开与比例都一样；把 `Library/project_view.toml` 改成乱码 → 正常启动 + 一条 warn；把 root 改成别的项目 → 忽略；改名过的路径在文件里 → 加载时被剪掉。
+**验收（手动 smoke）**
+- 重摆布局（左右分栏 + 挪 tab + 拖比例 + 浮动窗口 + 切 active tab）→ 退出重启 → 完全一致；
+- 关掉一个面板 → 重启仍关；从 Window 菜单开新面板 → 重启后仍在；
+- 把 `Library/editor_layout.toml` 改成乱码 / 未知 version → 默认布局启动 + 一条 warn，不阻塞；
+- 文件里写一个不存在的 panel kind → 整份忽略退回默认（v1 的降级策略）；
+- 把浮动窗口坐标改成屏外 → 重启后仍在可视区；
+- 退出前 200ms 内改完布局 → 立即关窗 → 重启仍是新布局（`on_exit` flush）；
+- 删掉布局文件 → 默认布局；把面板全关掉 → 重启仍是空的，Window 菜单能重开；
+- `git status` 看不到布局文件；写布局文件时 console 的 `scan #` 不变（`Library/` 被 watcher 过滤）；
+- Project 面板左右比例重启保持；双击分割条回 `0.28`。
 
-**测试**：round-trip；坏文件；root 不匹配；悬空路径剪枝 + active 回退最近祖先；原子写不产生半文件。
+**测试**
+- docking：`from_nodes` 合法/非法矩阵（根 Empty、leaf 无 tab、active 越界、孤立非空节点、子节点缺失）、`from_parts`（main 必须在 0、空输入拒绝）、`surfaces()` 次序；用真实 dock 操作建树再快照/重建，断言 tab 顺序、active、分割方向/比例、窗口几何；
+- app：DTO round-trip；坏 TOML / 版本不认识 / 超过大小上限 / 节点形状非法 → 默认布局 + warn；未知 kind 整份忽略；空布局合法；`capture` 不含 rect/viewport/scroll；假 `Instant` 的去抖（500ms 前不写、之后写一次、同值去重、`flush` 立即写）；原子写不留半文件；boot 集成测试（tempdir 预写布局 → `EditorApp::with_root` 后断言 dock 树/tab/焦点/窗口/`tree_split`）；保存路径集成测试（改 dock → `begin_frame` → `on_exit` → 文件内容）；
+- component：双击分割条发一条 `SetTreeSplit(0.28)` 且下一帧分界在 0.28；现有拖拽/单击测试全绿；
+- 回归：现有 app/core/widgets/component 测试全绿。
+
+**风险**
+- 恢复协调是主要复杂度：未知/重名 tab、空布局、版本升级新增面板、窗口坐标跨显示器 → 用「整份忽略 + 追加缺失 + egui constrain」三条兜底，不猜；
+- dock 是 host 状态，持久化触发与文档草图 `Effect::PersistLayout` 不同 → 记录理由（L4），M8 的 ADR 写清楚；
+- app crate 无 lib target → 验证用 `cargo test -p kairos_editor_app --bins`（不是 `cargo test-crate`）。
+
+> **落地状态（实现完成，2026-11-25；待真机验收）**
+>
+> - **实现**：`kairos_editor_docking` 增 `Tree::from_nodes`（heap 形状/空节点/active/孤立节点校验 + 节点上限）、`DockState::from_parts` / `DockState::surfaces`；app 新增 `layout.rs`（`LayoutFile` DTO：`version` / `main` / `windows` / `focus` / `panels.project.tree_split`，前序节点表；`load` / `save` 原子写 + 64KB 上限 + 文件头注释；`capture` / `restore`；`RestoredLayout::dock`；`LayoutPersist` 500ms 去抖 + 同值去重 + `flush`）；`EditorApp::with_root` 改为「读布局 → 决定 open 集合 → `boot_state` → `host.sync` → 重建 dock / 回退 `default_dock` → `reconcile_dock` → 快照基线」，`begin_frame` observe/poll，`on_exit` flush；`EditorLayer` 实现 `Layer::on_exit`；`.gitignore` 加 `/Library/editor_layout.toml*`；Project 面板接 `Splitter::reset_to` + 双击发一条 `SetTreeSplit(0.28)`；`ProjectView` / `ProjectState` 的文档改为运行期状态（D13）。
+> - **测试**：docking `dock_state` 6→10（快照/重建 round-trip、4 条非法节点矩阵、`from_parts` 顺序/空输入）；app 96 passed + 1 ignored（`layout` 模块 14 条：capture/restore round-trip、空 dock、未知/重复 panel、malformed tree、版本、无 live 实例、split 与 tree_split clamp、磁盘 round-trip、坏文件、去抖/flush、disabled writer；app 集成 5 条：boot 恢复、坏文件回退、干净启动不写文件、退出 flush、缺失 tab 追加）；component 251→252（双击复位）；core 行为未改；`cargo check --workspace --all-targets` 绿；本轮改动文件 `rustfmt --edition 2024 --config skip_children=true` 干净（仓库里仍有更早的未格式化文件，不纳入）。
+> - **与定稿的偏差 / 已知行为**：
+>   1. 布局文件里的 panel 身份只写 kind（`"scene"`）。当前 `LayoutState` 每种 panel 只有一个实例，serial 跨重启无法稳定对齐；将来多实例时再写 `kind#serial`，加载按「精确 serial → 同 kind 首个」回退（`layout.rs` 注释记录）。
+>   2. v1 的恢复失败策略是**整份回退**（未知 kind / 坏树 / 版本不认识都丢），不做逐 tab 裁剪——简单且不会静默改变布局。
+>   3. `begin_frame` 每帧取快照（真实工程约 10 个 leaf，成本可忽略）；去重用「上次观察到的快照」，只有变化才重启 500ms 去抖。
+>   4. 快照基线来自实际 dock：没有布局文件的干净启动**不会**生成文件（有测试），第一次打开不会把默认布局写进仓库。
+>   5. `About` / `Preferences` 等浮动窗口也随布局保存/恢复（不按面板做特例）；「关闭全部面板」的合法空布局被尊重，可用 Window 菜单重开。
+>   6. 布局文件写在 `Library/`，watcher 按系统目录过滤，不会自激重扫（M1 的系统目录事件测试已覆盖；M4 未新增 watcher 测试）。
+> - **待办**：真机 smoke（上面 9 条验收清单）。本轮验证全部走 headless / 集成测试，未启动 GUI。
 
 ### M5 — 类型 seam + 每种类型（2–3 天 + 每类 0.5–2 天）
 
@@ -1112,7 +1190,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 **D8 定稿：旧 crate 整体退役时再删，本计划一行旧代码都不动。** 所以 M8 只做两件事：让人不再往旧实现加东西，以及把决定写下来。
 
 **交付**
-- 新 ADR：`0015-project-tree-and-panel.md`（路径身份、扫描协议、忽略规则、持久化格式、类型注册表、删除语义）；
+- 新 ADR：`0015-project-tree-and-panel.md`（路径身份、扫描协议、忽略规则、**布局文件格式与恢复规则（含 host 侧持久化触发的理由）**、类型注册表、删除语义）；
 - 新 ADR：`0016-asset-guid-and-references.md`（M7 的身份与引用；与 ADR 0002 的 meta 格式如何兼容）；
 - 交叉链接 ADR 0017（M0.5 的成品根布局）到 ADR 0004/0005 与 `rewrite-plan.md`；
 - `rewrite-plan.md` 的模块映射表加一行：旧 project 子树已由 `core::project` + `app::project` + `panels::project` 取代，随 `kairos_editor` 退役删除；
@@ -1169,7 +1247,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 | 扫描拖慢启动 | 网络盘/巨量目录下首帧 > 1s | 后台扫 + 截断 + `elapsed_ms` 日志；M1 就用 5 万节点 fixture 验 |
 | Windows 文件语义踩坑 | 仅大小写改名失败、保留名被系统拒 | 全部收敛到 `name.rs`/`fs.rs`；每条规则一条测试 |
 | watcher 自激（自己写自己） | 每次刷新都触发下一次刷新 | watcher 按路径前缀**丢掉 `Library/` 下的事件**（缓存、日志、视图文件都在那里）+ generation + 300ms 去抖 |
-| 持久化吃掉用户状态 | 重启后展开全没了 | 「首次 Scanned 后合并」+ 坏文件当默认 + 删文件无害 |
+| 布局恢复把面板搞乱/搞丢 | 重启后面板不见了、位置错乱 | 未知 kind / 坏文件 / 版本不认识整份退回 `default_dock`；合法空布局尊重；文件里没有的面板追加到当前 leaf；启动快照作基线（开机不回写） |
 | core 长回 IO/锁 | review 时看到 `std::fs`/`Mutex`/`Cell`/`Receiver` | 写进 review 检查单：出现即打回 |
 | 两套实现长期分叉 | 旧 crate 里还在修 project 的 bug | 旧实现冻结；M7 删除。期间**不在 `kairos_editor/src/project*` 改任何东西** |
 | 非 UTF-8 文件名 | 显示成 `?`，操作报错 | 明确限制：显示用 lossy，操作前校验「可表示」，不可表示则给明确错误（不静默） |
@@ -1181,9 +1259,9 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 
 | # | 决定 | 一句话理由 | 落在哪 |
 |---|---|---|---|
-| **D1** | **左右两栏，右栏先空** | 布局/分割条/导航状态一次到位，网格只填内容不返工 | `ProjectView::tree_split`、M2 面板骨架 |
+| **D1** | **左右两栏，右栏先空** | 布局/分割条/导航状态一次到位，网格只填内容不返工 | `ProjectView::tree_split`（运行期）+ M4 布局文件持久化、M2 面板骨架 |
 | **D2** | **单根；`Library` 是系统目录；忽略走 `.kairosignore`；搜索分 `In Assets`/`In Library`** | 系统目录、忽略、隐藏是三件事，混在一起会既慢又说不清；搜索范围照 Unity 分档最直观 | `ScanPolicy::{system_dirs,ignore}` + `ProjectTree::ordered_children` + `.kairosignore` + `SearchScope`（M6） |
-| **D3** | **只持久化视图意图，不持久化树** | `asset_registry.toml` 是身份表不是缓存，一条 `read_dir` 也省不掉（§2.7.1） | `Library/project_view.toml`（M4）；索引缓存按需（§2.7.2） |
+| **D3** | **持久化只存编辑器布局，不持久化项目树** | `asset_registry.toml` 是身份表不是缓存，一条 `read_dir` 也省不掉（§2.7.1）；布局是用户可感知的收益 | `Library/editor_layout.toml`（M4，D13）；项目树永不落盘；索引缓存按需（§2.7.2） |
 | **D4** | **删编辑器注册表；资产身份搬进 `.meta`** | 引用是路径、注册表只服务 UI；改名安全需要资产侧 ID（§2.11） | M1 起不再产出 `Library/asset_registry.toml`；M3 埋成簇地基；身份本体 = M7 |
 | **D5** | **回收站 + 默认确认（Unity 行为）** | 误删不可逆；确认弹层是 UI 状态不是宿主对话框 | `FileType::delete_confirm`（默认 true）、M3 |
 | **D6** | **v1 单选，M3 多选 + 树内移动** | 跨面板拖要资产句柄，属 M5 之后 | M3 |
@@ -1193,6 +1271,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 | **D10** | **忽略规则一开始就用 `.kairosignore`** | 项目级规则该跟项目走、能进 git；编辑器级配置会分叉 | M1 读 + seed；`app::project::ignore` |
 | **D11** | **资产身份与引用维护并入（M7）** | 用户明确要求；而且 M5 本来就要读 `kairos_asset` | M7，5–8 人日，跨 `kairos_asset`/`kairos_graphics` |
 | **D12** | **成品根搬进 `Library/`（M0.5）** | 现在搬一次，之后所有代码都少一条「跳过成品根」的特例 | M0.5，0.5–1 人日，跨 `kairos_asset`/`kairos_engine`/`kairos_graphics` |
+| **D13** | **持久化范围 = 编辑器布局**（dock 布局 + tab 顺序/焦点 + 浮动窗口 + Project 分栏），面板会话态不落盘 | 用户拍板（2026-11-25）：会话态细节低收益、按架构归属属 `ViewStates`（按需）；原 M4 方案删除 | M4；`ViewRestored` / `PersistView` / `Library/project_view.toml` 不再做 |
 
 ### 7.1 早期三个待定项的落点
 
@@ -1207,7 +1286,7 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 | 1 重构 ProjectTree | **M0**（接缝）+ **M1**（树 v2） | 拆成「骨架」与「树」两步；树改为 core 纯模型 + app 扫描；顺带删 GUID |
 | （新增） | **M0.5** | 成品根搬进 `Library/`，换来 `ScanPolicy` 少一个特例（D12） |
 | 2 面板 hierarchy + 导航 | **M2** | 增加 TreeView widget 这个前置；按 D1 一次做成左右两栏（右栏先占位） |
-| 3 持久化 | **M4** | 只存视图状态；皮肤已有；GUID 注册表删除 |
+| 3 持久化 | **M4** | 存编辑器布局（dock 树/焦点/浮动窗口/Project 分栏）；面板会话态不落盘（D13）；皮肤已有；GUID 注册表删除 |
 | 4 引入类型资源 | **M5**（seam + 每类一个任务） | 增加 `FileTypeRegistry` 这个前置 |
 | 5 搜索 | **M6** | 名字/路径 + `t:` 类型过滤语法；内容搜索单独立项 |
 | （你的后端清单里的 CRUD） | **M3** | 你列了它但 5 步没排；它必须早于类型 |
@@ -1219,6 +1298,8 @@ D9 选「保持 cwd」，但**现在有三条纪律必须遵守**，否则将来
 ## 9. 不做（out of scope）
 
 - **内容/全文搜索**（需要索引与读文件，独立 ADR）；
+- **面板会话态持久化**（展开集合、当前目录、选中、滚动位置、搜索词）：M4 只存布局，这些不落盘（D13；方向属 `ViewStates`，见 panel-viewport-design §2.6）；
+- **打开的 World/Scene 文档恢复**：等文档系统落地后作为独立「会话」需求（布局文件已带 `version`，届时新增 section 或新文件）；
 - **右栏的网格 / 缩略图本体**（D1：两栏骨架先做好，右栏只放面包屑 + 占位；网格依赖类型任务与预览管线，作为 M7 之后的可选 M9）；
 - **从树拖到视口 / 拖出到系统**（需要资产句柄与场景实体，属 Inspector/视口迁移）；
 - **资产导入流水线本身**（processor、`.meta` 生成、成品目录）—— 本计划只读取和显示它们的状态；
